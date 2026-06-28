@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Combine Tracker</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0e0e10">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="icon" type="image/png" href="./icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Combine">
+<style>
+  :root{
+    --bg:#0e0e10;--card:#1b1b1f;--card2:#202025;--line:rgba(255,255,255,0.06);
+    --line2:rgba(255,255,255,0.10);--text:#e9e9ec;--muted:#8c8c93;--muted2:#6c6c73;
+    --green:#34d399;--green-soft:rgba(52,211,153,0.13);
+    --amber:#f5b340;--amber-soft:rgba(245,179,64,0.13);
+    --red:#f3736f;--red-soft:rgba(243,115,111,0.13);
+    --blue:#8e9cf5;--blue-soft:rgba(142,156,245,0.13);
+    --purple:#b09bf0;--purple-soft:rgba(176,155,240,0.13);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.45;padding:22px 16px 60px;}
+  .wrap{max-width:1080px;margin:0 auto}
+  h2.section{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:34px 2px 14px;}
+
+  /* account selector (primary) */
+  .acctsel{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:10px}
+  .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:14px 8px;cursor:pointer;font-family:inherit;font-size:18px;font-weight:700;letter-spacing:-.3px;transition:.15s}
+  .acctsel button .f{display:block;font-size:10.5px;color:var(--muted2);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+  .acctsel button:hover{color:var(--text);border-color:var(--line2)}
+  .acctsel button.active{background:linear-gradient(180deg,rgba(52,211,153,.08),var(--card2));color:var(--text);border-color:rgba(52,211,153,.35)}
+  .acctsel button.active .f{color:var(--green)}
+
+  /* plan selector (secondary, 25k only) */
+  .sel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px;margin-bottom:6px}
+  .sel button{background:transparent;border:1px solid transparent;color:var(--muted);border-radius:10px;padding:9px 6px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;line-height:1.25;transition:.15s}
+  .sel button .f{display:block;font-size:10px;color:var(--muted2);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:2px}
+  .sel button:hover{color:var(--text);border-color:var(--line2)}
+  .sel button.active{background:var(--card2);color:var(--text);border-color:var(--line2)}
+  .sel button.active .f{color:var(--green)}
+
+  /* KPIs */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:10px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 14px;text-align:center}
+  .kpi .label{font-size:12px;color:var(--muted);margin-bottom:7px}
+  .kpi .val{font-size:25px;font-weight:700;letter-spacing:-.5px}
+  .kpi .val.edit{cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.18);display:inline-block;padding-bottom:1px}
+  .kpi .sub{font-size:10.5px;color:var(--muted2);margin-top:5px}
+  .kpi.green .val{color:var(--green)}.kpi.amber .val{color:var(--amber)}.kpi.red .val{color:var(--red)}
+  .kpi.hardrule{border-color:rgba(243,115,111,0.32);background:linear-gradient(180deg,rgba(243,115,111,0.07),var(--card))}
+  .kpi input{width:96px;background:#0f0f12;border:1px solid var(--green);color:var(--text);border-radius:8px;padding:4px 6px;font-size:18px;font-weight:700;text-align:center;font-family:inherit;outline:none}
+
+  /* plan panel */
+  .plan{background:linear-gradient(180deg,rgba(142,156,245,0.05),var(--card));border:1px solid rgba(142,156,245,0.2);border-radius:18px;padding:18px 20px;margin-top:14px}
+  .plan h3{margin:0 0 12px;font-size:14px;font-weight:600;color:#aab4f7}
+  .plan .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 18px}
+  .plan .item .k{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+  .plan .item .v{font-size:13px;font-weight:600;color:var(--text)}
+  @media(max-width:640px){.plan .grid{grid-template-columns:repeat(2,1fr)}}
+
+  /* progress */
+  .progress{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-top:14px}
+  .progress .top{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+  .progress .amt{font-size:29px;font-weight:700;letter-spacing:-.5px}
+  .progress .amt .of{color:var(--muted);font-size:17px;font-weight:600}
+  .progress .pct{font-size:14px;color:var(--green);font-weight:600}
+  .bar{height:12px;background:#26262b;border-radius:99px;margin:16px 0 12px;overflow:hidden}
+  .bar .fill{height:100%;width:0;background:linear-gradient(90deg,var(--green),#5ee0aa);border-radius:99px;transition:width .45s cubic-bezier(.2,.7,.3,1)}
+  .progress .meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--muted)}
+  .progress .meta b{color:var(--text);font-weight:600}
+  .consistency{margin-top:12px;font-size:12.5px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);display:none}
+  .consistency.ok{display:block;background:var(--green-soft);border-color:rgba(52,211,153,.25);color:#9be9c8}
+  .consistency.warn{display:block;background:var(--amber-soft);border-color:rgba(245,179,64,.3);color:#f3cd8e}
+  .consistency.bad{display:block;background:var(--red-soft);border-color:rgba(243,115,111,.32);color:#f3a9a6}
+  .consistency.none{display:block;background:var(--card2);border-color:var(--line);color:var(--muted)}
+
+  /* days */
+  .days{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .days.d3{grid-template-columns:repeat(3,1fr)}
+  .day{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 16px;cursor:pointer;transition:border-color .18s,transform .12s,background .18s;position:relative}
+  .day:hover{border-color:var(--line2)}.day:active{transform:scale(.992)}
+  .day .dh{font-size:12px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .day .tgt{font-size:22px;font-weight:700;letter-spacing:-.4px;color:#fff}
+  .day .cum{font-size:11.5px;color:var(--muted);margin-top:6px}
+  .day .actual{font-size:12px;margin-top:8px;color:var(--muted)}
+  .day .actual b{font-weight:600}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:7px;margin-top:11px}
+  .tag.build{background:var(--green-soft);color:var(--green)}
+  .tag.push{background:var(--blue-soft);color:var(--blue)}
+  .tag.close{background:var(--purple-soft);color:var(--purple)}
+  .day.win{border-color:rgba(52,211,153,.4);background:linear-gradient(180deg,var(--green-soft),var(--card))}
+  .day.partial{border-color:rgba(245,179,64,.38);background:linear-gradient(180deg,var(--amber-soft),var(--card))}
+  .day.loss{border-color:rgba(243,115,111,.42);background:linear-gradient(180deg,var(--red-soft),var(--card))}
+  .pnl-win{color:var(--green)}.pnl-amber{color:var(--amber)}.pnl-loss{color:var(--red)}
+  .editor{margin-top:11px;display:none;flex-direction:column;gap:7px}
+  .editor.open{display:flex}
+  .editor .row{display:flex;gap:7px}
+  .editor input{flex:1;width:100%;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:8px 10px;font-size:14px;font-family:inherit;outline:none;min-width:0}
+  .editor input:focus{border-color:var(--green)}
+  .editor button{border:none;border-radius:9px;padding:8px 11px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  .editor .save{background:var(--green);color:#06281b;flex:1}
+  .editor .clear{background:#2a2a30;color:var(--muted)}
+  .hint{font-size:10.5px;color:var(--muted2)}
+
+  /* schedule */
+  .sched{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+  .srow{display:flex;align-items:center;gap:14px;padding:15px 18px;border-bottom:1px solid var(--line)}
+  .srow:last-child{border-bottom:none}
+  .srow .time{font-size:14px;font-weight:600;width:150px;flex-shrink:0}
+  .srow .desc{flex:1;color:var(--muted);font-size:14px}
+  .pill{font-size:11.5px;font-weight:600;padding:4px 11px;border-radius:8px;flex-shrink:0}
+  .pill.prep{background:var(--amber-soft);color:var(--amber)}.pill.no{background:var(--red-soft);color:var(--red)}
+  .pill.trade{background:var(--green-soft);color:var(--green)}.pill.off{background:#2a2a30;color:var(--muted)}
+  .pill.opt{background:var(--amber-soft);color:var(--amber)}.pill.done{background:var(--red-soft);color:var(--red)}
+
+  /* rules */
+  .callout{background:linear-gradient(180deg,rgba(243,115,111,0.06),var(--card));border:1px solid rgba(243,115,111,0.22);border-radius:18px;padding:18px 22px;margin-top:14px}
+  .callout h3{margin:0 0 10px;font-size:14px;font-weight:600;color:#f3a9a6}
+  .callout p{margin:0 0 9px;font-size:13px;color:var(--muted);line-height:1.55}
+  .callout p:last-child{margin-bottom:0}.callout b{color:var(--text);font-weight:600}
+  .rulegrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .rules{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px}
+  .rules h3{font-size:15px;margin:0 0 16px;display:flex;align-items:center;gap:9px;font-weight:600}
+  .rules ul{list-style:none;margin:0;padding:0}
+  .rules li{position:relative;padding-left:20px;margin-bottom:13px;font-size:14px;font-weight:500}
+  .rules li:last-child{margin-bottom:0}
+  .rules li::before{content:"";position:absolute;left:0;top:7px;width:8px;height:8px;border-radius:99px}
+  .rules li.r::before{background:var(--red)}.rules li.a::before{background:var(--amber)}
+  .rules li.g::before{background:var(--green)}.rules li.b::before{background:var(--blue)}
+  .footer{text-align:center;color:var(--muted2);font-size:11.5px;margin-top:30px}
+
+  @media(max-width:760px){
+    .sel{grid-template-columns:repeat(2,1fr)}
+    .kpis{grid-template-columns:repeat(2,1fr)}.kpi.hardrule{grid-column:span 2}
+    .days,.days.d3{grid-template-columns:1fr}
+    .rulegrid{grid-template-columns:1fr}
+    .srow .time{width:120px;font-size:13px}.srow .desc{font-size:13px}
+    .acctsel button{font-size:16px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="acctsel" id="acctSel">
+    <button data-acct="100k"><span class="f">TopStep</span>100K</button>
+    <button data-acct="50k"><span class="f">TopStep</span>50K</button>
+    <button data-acct="25k"><span class="f">Lucid / MFFU</span>25K</button>
+  </div>
+
+  <div class="sel" id="planSel" style="display:none">
+    <button data-plan="mffu-rapid"><span class="f">MyFundedFutures</span>Rapid</button>
+    <button data-plan="mffu-flex"><span class="f">MyFundedFutures</span>Flex</button>
+    <button data-plan="lucid-flex"><span class="f">Lucid</span>Flex</button>
+    <button data-plan="lucid-pro"><span class="f">Lucid</span>Pro</button>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi green"><div class="label">Target profit</div><div class="val edit" id="kTarget">$6,000</div><div class="sub">tap to edit</div></div>
+    <div class="kpi"><div class="label">Trading days</div><div class="val" id="kDays">10</div><div class="sub" id="kMinDays">min 5 to pass</div></div>
+    <div class="kpi amber"><div class="label">Daily target avg</div><div class="val" id="kAvg">$600</div></div>
+    <div class="kpi red"><div class="label">Hard daily stop</div><div class="val" id="kStop">-$400</div><div class="sub">your rule</div></div>
+    <div class="kpi hardrule red"><div class="label" id="kMaxLabel">Trailing Max Loss</div><div class="val edit" id="kMaxloss">-$3,000</div><div class="sub" id="kMaxsub">the only hard rule · tap to edit</div></div>
+  </div>
+
+  <div class="plan">
+    <h3 id="planTitle">TopStep 100K</h3>
+    <div class="grid">
+      <div class="item"><div class="k">Drawdown</div><div class="v" id="pDD">EOD trailing</div></div>
+      <div class="item"><div class="k">Consistency</div><div class="v" id="pCons">50%</div></div>
+      <div class="item"><div class="k">Daily loss limit</div><div class="v" id="pDLL">$2,000 soft</div></div>
+      <div class="item"><div class="k">Starting floor</div><div class="v" id="pFloor">$97,000</div></div>
+      <div class="item"><div class="k">Contracts</div><div class="v" id="pContracts">10 minis</div></div>
+      <div class="item"><div class="k">Min days</div><div class="v" id="pMin">5</div></div>
+    </div>
+  </div>
+
+  <div class="progress">
+    <div class="top">
+      <div class="amt"><span id="pTotal">$0</span> <span class="of">/ <span id="pTargetTxt">$6,000</span> logged</span></div>
+      <div class="pct" id="pPct">0% to target</div>
+    </div>
+    <div class="bar"><div class="fill" id="pFill"></div></div>
+    <div class="meta">
+      <div><b id="pRemain">$6,000</b> remaining</div>
+      <div>~<b id="pPace">$600</b>/day over <b id="pDaysLeft">10</b> days left</div>
+    </div>
+    <div class="consistency" id="pConsist"></div>
+  </div>
+
+  <h2 class="section" id="h1">Week 1 — Build the Buffer</h2>
+  <div class="days" id="week1"></div>
+  <h2 class="section" id="h2">Week 2 — Push to Target</h2>
+  <div class="days" id="week2"></div>
+
+  <h2 class="section">Daily Schedule (CST)</h2>
+  <div class="sched">
+    <div class="srow"><div class="time">8:00–8:30 AM</div><div class="desc">Check levels, news, pre-market bias</div><div class="pill prep">Prep</div></div>
+    <div class="srow"><div class="time">8:30–9:15 AM</div><div class="desc">Watch open — NO trading, just observe</div><div class="pill no">No trade</div></div>
+    <div class="srow"><div class="time">9:15–11:30 AM</div><div class="desc">Primary window — take only A+ setups</div><div class="pill trade">Trade</div></div>
+    <div class="srow"><div class="time">11:30 AM–12:30 PM</div><div class="desc">Lunch break — step away from screen</div><div class="pill off">Off</div></div>
+    <div class="srow"><div class="time">12:30–1:30 PM</div><div class="desc">Optional — only if morning was green</div><div class="pill opt">Optional</div></div>
+    <div class="srow"><div class="time">2:00 PM</div><div class="desc">Hard stop — close platform no matter what</div><div class="pill done">Done</div></div>
+  </div>
+
+  <div class="callout">
+    <h3>⚠ The rules that decide this account</h3>
+    <p id="coDD"></p>
+    <p id="coCons"></p>
+  </div>
+
+  <h2 class="section">The Rules</h2>
+  <div class="rulegrid">
+    <div class="rules">
+      <h3>🛡 Risk rules (per trade)</h3>
+      <ul>
+        <li class="r">Max risk: <b id="rRisk">$200</b> per trade</li>
+        <li class="r">Max daily loss: <b id="rStop">$400</b> hard stop</li>
+        <li class="a">2 losses in a row = 30 min break</li>
+        <li class="g">Take partial at 1R, let rest run</li>
+        <li class="g">Max 4 trades per day · <span id="rContracts">10-mini</span> cap</li>
+      </ul>
+    </div>
+    <div class="rules">
+      <h3>🧠 Discipline rules</h3>
+      <ul>
+        <li class="r">No setup = no trade. Period.</li>
+        <li class="r">Stop set BEFORE entering</li>
+        <li class="r">Never move stop against you</li>
+        <li class="a">Hit daily target = done for day</li>
+        <li class="a" id="rCons">Keep best day under $3,000 (consistency)</li>
+        <li class="b">Report to Claude after every session</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">Pick an account up top · 25K reveals the firm/plan switch · tap Target or Max Loss to match your dashboard · tap any day to log P&amp;L. Each account saves its own log on this device.</div>
+</div>
+
+<script>
+(function(){
+  var TS_DD="End-of-day trailing: the floor ratchets UP with every new closing high and never moves down, then locks at your starting balance once you reach it. The number that matters is your <b>buffer = balance \u2212 current floor</b>, not raw P&L. Under $500 buffer, drop to micros or stop.";
+
+  var ACCT={
+    "100k":{title:"TopStep 100K",size:100000,target:6000,days:10,maxlossLabel:"Trailing Max Loss",
+      weights:[400,400,500,500,600,700,700,700,800,700],
+      phases:["build","build","build","build","build","push","push","push","push","close"],
+      maxloss:3000,dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$2,000 soft",
+      contracts:"10 minis",contractsShort:"10-mini",mindays:"min 5 to pass",minShort:"5",risk:200,stop:400,locks:true},
+    "50k":{title:"TopStep 50K",size:50000,target:3000,days:10,maxlossLabel:"Trailing Max Loss",
+      weights:[200,200,250,250,300,350,350,350,400,350],
+      phases:["build","build","build","build","build","push","push","push","push","close"],
+      maxloss:2000,dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$1,000 soft",
+      contracts:"5 minis",contractsShort:"5-mini",mindays:"min 5 to pass",minShort:"5",risk:100,stop:250,locks:true},
+    "25k":{sub:true,size:25000,days:6,
+      weights:[200,200,250,250,300,300],
+      phases:["build","build","build","push","push","close"],
+      plans:{
+        "mffu-rapid":{title:"MyFundedFutures \u2014 Rapid 25K",maxlossLabel:"Max Loss Limit",target:1500,maxloss:1000,
+          dd:"4% intraday trailing",ddDesc:"<b>Intraday</b> trailing: the floor follows your equity high-water mark in real time and locks once your balance clears the threshold. Because it moves intraday, giving back an unrealized gain can breach you even if you close flat \u2014 watch your live buffer, not just closed P&L.",
+          cons:"None",consPct:0,dll:"None",contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 2 to pass",minShort:"2",risk:75,stop:150,locks:true},
+        "mffu-flex":{title:"MyFundedFutures \u2014 Flex 25K",maxlossLabel:"Max Loss Limit",target:1500,maxloss:1000,
+          dd:"4% EOD static",ddDesc:"<b>Static</b> floor that never moves \u2014 not up with profit, not intraday. Only your end-of-day balance is checked against the fixed floor. Simplest drawdown of the bunch: close above the floor and you're fine.",
+          cons:"None",consPct:0,dll:"None",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",risk:75,stop:150,locks:false},
+        "lucid-flex":{title:"Lucid \u2014 Flex 25K",maxlossLabel:"Max Loss Limit",target:1500,maxloss:1500,
+          dd:"EOD trailing",ddDesc:"<b>End-of-day</b> trailing: the floor follows your highest <b>closing</b> balance and converts to static once you reach initial + target. Intraday swings don't count \u2014 only the 4:45pm EST close. Up big at noon, close small, the floor only trails on the close. Very forgiving intraday.",
+          cons:"50% on eval",consPct:50,dll:"None",contracts:"~2 minis",contractsShort:"2-mini",mindays:"1+ day \u00b7 5 for payout",minShort:"1+",risk:100,stop:200,locks:true},
+        "lucid-pro":{title:"Lucid \u2014 Pro 25K",maxlossLabel:"Max Loss Limit",target:1500,maxloss:1500,
+          dd:"EOD trailing",ddDesc:"<b>End-of-day</b> trailing floor, same forgiving intraday behavior as Flex. No consistency rule to pass the eval \u2014 a 40% rule only appears at the funded payout stage. You also keep 100% of your first $10K in payouts.",
+          cons:"None on eval",consPct:0,dll:"None at 25K",contracts:"~2-3 minis",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+",risk:100,stop:200,locks:true}
+      }}
+  };
+
+  var KEY="combine_all_state_v1";
+  var mem={};
+  var state={account:"100k",plan25:"mffu-rapid",targets:{},maxloss:{},logs:{}};
+
+  function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
+  function modeKey(){return state.account==="25k"?("25k:"+state.plan25):state.account;}
+  function baseCfg(){
+    var a=ACCT[state.account];
+    if(!a.sub) return Object.assign({},a);
+    var p=a.plans[state.plan25];
+    return Object.assign({},a,p);
+  }
+  function cfg(){
+    var c=baseCfg(),k=modeKey();
+    c.target=state.targets[k]||c.target;
+    c.maxloss=state.maxloss[k]||c.maxloss;
+    return c;
+  }
+  function curLog(){if(!state.logs[modeKey()])state.logs[modeKey()]={};return state.logs[modeKey()];}
+
+  function dayTargets(){
+    var c=cfg(),w=c.weights,ws=w.reduce(function(a,b){return a+b;},0),T=c.target,out=[],acc=0;
+    for(var i=0;i<w.length;i++){var v=(i<w.length-1)?Math.round(w[i]/ws*T):(T-acc);out.push(v);acc+=v;}
+    return out;
+  }
+
+  async function load(){
+    try{
+      var raw=null;
+      try{raw=localStorage.getItem(KEY);}catch(e){raw=mem.s||null;}
+      if(raw)state=Object.assign(state,(typeof raw==="string")?JSON.parse(raw):raw);
+    }catch(e){if(mem.s)state=Object.assign(state,mem.s);}
+  }
+  async function save(){
+    mem.s=state;
+    try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}
+  }
+
+  function tagClass(p){return p==="close"?"close":(p==="push"?"push":"build");}
+  function tagLabel(p){return p==="close"?"Close it":(p==="push"?"Push":"Build");}
+
+  function renderDays(){
+    var c=cfg(),t=dayTargets(),phases=c.phases,log=curLog(),ML=c.maxloss;
+    var buildCount=phases.filter(function(p){return p==="build";}).length;
+    var w1=document.getElementById("week1"),w2=document.getElementById("week2");
+    var cols=(c.days<=6)?"days d3":"days";
+    w1.className=cols;w2.className=cols;w1.innerHTML="";w2.innerHTML="";
+    document.getElementById("h1").textContent="Week 1 — Build the Buffer (Day 1–"+buildCount+")";
+    document.getElementById("h2").textContent="Week 2 — Push to Target (Day "+(buildCount+1)+"–"+c.days+")";
+    var cum=0;
+    for(var i=0;i<c.days;i++){
+      cum+=t[i];
+      var d=i+1,target=t[i],cumv=cum,phase=phases[i];
+      var div=document.createElement("div");div.className="day";
+      var logged=(d in log),val=logged?log[d]:null,check="",actualHtml="",pc="";
+      if(logged){
+        if(val>=target){div.classList.add("win");check="✅";pc="pnl-win";}
+        else if(val>0){div.classList.add("partial");check="⚠️";pc="pnl-amber";}
+        else{div.classList.add("loss");check="❌";pc="pnl-loss";}
+        var notes=[];if(val<=-ML)notes.push("⚠ near max loss");
+        actualHtml='Actual: <b class="'+pc+'">'+fmt(val)+'</b>'+(notes.length?' · '+notes.join(" · "):'');
+      }
+      div.innerHTML=
+        '<div class="dh"><span>Day '+d+'</span><span>'+check+'</span></div>'+
+        '<div class="tgt">+'+fmt(target)+'</div>'+
+        '<div class="cum">Cumulative target: '+fmt(cumv)+'</div>'+
+        '<div class="actual">'+actualHtml+'</div>'+
+        '<span class="tag '+tagClass(phase)+'">'+tagLabel(phase)+'</span>'+
+        '<div class="editor"><div class="hint">Net P&L for the day (e.g. 240 or -120)</div>'+
+        '<div class="row"><input type="number" inputmode="numeric" step="1" value="'+(logged?val:"")+'" placeholder="0">'+
+        '<button class="save">Save</button><button class="clear">Clear</button></div></div>';
+      (function(div,d){
+        div.addEventListener("click",function(e){
+          if(e.target.closest(".editor"))return;
+          var ed=div.querySelector(".editor");ed.classList.toggle("open");
+          if(ed.classList.contains("open")){var inp=ed.querySelector("input");inp.focus();inp.select();}
+        });
+        var ed=div.querySelector(".editor");
+        ed.querySelector(".save").addEventListener("click",function(ev){
+          ev.stopPropagation();var v=parseFloat(ed.querySelector("input").value);var lg=curLog();
+          if(isNaN(v)){delete lg[d];}else{lg[d]=v;}
+          save().then(function(){renderDays();refreshProgress();});
+        });
+        ed.querySelector(".clear").addEventListener("click",function(ev){
+          ev.stopPropagation();var lg=curLog();delete lg[d];save().then(function(){renderDays();refreshProgress();});
+        });
+        ed.querySelector("input").addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();ed.querySelector(".save").click();}});
+      })(div,d);
+      (phase==="build"?w1:w2).appendChild(div);
+    }
+  }
+
+  function refreshProgress(){
+    var c=cfg(),T=c.target,log=curLog(),total=0,daysLogged=0,best=-Infinity;
+    for(var d=1;d<=c.days;d++){if(d in log){total+=log[d];daysLogged++;if(log[d]>best)best=log[d];}}
+    var pct=Math.max(0,Math.min(100,(total/T)*100)),remaining=Math.max(0,T-total),daysLeft=c.days-daysLogged;
+    var pace=daysLeft>0?remaining/daysLeft:0;
+    document.getElementById("pTotal").textContent=fmt(total);
+    document.getElementById("pTargetTxt").textContent=fmt(T);
+    document.getElementById("pPct").textContent=Math.round(pct)+"% to target";
+    document.getElementById("pFill").style.width=pct+"%";
+    document.getElementById("pRemain").textContent=fmt(remaining);
+    document.getElementById("pDaysLeft").textContent=daysLeft;
+    document.getElementById("pPace").textContent=daysLeft>0?fmt(Math.max(0,pace)):"—";
+    var el=document.getElementById("pConsist"),consPct=c.consPct;el.className="consistency";
+    if(daysLogged===0||total<=0){el.style.display="none";return;}
+    var share=best/total,cap=consPct/100;
+    if(consPct===0){el.classList.add("none");el.innerHTML="No consistency rule on this plan — your best day can be any size. Still keep losers small; the Max Loss is the only thing that ends the run.";}
+    else if(total>=T){
+      if(share>cap){el.classList.add("bad");el.innerHTML="🎯 Target hit — but best day ("+fmt(best)+") is "+Math.round(share*100)+"% of total, over the "+consPct+"% cap. Add green days to dilute it before you pass.";}
+      else{el.classList.add("ok");el.innerHTML="🎯 Target hit and consistency clean (best day "+Math.round(share*100)+"% of total). Done.";}
+    } else {
+      if(share>cap){el.classList.add("warn");el.innerHTML="Consistency watch: best day "+fmt(best)+" = "+Math.round(share*100)+"% of total so far (cap "+consPct+"%). Keep stacking days so no single day finishes above "+fmt(cap*T)+".";}
+      else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total. Cap is "+consPct+"% — keep any one day under "+fmt(cap*T)+".";}
+    }
+  }
+
+  function renderPlan(){
+    var c=cfg(),T=c.target,ML=c.maxloss;
+    document.querySelectorAll("#acctSel button").forEach(function(b){b.classList.toggle("active",b.dataset.acct===state.account);});
+    document.getElementById("planSel").style.display=(state.account==="25k")?"grid":"none";
+    document.querySelectorAll("#planSel button").forEach(function(b){b.classList.toggle("active",b.dataset.plan===state.plan25);});
+    document.getElementById("kTarget").textContent=fmt(T);
+    document.getElementById("kMaxloss").textContent="-"+fmt(ML);
+    document.getElementById("kMaxLabel").textContent=c.maxlossLabel;
+    document.getElementById("kDays").textContent=c.days;
+    document.getElementById("kAvg").textContent=fmt(Math.round(T/c.days));
+    document.getElementById("kStop").textContent="-"+fmt(c.stop);
+    document.getElementById("kMinDays").textContent=c.mindays;
+    document.getElementById("kMaxsub").textContent=(c.dd.indexOf("intraday")>=0?"intraday — watch live":"end-of-day")+" · tap to edit";
+    document.getElementById("planTitle").textContent=c.title;
+    document.getElementById("pDD").textContent=c.dd;
+    document.getElementById("pCons").textContent=c.cons;
+    document.getElementById("pDLL").textContent=c.dll;
+    document.getElementById("pContracts").textContent=c.contracts;
+    document.getElementById("pMin").textContent=c.minShort;
+    var floor=c.size-ML;
+    document.getElementById("pFloor").textContent=(c.dd.indexOf("static")>=0)?(fmt(floor)+" (fixed)"):(c.locks?(fmt(floor)+" → locks "+fmt(c.size)):fmt(floor));
+    document.getElementById("coDD").innerHTML="<b>Drawdown ("+c.dd+"):</b> "+c.ddDesc;
+    if(c.consPct>0){document.getElementById("coCons").innerHTML="<b>"+c.consPct+"% consistency rule:</b> your single best day can't exceed "+c.consPct+"% of total profit — keep any one day under <b>"+fmt(c.consPct/100*T)+"</b>. The fix for a big day is always to add more green days, never trim.";}
+    else{document.getElementById("coCons").innerHTML="<b>No consistency rule:</b> one big day is fine on this plan. The only thing that ends the eval is touching the Max Loss Limit — protect the floor and keep losers contained.";}
+    document.getElementById("rRisk").textContent=fmt(c.risk);
+    document.getElementById("rStop").textContent=fmt(c.stop);
+    document.getElementById("rContracts").textContent=c.contractsShort;
+    var rc=document.getElementById("rCons");
+    rc.textContent=c.consPct>0?("Keep best day under "+fmt(c.consPct/100*T)+" (consistency)"):"No consistency rule — trade your edge";
+  }
+
+  function renderAll(){renderPlan();renderDays();refreshProgress();}
+
+  function editKpi(elId,getCur,setVal){
+    var el=document.getElementById(elId);
+    el.addEventListener("click",function(){
+      if(el.querySelector("input"))return;
+      el.innerHTML='<input type="number" inputmode="numeric" value="'+getCur()+'">';
+      var inp=el.querySelector("input");inp.focus();inp.select();
+      function commit(){var v=parseFloat(inp.value);if(!isNaN(v)&&v>0)setVal(Math.round(v));save().then(renderAll);}
+      inp.addEventListener("blur",commit);
+      inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+      inp.addEventListener("click",function(ev){ev.stopPropagation();});
+    });
+  }
+
+  document.getElementById("acctSel").addEventListener("click",function(e){
+    var b=e.target.closest("button");if(!b)return;state.account=b.dataset.acct;save().then(renderAll);
+  });
+  document.getElementById("planSel").addEventListener("click",function(e){
+    var b=e.target.closest("button");if(!b)return;state.plan25=b.dataset.plan;save().then(renderAll);
+  });
+  editKpi("kTarget",function(){return cfg().target;},function(v){state.targets[modeKey()]=v;});
+  editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
+
+  load().then(renderAll);
+})();
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('./service-worker.js').catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
