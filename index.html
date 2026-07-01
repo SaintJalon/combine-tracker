@@ -29,17 +29,17 @@
   .wrap{max-width:1080px;margin:0 auto}
   h2.section{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:34px 2px 14px;}
 
-  /* account selector (primary) */
-  .acctsel{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:10px}
-  .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:14px 8px;cursor:pointer;font-family:inherit;font-size:18px;font-weight:700;letter-spacing:-.3px;transition:.15s}
+  /* firm selector (primary) */
+  .acctsel{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}
+  .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:14px 8px;cursor:pointer;font-family:inherit;font-size:16px;font-weight:700;letter-spacing:-.3px;transition:.15s}
   .acctsel button .f{display:block;font-size:10.5px;color:var(--muted2);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
   .acctsel button:hover{color:var(--text);border-color:var(--line2)}
   .acctsel button.active{background:linear-gradient(180deg,rgba(52,211,153,.08),var(--card2));color:var(--text);border-color:rgba(52,211,153,.35)}
   .acctsel button.active .f{color:var(--green)}
 
-  /* plan selector (secondary, 25k only) */
+  /* size selector (secondary) */
   .sel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px;margin-bottom:6px}
-  .sel button{background:transparent;border:1px solid transparent;color:var(--muted);border-radius:10px;padding:9px 6px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;line-height:1.25;transition:.15s}
+  .sel button{background:transparent;border:1px solid transparent;color:var(--muted);border-radius:10px;padding:9px 6px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;line-height:1.25;transition:.15s}
   .sel button .f{display:block;font-size:10px;color:var(--muted2);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:2px}
   .sel button:hover{color:var(--text);border-color:var(--line2)}
   .sel button.active{background:var(--card2);color:var(--text);border-color:var(--line2)}
@@ -136,37 +136,34 @@
   .footer{text-align:center;color:var(--muted2);font-size:11.5px;margin-top:30px}
 
   @media(max-width:760px){
+    .acctsel{grid-template-columns:repeat(2,1fr)}
     .sel{grid-template-columns:repeat(2,1fr)}
     .kpis{grid-template-columns:repeat(2,1fr)}.kpi.hardrule{grid-column:span 2}
     .days,.days.d3{grid-template-columns:1fr}
     .rulegrid{grid-template-columns:1fr}
     .srow .time{width:120px;font-size:13px}.srow .desc{font-size:13px}
-    .acctsel button{font-size:16px}
+    .acctsel button{font-size:15px}
   }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <div class="acctsel" id="acctSel">
-    <button data-acct="100k"><span class="f">TopStep</span>100K</button>
-    <button data-acct="50k"><span class="f">TopStep</span>50K</button>
-    <button data-acct="25k"><span class="f">Lucid / MFFU</span>25K</button>
+  <div class="acctsel" id="firmSel">
+    <button data-firm="topstep"><span class="f">EOD trailing</span>TopStep</button>
+    <button data-firm="mffu"><span class="f">Rapid &middot; intraday</span>MyFundedFutures</button>
+    <button data-firm="lucid"><span class="f">EOD trailing</span>Lucid</button>
+    <button data-firm="tradeify"><span class="f">EOD trailing</span>Tradeify</button>
   </div>
 
-  <div class="sel" id="planSel" style="display:none">
-    <button data-plan="mffu-rapid"><span class="f">MyFundedFutures</span>Rapid</button>
-    <button data-plan="mffu-flex"><span class="f">MyFundedFutures</span>Flex</button>
-    <button data-plan="lucid-flex"><span class="f">Lucid</span>Flex</button>
-    <button data-plan="lucid-pro"><span class="f">Lucid</span>Pro</button>
-  </div>
+  <div class="sel" id="sizeSel"></div>
 
   <div class="kpis">
     <div class="kpi green"><div class="label">Target profit</div><div class="val edit" id="kTarget">$6,000</div><div class="sub">tap to edit</div></div>
     <div class="kpi"><div class="label">Trading days</div><div class="val" id="kDays">10</div><div class="sub" id="kMinDays">min 5 to pass</div></div>
     <div class="kpi amber"><div class="label">Daily target avg</div><div class="val" id="kAvg">$600</div></div>
     <div class="kpi red"><div class="label">Hard daily stop</div><div class="val" id="kStop">-$400</div><div class="sub">your rule</div></div>
-    <div class="kpi hardrule red"><div class="label" id="kMaxLabel">Trailing Max Loss</div><div class="val edit" id="kMaxloss">-$3,000</div><div class="sub" id="kMaxsub">the only hard rule · tap to edit</div></div>
+    <div class="kpi hardrule red"><div class="label" id="kMaxLabel">Trailing Max Loss</div><div class="val edit" id="kMaxloss">-$3,000</div><div class="sub" id="kMaxsub">the only hard rule &middot; tap to edit</div></div>
   </div>
 
   <div class="plan">
@@ -240,55 +237,56 @@
     </div>
   </div>
 
-  <div class="footer">Pick an account up top · 25K reveals the firm/plan switch · tap Target or Max Loss to match your dashboard · tap any day to log P&amp;L. Each account saves its own log on this device.</div>
+  <div class="footer">Pick a firm up top · then choose the account size · tap Target or Max Loss to match your dashboard · tap any day to log P&amp;L. Each firm + size saves its own log on this device.</div>
 </div>
 
 <script>
 (function(){
-  var TS_DD="End-of-day trailing: the floor ratchets UP with every new closing high and never moves down, then locks at your starting balance once you reach it. The number that matters is your <b>buffer = balance \u2212 current floor</b>, not raw P&L. Under $500 buffer, drop to micros or stop.";
+  var TS_DD="End-of-day trailing: the floor ratchets UP with every new closing high and never moves down, then locks at your starting balance once you reach it. The number that matters is your <b>buffer = balance − current floor</b>, not raw P&L. Under $500 buffer, drop to micros or stop.";
+  var DD_INTRADAY="<b>Intraday</b> trailing: the floor follows your equity high-water mark in real time and locks once your balance clears the threshold. Because it moves intraday, giving back an unrealized gain can breach you even if you close flat — watch your live buffer, not just closed P&L.";
+  var DD_STATIC="<b>Static</b> floor that never moves — not up with profit, not intraday. Only your end-of-day balance is checked against the fixed floor. Simplest drawdown of the bunch: close above the floor and you're fine.";
+  var DD_EOD="<b>End-of-day</b> trailing: the floor follows your highest <b>closing</b> balance and converts to static once you reach initial + target. Intraday swings don't count — only the daily close. Up big at noon, close small, the floor only trails on the close. Very forgiving intraday.";
+  var DD_TRADEIFY="<b>End-of-day</b> trailing: the floor trails your end-of-day balance, then once you hit the profit target it locks permanently at just <b>$100 above your starting balance</b> — passing turns almost the whole account into cushion. Intraday drawdowns don't count; only the daily close moves the floor.";
 
-  var ACCT={
-    "100k":{title:"TopStep 100K",size:100000,target:6000,days:10,maxlossLabel:"Trailing Max Loss",
-      weights:[400,400,500,500,600,700,700,700,800,700],
-      phases:["build","build","build","build","build","push","push","push","push","close"],
-      maxloss:3000,dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$2,000 soft",
-      contracts:"10 minis",contractsShort:"10-mini",mindays:"min 5 to pass",minShort:"5",risk:200,stop:400,locks:true},
-    "50k":{title:"TopStep 50K",size:50000,target:3000,days:10,maxlossLabel:"Trailing Max Loss",
-      weights:[200,200,250,250,300,350,350,350,400,350],
-      phases:["build","build","build","build","build","push","push","push","push","close"],
-      maxloss:2000,dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$1,000 soft",
-      contracts:"5 minis",contractsShort:"5-mini",mindays:"min 5 to pass",minShort:"5",risk:100,stop:250,locks:true},
-    "25k":{sub:true,size:25000,days:6,
-      weights:[200,200,250,250,300,300],
-      phases:["build","build","build","push","push","close"],
-      plans:{
-        "mffu-rapid":{title:"MyFundedFutures \u2014 Rapid 25K",maxlossLabel:"Max Loss Limit",target:1500,maxloss:1000,
-          dd:"4% intraday trailing",ddDesc:"<b>Intraday</b> trailing: the floor follows your equity high-water mark in real time and locks once your balance clears the threshold. Because it moves intraday, giving back an unrealized gain can breach you even if you close flat \u2014 watch your live buffer, not just closed P&L.",
-          cons:"None",consPct:0,dll:"None",contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 2 to pass",minShort:"2",risk:75,stop:150,locks:true},
-        "mffu-flex":{title:"MyFundedFutures \u2014 Flex 25K",maxlossLabel:"Max Loss Limit",target:1500,maxloss:1000,
-          dd:"4% EOD static",ddDesc:"<b>Static</b> floor that never moves \u2014 not up with profit, not intraday. Only your end-of-day balance is checked against the fixed floor. Simplest drawdown of the bunch: close above the floor and you're fine.",
-          cons:"None",consPct:0,dll:"None",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",risk:75,stop:150,locks:false},
-        "lucid-flex":{title:"Lucid \u2014 Flex 25K",maxlossLabel:"Max Loss Limit",target:1500,maxloss:1500,
-          dd:"EOD trailing",ddDesc:"<b>End-of-day</b> trailing: the floor follows your highest <b>closing</b> balance and converts to static once you reach initial + target. Intraday swings don't count \u2014 only the 4:45pm EST close. Up big at noon, close small, the floor only trails on the close. Very forgiving intraday.",
-          cons:"50% on eval",consPct:50,dll:"None",contracts:"~2 minis",contractsShort:"2-mini",mindays:"1+ day \u00b7 5 for payout",minShort:"1+",risk:100,stop:200,locks:true},
-        "lucid-pro":{title:"Lucid \u2014 Pro 25K",maxlossLabel:"Max Loss Limit",target:1500,maxloss:1500,
-          dd:"EOD trailing",ddDesc:"<b>End-of-day</b> trailing floor, same forgiving intraday behavior as Flex. No consistency rule to pass the eval \u2014 a 40% rule only appears at the funded payout stage. You also keep 100% of your first $10K in payouts.",
-          cons:"None on eval",consPct:0,dll:"None at 25K",contracts:"~2-3 minis",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+",risk:100,stop:200,locks:true}
-      }}
+  var W10=[4,4,5,5,6,7,7,7,8,7],P10=["build","build","build","build","build","push","push","push","push","close"];
+  var W6=[2,2,2.5,2.5,3,3],P6=["build","build","build","push","push","close"];
+  function tpl(days){return days<=6?{w:W6,p:P6}:{w:W10,p:P10};}
+
+  var FIRMS={
+    topstep:{name:"TopStep",order:["50k","100k","150k"],sizes:{
+      "50k":{plan:"Combine",title:"TopStep — Combine 50K",size:50000,target:3000,maxloss:2000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$1,000 soft",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2",risk:100,stop:250,locks:true,days:10},
+      "100k":{plan:"Combine",title:"TopStep — Combine 100K",size:100000,target:6000,maxloss:3000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$2,000 soft",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2",risk:200,stop:400,locks:true,days:10},
+      "150k":{plan:"Combine",title:"TopStep — Combine 150K",size:150000,target:9000,maxloss:4500,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$3,000 soft",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2",risk:300,stop:600,locks:true,days:10}
+    }},
+    mffu:{name:"MyFundedFutures",order:["25k","50k","100k","150k"],sizes:{
+      "25k":{plan:"Flex",title:"MyFundedFutures — Flex 25K",size:25000,target:1500,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"4% EOD static",ddDesc:DD_STATIC,cons:"None",consPct:0,dll:"None",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 1 to pass",minShort:"1",risk:75,stop:150,locks:false,days:6},
+      "50k":{plan:"Rapid",title:"MyFundedFutures — Rapid 50K",size:50000,target:3000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"None",consPct:0,dll:"None",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2",risk:100,stop:200,locks:true,days:10},
+      "100k":{plan:"Rapid",title:"MyFundedFutures — Rapid 100K",size:100000,target:6000,maxloss:4000,maxlossLabel:"Max Loss Limit",dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"None",consPct:0,dll:"None",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2",risk:200,stop:400,locks:true,days:10},
+      "150k":{plan:"Rapid",title:"MyFundedFutures — Rapid 150K",size:150000,target:9000,maxloss:6000,maxlossLabel:"Max Loss Limit",dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"None",consPct:0,dll:"None",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2",risk:300,stop:600,locks:true,days:10}
+    }},
+    lucid:{name:"Lucid",order:["25k","50k","100k","150k"],sizes:{
+      "25k":{plan:"Pro",title:"Lucid — Pro 25K",size:25000,target:1250,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_EOD,cons:"None",consPct:0,dll:"None",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+",risk:75,stop:150,locks:true,days:6},
+      "50k":{plan:"Pro",title:"Lucid — Pro 50K",size:50000,target:3000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_EOD,cons:"None",consPct:0,dll:"$1,200",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"1+ day",minShort:"1+",risk:100,stop:200,locks:true,days:10},
+      "100k":{plan:"Pro",title:"Lucid — Pro 100K",size:100000,target:6000,maxloss:3000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_EOD,cons:"None",consPct:0,dll:"$1,800",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"1+ day",minShort:"1+",risk:150,stop:300,locks:true,days:10},
+      "150k":{plan:"Pro",title:"Lucid — Pro 150K",size:150000,target:9000,maxloss:4500,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_EOD,cons:"None",consPct:0,dll:"$2,700",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"1+ day",minShort:"1+",risk:300,stop:600,locks:true,days:10}
+    }},
+    tradeify:{name:"Tradeify",order:["25k","50k","100k","150k"],sizes:{
+      "25k":{plan:"Growth",title:"Tradeify — Growth 25K",size:25000,target:1500,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_TRADEIFY,cons:"None",consPct:0,dll:"$600 soft",contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 1 to pass",minShort:"1",risk:75,stop:150,locks:true,days:6},
+      "50k":{plan:"Growth",title:"Tradeify — Growth 50K",size:50000,target:3000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_TRADEIFY,cons:"None",consPct:0,dll:"$1,250 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 1 to pass",minShort:"1",risk:100,stop:200,locks:true,days:10},
+      "100k":{plan:"Growth",title:"Tradeify — Growth 100K",size:100000,target:6000,maxloss:3500,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_TRADEIFY,cons:"None",consPct:0,dll:"$2,500 soft",contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"min 1 to pass",minShort:"1",risk:175,stop:350,locks:true,days:10},
+      "150k":{plan:"Growth",title:"Tradeify — Growth 150K",size:150000,target:9000,maxloss:5000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_TRADEIFY,cons:"None",consPct:0,dll:"$3,750 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"min 1 to pass",minShort:"1",risk:300,stop:600,locks:true,days:10}
+    }}
   };
 
-  var KEY="combine_all_state_v1";
+  var KEY="combine_all_state_v2";
   var mem={};
-  var state={account:"100k",plan25:"mffu-rapid",targets:{},maxloss:{},logs:{}};
+  var state={firm:"topstep",size:"100k",targets:{},maxloss:{},logs:{}};
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
-  function modeKey(){return state.account==="25k"?("25k:"+state.plan25):state.account;}
-  function baseCfg(){
-    var a=ACCT[state.account];
-    if(!a.sub) return Object.assign({},a);
-    var p=a.plans[state.plan25];
-    return Object.assign({},a,p);
-  }
+  function firm(){return FIRMS[state.firm]||FIRMS.topstep;}
+  function ensureSize(){var f=firm();if(!f.sizes[state.size]){state.size=f.order[0];}}
+  function modeKey(){return state.firm+":"+state.size;}
+  function baseCfg(){ensureSize();return Object.assign({},firm().sizes[state.size]);}
   function cfg(){
     var c=baseCfg(),k=modeKey();
     c.target=state.targets[k]||c.target;
@@ -298,7 +296,7 @@
   function curLog(){if(!state.logs[modeKey()])state.logs[modeKey()]={};return state.logs[modeKey()];}
 
   function dayTargets(){
-    var c=cfg(),w=c.weights,ws=w.reduce(function(a,b){return a+b;},0),T=c.target,out=[],acc=0;
+    var c=cfg(),w=tpl(c.days).w,ws=w.reduce(function(a,b){return a+b;},0),T=c.target,out=[],acc=0;
     for(var i=0;i<w.length;i++){var v=(i<w.length-1)?Math.round(w[i]/ws*T):(T-acc);out.push(v);acc+=v;}
     return out;
   }
@@ -309,6 +307,7 @@
       try{raw=localStorage.getItem(KEY);}catch(e){raw=mem.s||null;}
       if(raw)state=Object.assign(state,(typeof raw==="string")?JSON.parse(raw):raw);
     }catch(e){if(mem.s)state=Object.assign(state,mem.s);}
+    ensureSize();
   }
   async function save(){
     mem.s=state;
@@ -319,7 +318,7 @@
   function tagLabel(p){return p==="close"?"Close it":(p==="push"?"Push":"Build");}
 
   function renderDays(){
-    var c=cfg(),t=dayTargets(),phases=c.phases,log=curLog(),ML=c.maxloss;
+    var c=cfg(),t=dayTargets(),phases=tpl(c.days).p,log=curLog(),ML=c.maxloss;
     var buildCount=phases.filter(function(p){return p==="build";}).length;
     var w1=document.getElementById("week1"),w2=document.getElementById("week2");
     var cols=(c.days<=6)?"days d3":"days";
@@ -394,11 +393,19 @@
     }
   }
 
+  function renderSizeSel(){
+    var f=firm(),host=document.getElementById("sizeSel"),html="";
+    f.order.forEach(function(sz){
+      var s=f.sizes[sz];
+      html+='<button data-size="'+sz+'"'+(sz===state.size?' class="active"':'')+'><span class="f">'+s.plan+'</span>'+sz.toUpperCase()+'</button>';
+    });
+    host.innerHTML=html;
+  }
+
   function renderPlan(){
     var c=cfg(),T=c.target,ML=c.maxloss;
-    document.querySelectorAll("#acctSel button").forEach(function(b){b.classList.toggle("active",b.dataset.acct===state.account);});
-    document.getElementById("planSel").style.display=(state.account==="25k")?"grid":"none";
-    document.querySelectorAll("#planSel button").forEach(function(b){b.classList.toggle("active",b.dataset.plan===state.plan25);});
+    document.querySelectorAll("#firmSel button").forEach(function(b){b.classList.toggle("active",b.dataset.firm===state.firm);});
+    renderSizeSel();
     document.getElementById("kTarget").textContent=fmt(T);
     document.getElementById("kMaxloss").textContent="-"+fmt(ML);
     document.getElementById("kMaxLabel").textContent=c.maxlossLabel;
@@ -440,11 +447,11 @@
     });
   }
 
-  document.getElementById("acctSel").addEventListener("click",function(e){
-    var b=e.target.closest("button");if(!b)return;state.account=b.dataset.acct;save().then(renderAll);
+  document.getElementById("firmSel").addEventListener("click",function(e){
+    var b=e.target.closest("button");if(!b)return;state.firm=b.dataset.firm;ensureSize();save().then(renderAll);
   });
-  document.getElementById("planSel").addEventListener("click",function(e){
-    var b=e.target.closest("button");if(!b)return;state.plan25=b.dataset.plan;save().then(renderAll);
+  document.getElementById("sizeSel").addEventListener("click",function(e){
+    var b=e.target.closest("button");if(!b)return;state.size=b.dataset.size;save().then(renderAll);
   });
   editKpi("kTarget",function(){return cfg().target;},function(v){state.targets[modeKey()]=v;});
   editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
