@@ -270,7 +270,7 @@
   var FIRMS={
     topstep:{name:"TopStep",planOrder:["combine"],plans:{
       combine:{name:"Combine",order:["25k","50k","100k","150k"],sizes:{
-        "25k":S("TopStep","Combine",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$500 soft",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 1 to pass",minShort:"1"}),
+        "25k":S("TopStep","Combine",25000,{target:2000,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:DD_STATIC,cons:"50%",consPct:50,dll:"$500 soft",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false}),
         "50k":S("TopStep","Combine",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$1,000 soft",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2"}),
         "100k":S("TopStep","Combine",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$2,000 soft",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"}),
         "150k":S("TopStep","Combine",150000,{target:9000,maxloss:4500,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$3,000 soft",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2"})
