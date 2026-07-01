@@ -31,14 +31,13 @@
 
   /* firm selector (primary) */
   .acctsel{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}
-  .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:14px 8px;cursor:pointer;font-family:inherit;font-size:16px;font-weight:700;letter-spacing:-.3px;transition:.15s}
-  .acctsel button .f{display:block;font-size:10.5px;color:var(--muted2);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+  .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:16px 8px;cursor:pointer;font-family:inherit;font-size:16px;font-weight:700;letter-spacing:-.3px;transition:.15s}
   .acctsel button:hover{color:var(--text);border-color:var(--line2)}
   .acctsel button.active{background:linear-gradient(180deg,rgba(52,211,153,.08),var(--card2));color:var(--text);border-color:rgba(52,211,153,.35)}
-  .acctsel button.active .f{color:var(--green)}
 
-  /* size selector (secondary) */
+  /* plan + size selectors (secondary) */
   .sel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px;margin-bottom:6px}
+  .sel.flow{grid-template-columns:repeat(auto-fit,minmax(84px,1fr))}
   .sel button{background:transparent;border:1px solid transparent;color:var(--muted);border-radius:10px;padding:9px 6px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;line-height:1.25;transition:.15s}
   .sel button .f{display:block;font-size:10px;color:var(--muted2);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:2px}
   .sel button:hover{color:var(--text);border-color:var(--line2)}
@@ -150,13 +149,14 @@
 <div class="wrap">
 
   <div class="acctsel" id="firmSel">
-    <button data-firm="topstep"><span class="f">EOD trailing</span>TopStep</button>
-    <button data-firm="mffu"><span class="f">Rapid &middot; intraday</span>MyFundedFutures</button>
-    <button data-firm="lucid"><span class="f">EOD trailing</span>Lucid</button>
-    <button data-firm="tradeify"><span class="f">EOD trailing</span>Tradeify</button>
+    <button data-firm="topstep">TopStep</button>
+    <button data-firm="mffu">MyFundedFutures</button>
+    <button data-firm="lucid">Lucid</button>
+    <button data-firm="tradeify">Tradeify</button>
   </div>
 
-  <div class="sel" id="sizeSel"></div>
+  <div class="sel flow" id="planSel"></div>
+  <div class="sel flow" id="sizeSel"></div>
 
   <div class="kpis">
     <div class="kpi green"><div class="label">Target profit</div><div class="val edit" id="kTarget">$6,000</div><div class="sub">tap to edit</div></div>
@@ -237,7 +237,7 @@
     </div>
   </div>
 
-  <div class="footer">Pick a firm up top · then choose the account size · tap Target or Max Loss to match your dashboard · tap any day to log P&amp;L. Each firm + size saves its own log on this device.</div>
+  <div class="footer">Pick a firm, then a plan, then a size · tap Target or Max Loss to match your dashboard · tap any day to log P&amp;L. Each firm + plan + size saves its own log on this device.</div>
 </div>
 
 <script>
@@ -247,46 +247,98 @@
   var DD_STATIC="<b>Static</b> floor that never moves — not up with profit, not intraday. Only your end-of-day balance is checked against the fixed floor. Simplest drawdown of the bunch: close above the floor and you're fine.";
   var DD_EOD="<b>End-of-day</b> trailing: the floor follows your highest <b>closing</b> balance and converts to static once you reach initial + target. Intraday swings don't count — only the daily close. Up big at noon, close small, the floor only trails on the close. Very forgiving intraday.";
   var DD_TRADEIFY="<b>End-of-day</b> trailing: the floor trails your end-of-day balance, then once you hit the profit target it locks permanently at just <b>$100 above your starting balance</b> — passing turns almost the whole account into cushion. Intraday drawdowns don't count; only the daily close moves the floor.";
+  var DD_SELECT="<b>End-of-day</b> trailing: the floor trails your daily close, not intraday swings — you can dip during the session and be fine as long as you close above it. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit, so it needs at least 3 trading days.";
 
   var W10=[4,4,5,5,6,7,7,7,8,7],P10=["build","build","build","build","build","push","push","push","push","close"];
   var W6=[2,2,2.5,2.5,3,3],P6=["build","build","build","push","push","close"];
   function tpl(days){return days<=6?{w:W6,p:P6}:{w:W10,p:P10};}
 
+  // per-trade risk/stop (your personal rules, scaled by account size)
+  var RS={25000:{risk:75,stop:150},50000:{risk:100,stop:200},100000:{risk:200,stop:400},150000:{risk:300,stop:600}};
+  var SZLABEL={25000:"25K",50000:"50K",100000:"100K",150000:"150K"};
+  function S(firmName,planName,size,o){
+    return Object.assign({
+      title:firmName+" — "+planName+" "+SZLABEL[size],
+      size:size,days:size<=25000?6:10,
+      risk:RS[size].risk,stop:RS[size].stop,
+      maxlossLabel:o.maxlossLabel||"Max Loss Limit",
+      cons:o.cons||"None",consPct:o.consPct||0,dll:o.dll||"None",
+      locks:(o.locks!==undefined)?o.locks:true
+    },o);
+  }
+
   var FIRMS={
-    topstep:{name:"TopStep",order:["50k","100k","150k"],sizes:{
-      "50k":{plan:"Combine",title:"TopStep — Combine 50K",size:50000,target:3000,maxloss:2000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$1,000 soft",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2",risk:100,stop:250,locks:true,days:10},
-      "100k":{plan:"Combine",title:"TopStep — Combine 100K",size:100000,target:6000,maxloss:3000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$2,000 soft",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2",risk:200,stop:400,locks:true,days:10},
-      "150k":{plan:"Combine",title:"TopStep — Combine 150K",size:150000,target:9000,maxloss:4500,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$3,000 soft",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2",risk:300,stop:600,locks:true,days:10}
+    topstep:{name:"TopStep",planOrder:["combine"],plans:{
+      combine:{name:"Combine",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("TopStep","Combine",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$500 soft",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 1 to pass",minShort:"1"}),
+        "50k":S("TopStep","Combine",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$1,000 soft",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "100k":S("TopStep","Combine",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$2,000 soft",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "150k":S("TopStep","Combine",150000,{target:9000,maxloss:4500,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"50%",consPct:50,dll:"$3,000 soft",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2"})
+      }}
     }},
-    mffu:{name:"MyFundedFutures",order:["25k","50k","100k","150k"],sizes:{
-      "25k":{plan:"Flex",title:"MyFundedFutures — Flex 25K",size:25000,target:1500,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"4% EOD static",ddDesc:DD_STATIC,cons:"None",consPct:0,dll:"None",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 1 to pass",minShort:"1",risk:75,stop:150,locks:false,days:6},
-      "50k":{plan:"Rapid",title:"MyFundedFutures — Rapid 50K",size:50000,target:3000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"None",consPct:0,dll:"None",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2",risk:100,stop:200,locks:true,days:10},
-      "100k":{plan:"Rapid",title:"MyFundedFutures — Rapid 100K",size:100000,target:6000,maxloss:4000,maxlossLabel:"Max Loss Limit",dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"None",consPct:0,dll:"None",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2",risk:200,stop:400,locks:true,days:10},
-      "150k":{plan:"Rapid",title:"MyFundedFutures — Rapid 150K",size:150000,target:9000,maxloss:6000,maxlossLabel:"Max Loss Limit",dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"None",consPct:0,dll:"None",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2",risk:300,stop:600,locks:true,days:10}
+    mffu:{name:"MyFundedFutures",planOrder:["rapid","pro","flex","core","builder"],plans:{
+      rapid:{name:"Rapid",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("MyFundedFutures","Rapid",25000,{target:1500,maxloss:1000,dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"50%",consPct:50,contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "50k":S("MyFundedFutures","Rapid",50000,{target:3000,maxloss:2000,dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"50%",consPct:50,contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "100k":S("MyFundedFutures","Rapid",100000,{target:6000,maxloss:4000,dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"50%",consPct:50,contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "150k":S("MyFundedFutures","Rapid",150000,{target:9000,maxloss:6000,dd:"4% intraday trailing",ddDesc:DD_INTRADAY,cons:"50%",consPct:50,contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2"})
+      }},
+      pro:{name:"Pro",order:["50k","100k","150k"],sizes:{
+        "50k":S("MyFundedFutures","Pro",50000,{target:3000,maxloss:1500,dd:"3% EOD trailing",ddDesc:DD_EOD,contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "100k":S("MyFundedFutures","Pro",100000,{target:6000,maxloss:3000,dd:"3% EOD trailing",ddDesc:DD_EOD,contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "150k":S("MyFundedFutures","Pro",150000,{target:9000,maxloss:4500,dd:"3% EOD trailing",ddDesc:DD_EOD,contracts:"9 minis / 90 micros",contractsShort:"9-mini",mindays:"min 2 to pass",minShort:"2"})
+      }},
+      flex:{name:"Flex",order:["25k","50k"],sizes:{
+        "25k":S("MyFundedFutures","Flex",25000,{target:1500,maxloss:1000,dd:"4% EOD static",ddDesc:DD_STATIC,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false}),
+        "50k":S("MyFundedFutures","Flex",50000,{target:3000,maxloss:2000,dd:"4% EOD static",ddDesc:DD_STATIC,dll:"Optional $1,000",contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 2 to pass",minShort:"2",locks:false})
+      }},
+      core:{name:"Core",order:["50k"],sizes:{
+        "50k":S("MyFundedFutures","Core",50000,{target:3000,maxloss:1500,dd:"3% EOD trailing",ddDesc:DD_EOD,cons:"50%",consPct:50,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2"})
+      }},
+      builder:{name:"Builder",order:["50k"],sizes:{
+        "50k":S("MyFundedFutures","Builder",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_EOD,dll:"$1,000 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 1 to pass",minShort:"1"})
+      }}
     }},
-    lucid:{name:"Lucid",order:["25k","50k","100k","150k"],sizes:{
-      "25k":{plan:"Pro",title:"Lucid — Pro 25K",size:25000,target:1250,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_EOD,cons:"None",consPct:0,dll:"None",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+",risk:75,stop:150,locks:true,days:6},
-      "50k":{plan:"Pro",title:"Lucid — Pro 50K",size:50000,target:3000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_EOD,cons:"None",consPct:0,dll:"$1,200",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"1+ day",minShort:"1+",risk:100,stop:200,locks:true,days:10},
-      "100k":{plan:"Pro",title:"Lucid — Pro 100K",size:100000,target:6000,maxloss:3000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_EOD,cons:"None",consPct:0,dll:"$1,800",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"1+ day",minShort:"1+",risk:150,stop:300,locks:true,days:10},
-      "150k":{plan:"Pro",title:"Lucid — Pro 150K",size:150000,target:9000,maxloss:4500,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_EOD,cons:"None",consPct:0,dll:"$2,700",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"1+ day",minShort:"1+",risk:300,stop:600,locks:true,days:10}
+    lucid:{name:"Lucid",planOrder:["pro","flex"],plans:{
+      pro:{name:"Pro",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("Lucid","Pro",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_EOD,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+"}),
+        "50k":S("Lucid","Pro",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_EOD,dll:"$1,200",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"1+ day",minShort:"1+"}),
+        "100k":S("Lucid","Pro",100000,{target:6000,maxloss:3000,dd:"EOD trailing",ddDesc:DD_EOD,dll:"$1,800",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"1+ day",minShort:"1+"}),
+        "150k":S("Lucid","Pro",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_EOD,dll:"$2,700",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"1+ day",minShort:"1+"})
+      }},
+      flex:{name:"Flex",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("Lucid","Flex",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_EOD,cons:"50%",consPct:50,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+"}),
+        "50k":S("Lucid","Flex",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_EOD,cons:"50%",consPct:50,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"1+ day",minShort:"1+"}),
+        "100k":S("Lucid","Flex",100000,{target:6000,maxloss:3000,dd:"EOD trailing",ddDesc:DD_EOD,cons:"50%",consPct:50,contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"1+ day",minShort:"1+"}),
+        "150k":S("Lucid","Flex",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_EOD,cons:"50%",consPct:50,contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"1+ day",minShort:"1+"})
+      }}
     }},
-    tradeify:{name:"Tradeify",order:["25k","50k","100k","150k"],sizes:{
-      "25k":{plan:"Growth",title:"Tradeify — Growth 25K",size:25000,target:1500,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_TRADEIFY,cons:"None",consPct:0,dll:"$600 soft",contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 1 to pass",minShort:"1",risk:75,stop:150,locks:true,days:6},
-      "50k":{plan:"Growth",title:"Tradeify — Growth 50K",size:50000,target:3000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_TRADEIFY,cons:"None",consPct:0,dll:"$1,250 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 1 to pass",minShort:"1",risk:100,stop:200,locks:true,days:10},
-      "100k":{plan:"Growth",title:"Tradeify — Growth 100K",size:100000,target:6000,maxloss:3500,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_TRADEIFY,cons:"None",consPct:0,dll:"$2,500 soft",contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"min 1 to pass",minShort:"1",risk:175,stop:350,locks:true,days:10},
-      "150k":{plan:"Growth",title:"Tradeify — Growth 150K",size:150000,target:9000,maxloss:5000,maxlossLabel:"Max Loss Limit",dd:"EOD trailing",ddDesc:DD_TRADEIFY,cons:"None",consPct:0,dll:"$3,750 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"min 1 to pass",minShort:"1",risk:300,stop:600,locks:true,days:10}
+    tradeify:{name:"Tradeify",planOrder:["growth","select"],plans:{
+      growth:{name:"Growth",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("Tradeify","Growth",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$600 soft",contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 1 to pass",minShort:"1"}),
+        "50k":S("Tradeify","Growth",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$1,250 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 1 to pass",minShort:"1"}),
+        "100k":S("Tradeify","Growth",100000,{target:6000,maxloss:3500,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$2,500 soft",contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"min 1 to pass",minShort:"1"}),
+        "150k":S("Tradeify","Growth",150000,{target:9000,maxloss:5000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$3,750 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"min 1 to pass",minShort:"1"})
+      }},
+      select:{name:"Select",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("Tradeify","Select",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_SELECT,cons:"40%",consPct:40,contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 3 to pass",minShort:"3"}),
+        "50k":S("Tradeify","Select",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_SELECT,cons:"40%",consPct:40,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 3 to pass",minShort:"3"}),
+        "100k":S("Tradeify","Select",100000,{target:6000,maxloss:3000,dd:"EOD trailing",ddDesc:DD_SELECT,cons:"40%",consPct:40,contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"min 3 to pass",minShort:"3"}),
+        "150k":S("Tradeify","Select",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_SELECT,cons:"40%",consPct:40,contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"min 3 to pass",minShort:"3"})
+      }}
     }}
   };
 
-  var KEY="combine_all_state_v2";
+  var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",size:"100k",targets:{},maxloss:{},logs:{}};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},logs:{}};
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
   function firm(){return FIRMS[state.firm]||FIRMS.topstep;}
-  function ensureSize(){var f=firm();if(!f.sizes[state.size]){state.size=f.order[0];}}
-  function modeKey(){return state.firm+":"+state.size;}
-  function baseCfg(){ensureSize();return Object.assign({},firm().sizes[state.size]);}
+  function ensurePlan(){var f=firm();if(!f.plans[state.plan])state.plan=f.planOrder[0];}
+  function ensureSize(){ensurePlan();var pl=firm().plans[state.plan];if(!pl.sizes[state.size])state.size=pl.order[0];}
+  function modeKey(){return state.firm+":"+state.plan+":"+state.size;}
+  function baseCfg(){ensureSize();return Object.assign({},firm().plans[state.plan].sizes[state.size]);}
   function cfg(){
     var c=baseCfg(),k=modeKey();
     c.target=state.targets[k]||c.target;
@@ -393,18 +445,28 @@
     }
   }
 
+  function renderPlanSel(){
+    var f=firm(),host=document.getElementById("planSel");
+    if(f.planOrder.length<=1){host.style.display="none";host.innerHTML="";return;}
+    host.style.display="grid";
+    host.innerHTML=f.planOrder.map(function(pk){
+      var p=f.plans[pk];
+      return '<button data-plan="'+pk+'"'+(pk===state.plan?' class="active"':'')+'>'+p.name+'</button>';
+    }).join("");
+  }
+
   function renderSizeSel(){
-    var f=firm(),host=document.getElementById("sizeSel"),html="";
-    f.order.forEach(function(sz){
-      var s=f.sizes[sz];
-      html+='<button data-size="'+sz+'"'+(sz===state.size?' class="active"':'')+'><span class="f">'+s.plan+'</span>'+sz.toUpperCase()+'</button>';
-    });
-    host.innerHTML=html;
+    var pl=firm().plans[state.plan],host=document.getElementById("sizeSel");
+    host.innerHTML=pl.order.map(function(sz){
+      var s=pl.sizes[sz];
+      return '<button data-size="'+sz+'"'+(sz===state.size?' class="active"':'')+'><span class="f">'+fmt(s.target)+'</span>'+sz.toUpperCase()+'</button>';
+    }).join("");
   }
 
   function renderPlan(){
     var c=cfg(),T=c.target,ML=c.maxloss;
     document.querySelectorAll("#firmSel button").forEach(function(b){b.classList.toggle("active",b.dataset.firm===state.firm);});
+    renderPlanSel();
     renderSizeSel();
     document.getElementById("kTarget").textContent=fmt(T);
     document.getElementById("kMaxloss").textContent="-"+fmt(ML);
@@ -449,6 +511,9 @@
 
   document.getElementById("firmSel").addEventListener("click",function(e){
     var b=e.target.closest("button");if(!b)return;state.firm=b.dataset.firm;ensureSize();save().then(renderAll);
+  });
+  document.getElementById("planSel").addEventListener("click",function(e){
+    var b=e.target.closest("button");if(!b)return;state.plan=b.dataset.plan;ensureSize();save().then(renderAll);
   });
   document.getElementById("sizeSel").addEventListener("click",function(e){
     var b=e.target.closest("button");if(!b)return;state.size=b.dataset.size;save().then(renderAll);
