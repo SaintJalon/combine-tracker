@@ -153,13 +153,7 @@
   .verdict button{border:none;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:#2a2a30;color:var(--muted);flex-shrink:0}
   .verdict button:hover{color:var(--text)}
 
-  /* technique cards */
-  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  .rules p.freeform{margin:0;font-size:13.5px;color:var(--muted);line-height:1.6}
-  .rules p.freeform b{color:var(--text);font-weight:600}
-
   @media(max-width:760px){
-    .grid3{grid-template-columns:1fr}
     .acctsel{grid-template-columns:repeat(2,1fr)}
     .sel{grid-template-columns:repeat(2,1fr)}
     .kpis{grid-template-columns:repeat(2,1fr)}.kpi.hardrule{grid-column:span 2}
@@ -234,36 +228,6 @@
     <div class="srow"><div class="time">11:30 AM–12:30 PM</div><div class="desc">Lunch break — step away from screen</div><div class="pill off">Off</div></div>
     <div class="srow"><div class="time">12:30–1:30 PM</div><div class="desc">Optional — only if morning was green</div><div class="pill opt">Optional</div></div>
     <div class="srow"><div class="time">2:00 PM</div><div class="desc">Hard stop — close platform no matter what</div><div class="pill done">Done</div></div>
-  </div>
-
-  <h2 class="section">My Technique</h2>
-  <div class="grid3">
-    <div class="rules">
-      <h3>Setup</h3>
-      <p class="freeform">Mark <b>weekly key levels</b> and the <b>previous day high/low</b> on the Daily, keeping 4H order blocks visible. Mark the most recent <b>4H high/low</b>, plus <b>Daily and 4H fair value gaps</b>. Drop to the <b>15-min</b> for the framework: 15m FVGs, bullish/bearish OBs, and liquidity pools. Then hunt for <b>manipulation</b> — liquidity grabs and stop hunts.</p>
-    </div>
-    <div class="rules">
-      <h3>Entry signal</h3>
-      <p class="freeform">Price must <b>react at a key level</b> — weekly level, PDH/PDL, FVG, or OB — <b>with market manipulation</b>. Then search for a <b>market structure shift (MSS)</b>: a rejection from a strong OB or a reclaim through FVG. No reaction, no manipulation, no MSS — <b>otherwise: wait</b>.</p>
-    </div>
-    <div class="rules">
-      <h3>Stop &amp; target</h3>
-      <p class="freeform">Stop goes <b>beyond the entry zone or liquidity zone</b> — never inside it. Take profit at <b>key resistance/support</b>: liquidity pools, imbalance fills, <b>equal highs / equal lows</b>. Manage a <b>1:2 to 1:4</b> reward-to-risk on every trade.</p>
-    </div>
-  </div>
-
-  <h2 class="section">Money Management — My Plan</h2>
-  <div class="plan">
-    <h3>0.5% risk · 1:4 reward · 50% win rate</h3>
-    <div class="grid">
-      <div class="item"><div class="k">Risk per trade</div><div class="v" id="mmRisk">0.5% = $500</div></div>
-      <div class="item"><div class="k">Reward target</div><div class="v" id="mmReward">2% = $2,000</div></div>
-      <div class="item"><div class="k">Min RRR</div><div class="v">1:2 — aim 1:4</div></div>
-      <div class="item"><div class="k">Wins to +10%</div><div class="v">5 in a row</div></div>
-      <div class="item"><div class="k">Losses to −10%</div><div class="v">20 in a row</div></div>
-      <div class="item"><div class="k">Full-risk losses to breach</div><div class="v" id="mmBreach">6</div></div>
-      <div class="item"><div class="k">On evals use</div><div class="v" id="mmEval">$200 — tighter rule wins</div></div>
-    </div>
   </div>
 
   <div class="callout">
@@ -565,13 +529,6 @@
     document.getElementById("rContracts").textContent=c.contractsShort;
     var rc=document.getElementById("rCons");
     rc.textContent=c.consPct>0?("Keep best day under "+fmt(c.consPct/100*T)+" (consistency)"):"No consistency rule — trade your edge";
-    // money management (journal plan: 0.5% risk, 1:4, 50% win rate)
-    var risk5=Math.round(c.size*0.005),reward2=Math.round(c.size*0.02);
-    document.getElementById("mmRisk").textContent="0.5% = "+fmt(risk5);
-    document.getElementById("mmReward").textContent="2% = "+fmt(reward2);
-    var breach=Math.max(1,Math.floor(ML/risk5));
-    document.getElementById("mmBreach").textContent=breach+" ("+fmt(risk5)+" vs "+fmt(ML)+" max loss)";
-    document.getElementById("mmEval").textContent=fmt(c.risk)+" — tighter rule wins";
   }
 
   function renderAll(){renderPlan();renderDays();refreshProgress();}
