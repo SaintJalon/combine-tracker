@@ -1,4 +1,4 @@
-const CACHE = 'combine-tracker-v3';
+const CACHE = 'combine-tracker-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -32,8 +32,10 @@ self.addEventListener('fetch', function (e) {
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req).then(function (resp) {
-        const copy = resp.clone();
-        caches.open(CACHE).then(function (c) { c.put('./index.html', copy); });
+        if (resp.ok) {
+          const copy = resp.clone();
+          caches.open(CACHE).then(function (c) { c.put('./index.html', copy); });
+        }
         return resp;
       }).catch(function () { return caches.match('./index.html'); })
     );

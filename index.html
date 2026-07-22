@@ -138,7 +138,28 @@
   .rules li.g::before{background:var(--green)}.rules li.b::before{background:var(--blue)}
   .footer{text-align:center;color:var(--muted2);font-size:11.5px;margin-top:30px}
 
+  /* pre-trade checklist */
+  .checklist{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+  .chk{display:flex;align-items:center;gap:13px;padding:14px 18px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .15s;user-select:none;-webkit-user-select:none}
+  .chk:hover{background:var(--card2)}
+  .chk .box{width:22px;height:22px;border-radius:7px;border:2px solid var(--line2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#06281b;transition:.15s}
+  .chk.on .box{background:var(--green);border-color:var(--green)}
+  .chk .txt{font-size:13.5px;color:var(--muted);line-height:1.45}
+  .chk.on .txt{color:var(--text)}
+  .chk .txt b{color:var(--text);font-weight:600}
+  .verdict{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 18px;font-size:13px;font-weight:600}
+  .verdict.go{background:var(--green-soft);color:var(--green)}
+  .verdict.wait{background:var(--card2);color:var(--muted)}
+  .verdict button{border:none;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:#2a2a30;color:var(--muted);flex-shrink:0}
+  .verdict button:hover{color:var(--text)}
+
+  /* technique cards */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .rules p.freeform{margin:0;font-size:13.5px;color:var(--muted);line-height:1.6}
+  .rules p.freeform b{color:var(--text);font-weight:600}
+
   @media(max-width:760px){
+    .grid3{grid-template-columns:1fr}
     .acctsel{grid-template-columns:repeat(2,1fr)}
     .sel{grid-template-columns:repeat(2,1fr)}
     .kpis{grid-template-columns:repeat(2,1fr)}.kpi.hardrule{grid-column:span 2}
@@ -166,7 +187,7 @@
 
   <div class="kpis">
     <div class="kpi green"><div class="label">Target profit</div><div class="val edit" id="kTarget">$6,000</div><div class="sub">tap to edit</div></div>
-    <div class="kpi"><div class="label">Trading days</div><div class="val" id="kDays">10</div><div class="sub" id="kMinDays">min 5 to pass</div></div>
+    <div class="kpi"><div class="label">Trading days</div><div class="val" id="kDays">10</div><div class="sub" id="kMinDays">min 2 to pass</div></div>
     <div class="kpi amber"><div class="label">Daily target avg</div><div class="val" id="kAvg">$600</div></div>
     <div class="kpi red"><div class="label">Hard daily stop</div><div class="val" id="kStop">-$400</div><div class="sub">your rule</div></div>
     <div class="kpi hardrule red"><div class="label" id="kMaxLabel">Trailing Max Loss</div><div class="val edit" id="kMaxloss">-$3,000</div><div class="sub" id="kMaxsub">the only hard rule &middot; tap to edit</div></div>
@@ -202,6 +223,9 @@
   <h2 class="section" id="h2">Week 2 — Push to Target</h2>
   <div class="days" id="week2"></div>
 
+  <h2 class="section">Pre-Trade Checklist — Entry Signal</h2>
+  <div class="checklist" id="checklist"></div>
+
   <h2 class="section">Daily Schedule (CST)</h2>
   <div class="sched">
     <div class="srow"><div class="time">8:00–8:30 AM</div><div class="desc">Check levels, news, pre-market bias</div><div class="pill prep">Prep</div></div>
@@ -210,6 +234,36 @@
     <div class="srow"><div class="time">11:30 AM–12:30 PM</div><div class="desc">Lunch break — step away from screen</div><div class="pill off">Off</div></div>
     <div class="srow"><div class="time">12:30–1:30 PM</div><div class="desc">Optional — only if morning was green</div><div class="pill opt">Optional</div></div>
     <div class="srow"><div class="time">2:00 PM</div><div class="desc">Hard stop — close platform no matter what</div><div class="pill done">Done</div></div>
+  </div>
+
+  <h2 class="section">My Technique</h2>
+  <div class="grid3">
+    <div class="rules">
+      <h3>Setup</h3>
+      <p class="freeform">Mark <b>weekly key levels</b> and the <b>previous day high/low</b> on the Daily, keeping 4H order blocks visible. Mark the most recent <b>4H high/low</b>, plus <b>Daily and 4H fair value gaps</b>. Drop to the <b>15-min</b> for the framework: 15m FVGs, bullish/bearish OBs, and liquidity pools. Then hunt for <b>manipulation</b> — liquidity grabs and stop hunts.</p>
+    </div>
+    <div class="rules">
+      <h3>Entry signal</h3>
+      <p class="freeform">Price must <b>react at a key level</b> — weekly level, PDH/PDL, FVG, or OB — <b>with market manipulation</b>. Then search for a <b>market structure shift (MSS)</b>: a rejection from a strong OB or a reclaim through FVG. No reaction, no manipulation, no MSS — <b>otherwise: wait</b>.</p>
+    </div>
+    <div class="rules">
+      <h3>Stop &amp; target</h3>
+      <p class="freeform">Stop goes <b>beyond the entry zone or liquidity zone</b> — never inside it. Take profit at <b>key resistance/support</b>: liquidity pools, imbalance fills, <b>equal highs / equal lows</b>. Manage a <b>1:2 to 1:4</b> reward-to-risk on every trade.</p>
+    </div>
+  </div>
+
+  <h2 class="section">Money Management — My Plan</h2>
+  <div class="plan">
+    <h3>0.5% risk · 1:4 reward · 50% win rate</h3>
+    <div class="grid">
+      <div class="item"><div class="k">Risk per trade</div><div class="v" id="mmRisk">0.5% = $500</div></div>
+      <div class="item"><div class="k">Reward target</div><div class="v" id="mmReward">2% = $2,000</div></div>
+      <div class="item"><div class="k">Min RRR</div><div class="v">1:2 — aim 1:4</div></div>
+      <div class="item"><div class="k">Wins to +10%</div><div class="v">5 in a row</div></div>
+      <div class="item"><div class="k">Losses to −10%</div><div class="v">20 in a row</div></div>
+      <div class="item"><div class="k">Full-risk losses to breach</div><div class="v" id="mmBreach">6</div></div>
+      <div class="item"><div class="k">On evals use</div><div class="v" id="mmEval">$200 — tighter rule wins</div></div>
+    </div>
   </div>
 
   <div class="callout">
@@ -221,26 +275,39 @@
   <h2 class="section">The Rules</h2>
   <div class="rulegrid">
     <div class="rules">
-      <h3>Risk rules (per trade)</h3>
+      <h3>Risk management</h3>
       <ul>
         <li class="r">Max risk: <b id="rRisk">$200</b> per trade</li>
         <li class="r">Max daily loss: <b id="rStop">$400</b> hard stop</li>
-        <li class="a">2 losses in a row = 30 min break</li>
-        <li class="g">Take partial at 1R, let rest run</li>
-        <li class="g">Max 4 trades per day · <span id="rContracts">10-mini</span> cap</li>
+        <li class="r">No over-leveraging — stick to predefined risk parameters</li>
+        <li class="a">Adjust position size to keep risk % consistent</li>
+        <li class="a">2 losses in a row = take a break</li>
+        <li class="g">Minimum 1:2 RRR — aim for 1:4 · <span id="rContracts">10-mini</span> cap</li>
       </ul>
     </div>
     <div class="rules">
-      <h3>Discipline rules</h3>
+      <h3>Trade execution</h3>
       <ul>
-        <li class="r">No setup = no trade. Period.</li>
-        <li class="r">Stop set BEFORE entering</li>
-        <li class="r">Never move stop against you</li>
-        <li class="a">Hit daily target = done for day</li>
+        <li class="r">Only enter when ALL checklist criteria are met — key level, OB, FVG, manipulation, MSS</li>
+        <li class="r">No manipulation = no trade</li>
+        <li class="r">Wait for confirmation — the MSS must validate the liquidity grab</li>
+        <li class="r">Follow stop placement — never move it after entry</li>
+        <li class="a">No revenge trading — stick to the plan even after a loss</li>
         <li class="a" id="rCons">Keep best day under $3,000 (consistency)</li>
-        <li class="b">Report to your journal after every session</li>
       </ul>
     </div>
+  </div>
+
+  <h2 class="section">Expectations &amp; Discipline</h2>
+  <div class="rules">
+    <ul>
+      <li class="b">Focus on long-term growth, not individual trades — losses are part of the process</li>
+      <li class="b">Only take A+ setups — no forcing trades, execution quality over trade frequency</li>
+      <li class="b">Review and refine the strategy regularly — make data-driven improvements</li>
+      <li class="b">Track execution errors consistently</li>
+      <li class="g">~76 trades projected per year · trading window 9 AM–12 PM</li>
+      <li class="g">Report to your journal after every session</li>
+    </ul>
   </div>
 
 </div>
@@ -480,7 +547,8 @@
     document.getElementById("kAvg").textContent=fmt(Math.round(T/c.days));
     document.getElementById("kStop").textContent="-"+fmt(c.stop);
     document.getElementById("kMinDays").textContent=c.mindays;
-    document.getElementById("kMaxsub").textContent=(c.dd.indexOf("intraday")>=0?"intraday — watch live":"end-of-day")+" · tap to edit";
+    var ddl=c.dd.toLowerCase();
+    document.getElementById("kMaxsub").textContent=(ddl.indexOf("intraday")>=0?"intraday — watch live":(ddl.indexOf("static")>=0?"static — never moves":"end-of-day"))+" · tap to edit";
     document.getElementById("planTitle").textContent=c.title;
     document.getElementById("pDD").textContent=c.dd;
     document.getElementById("pCons").textContent=c.cons;
@@ -488,7 +556,7 @@
     document.getElementById("pContracts").textContent=c.contracts;
     document.getElementById("pMin").textContent=c.minShort;
     var floor=c.size-ML;
-    document.getElementById("pFloor").textContent=(c.dd.indexOf("static")>=0)?(fmt(floor)+" (fixed)"):(c.locks?(fmt(floor)+" → locks "+fmt(c.size)):fmt(floor));
+    document.getElementById("pFloor").textContent=(c.dd.toLowerCase().indexOf("static")>=0)?(fmt(floor)+" (fixed)"):(c.locks?(fmt(floor)+" → locks "+fmt(c.size)):fmt(floor));
     document.getElementById("coDD").innerHTML="<b>Drawdown ("+c.dd+"):</b> "+c.ddDesc;
     if(c.consPct>0){document.getElementById("coCons").innerHTML="<b>"+c.consPct+"% consistency rule:</b> your single best day can't exceed "+c.consPct+"% of total profit — keep any one day under <b>"+fmt(c.consPct/100*T)+"</b>. The fix for a big day is always to add more green days, never trim.";}
     else{document.getElementById("coCons").innerHTML="<b>No consistency rule:</b> one big day is fine on this plan. The only thing that ends the eval is touching the Max Loss Limit — protect the floor and keep losers contained.";}
@@ -497,6 +565,13 @@
     document.getElementById("rContracts").textContent=c.contractsShort;
     var rc=document.getElementById("rCons");
     rc.textContent=c.consPct>0?("Keep best day under "+fmt(c.consPct/100*T)+" (consistency)"):"No consistency rule — trade your edge";
+    // money management (journal plan: 0.5% risk, 1:4, 50% win rate)
+    var risk5=Math.round(c.size*0.005),reward2=Math.round(c.size*0.02);
+    document.getElementById("mmRisk").textContent="0.5% = "+fmt(risk5);
+    document.getElementById("mmReward").textContent="2% = "+fmt(reward2);
+    var breach=Math.max(1,Math.floor(ML/risk5));
+    document.getElementById("mmBreach").textContent=breach+" ("+fmt(risk5)+" vs "+fmt(ML)+" max loss)";
+    document.getElementById("mmEval").textContent=fmt(c.risk)+" — tighter rule wins";
   }
 
   function renderAll(){renderPlan();renderDays();refreshProgress();}
@@ -526,7 +601,42 @@
   editKpi("kTarget",function(){return cfg().target;},function(v){state.targets[modeKey()]=v;});
   editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
 
-  load().then(renderAll);
+  // ---- pre-trade checklist (from the trading-plan journal) ----
+  var CHECKS=[
+    "<b>Weekly key levels + PDH/PDL</b> marked on the Daily",
+    "<b>4H high/low, OBs and FVGs</b> marked (Daily FVGs too)",
+    "<b>15-min framework</b> set — 15m FVGs, bullish/bearish OBs, liquidity pools",
+    "Price is <b>reacting at a key level</b> — weekly, PDH/PDL, FVG, or OB",
+    "<b>Manipulation seen</b> — liquidity grab / stop hunt at the level",
+    "<b>MSS confirms</b> — rejection from a strong OB or reclaim through FVG",
+    "<b>Stop beyond the zone</b> · TP at liquidity target · RRR ≥ 1:2"
+  ];
+  function today(){var d=new Date();return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();}
+  function curChecks(){
+    if(!state.checks||state.checks.d!==today())state.checks={d:today(),v:CHECKS.map(function(){return false;})};
+    if(!Array.isArray(state.checks.v)||state.checks.v.length!==CHECKS.length)state.checks.v=CHECKS.map(function(){return false;});
+    return state.checks;
+  }
+  function renderChecklist(){
+    var ck=curChecks(),host=document.getElementById("checklist"),html="";
+    for(var i=0;i<CHECKS.length;i++){
+      html+='<div class="chk'+(ck.v[i]?" on":"")+'" data-i="'+i+'"><div class="box">'+(ck.v[i]?"✓":"")+'</div><div class="txt">'+CHECKS[i]+'</div></div>';
+    }
+    var all=ck.v.every(function(x){return x;});
+    html+='<div class="verdict '+(all?"go":"wait")+'"><span>'+(all?"A+ setup — every criterion met. Take the trade.":"Wait — no manipulation, no trade. ("+ck.v.filter(function(x){return x;}).length+"/"+CHECKS.length+")")+'</span><button type="button" id="chkReset">Reset</button></div>';
+    host.innerHTML=html;
+  }
+  document.getElementById("checklist").addEventListener("click",function(e){
+    if(e.target.id==="chkReset"){state.checks={d:today(),v:CHECKS.map(function(){return false;})};save().then(renderChecklist);return;}
+    var row=e.target.closest(".chk");if(!row)return;
+    var ck=curChecks();ck.v[row.dataset.i]=!ck.v[row.dataset.i];
+    save().then(renderChecklist);
+  });
+
+  // re-check the date when the PWA comes back to the foreground (midnight rollover)
+  document.addEventListener("visibilitychange",function(){if(!document.hidden)renderChecklist();});
+
+  load().then(function(){renderAll();renderChecklist();});
 })();
 </script>
 <script>
