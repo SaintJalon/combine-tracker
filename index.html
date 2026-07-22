@@ -33,6 +33,20 @@
     background:linear-gradient(95deg,var(--green),var(--blue) 65%,var(--purple));-webkit-background-clip:text;background-clip:text;
     -webkit-text-fill-color:transparent;text-shadow:0 0 34px rgba(52,211,153,.18);}
 
+  /* account manager */
+  .accts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .acch{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;cursor:pointer;transition:.15s;user-select:none;-webkit-user-select:none}
+  .acch:hover{border-color:var(--line2)}
+  .acch .nm{display:block;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:-.2px}
+  .acch .sb{display:block;font-size:10px;color:var(--muted2);margin-top:1px}
+  .acch.active{border-color:rgba(52,211,153,.35);background:linear-gradient(180deg,rgba(52,211,153,.08),var(--card2))}
+  .acch.active .nm{color:var(--text)}
+  .acch.active .sb{color:var(--green)}
+  .acch .x{border:none;background:transparent;color:var(--muted2);font-size:15px;cursor:pointer;padding:2px 5px;line-height:1;font-family:inherit;border-radius:6px}
+  .acch .x:hover{color:var(--red);background:var(--red-soft)}
+  .acch.add{color:var(--muted);font-weight:600;font-size:12.5px;border-style:dashed;border-color:var(--line2)}
+  .acch.add:hover{color:var(--text)}
+
   /* firm selector (primary) */
   .acctsel{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}
   .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:16px 8px;cursor:pointer;font-family:inherit;font-size:16px;font-weight:700;letter-spacing:-.3px;transition:.15s}
@@ -168,6 +182,8 @@
 <div class="wrap">
 
   <h1 class="apptitle">Trading Tracker</h1>
+
+  <div class="accts" id="acctBar"></div>
 
   <div class="acctsel" id="firmSel">
     <button data-firm="topstep">TopStep</button>
@@ -367,13 +383,35 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},logs:{}};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},logs:{},accounts:[],activeId:null};
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
+  function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+  function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
   function firm(){return FIRMS[state.firm]||FIRMS.topstep;}
   function ensurePlan(){var f=firm();if(!f.plans[state.plan])state.plan=f.planOrder[0];}
   function ensureSize(){ensurePlan();var pl=firm().plans[state.plan];if(!pl.sizes[state.size])state.size=pl.order[0];}
-  function modeKey(){return state.firm+":"+state.plan+":"+state.size;}
+  function activeAcct(){for(var i=0;i<state.accounts.length;i++){if(state.accounts[i].id===state.activeId)return state.accounts[i];}return null;}
+  function ensureAccounts(){
+    if(!Array.isArray(state.accounts))state.accounts=[];
+    if(!state.accounts.length){
+      // migrate: wrap the existing selection (and its saved log) into Account 1
+      var id=genId(),old=state.firm+":"+state.plan+":"+state.size;
+      state.accounts=[{id:id,name:"Account 1",firm:state.firm,plan:state.plan,size:state.size}];
+      state.activeId=id;
+      if(state.logs[old])state.logs["acct:"+id]=state.logs[old];
+      if(state.targets[old])state.targets["acct:"+id]=state.targets[old];
+      if(state.maxloss[old])state.maxloss["acct:"+id]=state.maxloss[old];
+    }
+    var a=activeAcct();
+    if(!a){a=state.accounts[0];state.activeId=a.id;}
+    state.firm=a.firm;state.plan=a.plan;state.size=a.size;
+    ensureSize();
+    a.firm=state.firm;a.plan=state.plan;a.size=state.size;
+    return a;
+  }
+  function syncAcct(){var a=activeAcct();if(a){a.firm=state.firm;a.plan=state.plan;a.size=state.size;}}
+  function modeKey(){return "acct:"+state.activeId;}
   function baseCfg(){ensureSize();return Object.assign({},firm().plans[state.plan].sizes[state.size]);}
   function cfg(){
     var c=baseCfg(),k=modeKey();
@@ -395,7 +433,7 @@
       try{raw=localStorage.getItem(KEY);}catch(e){raw=mem.s||null;}
       if(raw)state=Object.assign(state,(typeof raw==="string")?JSON.parse(raw):raw);
     }catch(e){if(mem.s)state=Object.assign(state,mem.s);}
-    ensureSize();
+    ensureAccounts();
   }
   async function save(){
     mem.s=state;
@@ -531,7 +569,22 @@
     rc.textContent=c.consPct>0?("Keep best day under "+fmt(c.consPct/100*T)+" (consistency)"):"No consistency rule — trade your edge";
   }
 
-  function renderAll(){renderPlan();renderDays();refreshProgress();}
+  function renderAcctBar(){
+    var host=document.getElementById("acctBar"),html="";
+    state.accounts.forEach(function(a){
+      var f=FIRMS[a.firm]||FIRMS.topstep;
+      var pl=f.plans[a.plan]||f.plans[f.planOrder[0]];
+      var sub=f.name+" · "+pl.name+" · "+a.size.toUpperCase();
+      html+='<div class="acch'+(a.id===state.activeId?" active":"")+'" data-id="'+a.id+'" title="'+(a.id===state.activeId?"Tap to rename":"Switch to this account")+'">'+
+        '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span></div>'+
+        (state.accounts.length>1?'<button type="button" class="x" data-del="'+a.id+'" title="Delete account">×</button>':'')+
+        '</div>';
+    });
+    html+='<div class="acch add" id="acctAdd">＋ Add account</div>';
+    host.innerHTML=html;
+  }
+
+  function renderAll(){renderAcctBar();renderPlan();renderDays();refreshProgress();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
@@ -547,13 +600,49 @@
   }
 
   document.getElementById("firmSel").addEventListener("click",function(e){
-    var b=e.target.closest("button");if(!b)return;state.firm=b.dataset.firm;ensureSize();save().then(renderAll);
+    var b=e.target.closest("button");if(!b)return;state.firm=b.dataset.firm;ensureSize();syncAcct();save().then(renderAll);
   });
   document.getElementById("planSel").addEventListener("click",function(e){
-    var b=e.target.closest("button");if(!b)return;state.plan=b.dataset.plan;ensureSize();save().then(renderAll);
+    var b=e.target.closest("button");if(!b)return;state.plan=b.dataset.plan;ensureSize();syncAcct();save().then(renderAll);
   });
   document.getElementById("sizeSel").addEventListener("click",function(e){
-    var b=e.target.closest("button");if(!b)return;state.size=b.dataset.size;save().then(renderAll);
+    var b=e.target.closest("button");if(!b)return;state.size=b.dataset.size;syncAcct();save().then(renderAll);
+  });
+
+  document.getElementById("acctBar").addEventListener("click",function(e){
+    var del=e.target.getAttribute("data-del");
+    if(del){
+      var victim=null;for(var i=0;i<state.accounts.length;i++){if(state.accounts[i].id===del)victim=state.accounts[i];}
+      if(victim&&confirm('Delete "'+victim.name+'" and its P&L log?')){
+        state.accounts=state.accounts.filter(function(x){return x.id!==del;});
+        delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
+        if(state.activeId===del)state.activeId=state.accounts[0].id;
+        ensureAccounts();save().then(renderAll);
+      }
+      return;
+    }
+    if(e.target.closest("#acctAdd")){
+      var n=state.accounts.length+1;
+      var name=prompt("Name this account (e.g. TopStep #2):","Account "+n);
+      if(name===null)return;
+      name=(name.trim()||("Account "+n)).slice(0,24);
+      var id=genId();
+      state.accounts.push({id:id,name:name,firm:state.firm,plan:state.plan,size:state.size});
+      state.activeId=id;
+      ensureAccounts();save().then(renderAll);
+      return;
+    }
+    var chip=e.target.closest(".acch");if(!chip||!chip.dataset.id)return;
+    if(chip.dataset.id===state.activeId){
+      var a=activeAcct();
+      var nn=prompt("Rename account:",a.name);
+      if(nn===null)return;
+      a.name=(nn.trim()||a.name).slice(0,24);
+      save().then(renderAll);
+      return;
+    }
+    state.activeId=chip.dataset.id;
+    ensureAccounts();save().then(renderAll);
   });
   editKpi("kTarget",function(){return cfg().target;},function(v){state.targets[modeKey()]=v;});
   editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
