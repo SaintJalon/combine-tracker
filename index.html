@@ -234,7 +234,7 @@
 
   <div class="kpis">
     <div class="kpi green"><div class="label">Target profit</div><div class="val edit" id="kTarget">$6,000</div><div class="sub">tap to edit</div></div>
-    <div class="kpi"><div class="label">Trading days</div><div class="val" id="kDays">10</div><div class="sub" id="kMinDays">min 2 to pass</div></div>
+    <div class="kpi"><div class="label">Trading days</div><div class="val edit" id="kDays">10</div><div class="sub" id="kMinDays">auto &middot; 2 wks &middot; tap to edit</div></div>
     <div class="kpi amber"><div class="label">Daily target avg</div><div class="val" id="kAvg">$600</div></div>
     <div class="kpi red"><div class="label">Hard daily stop</div><div class="val" id="kStop">-$400</div><div class="sub">your rule</div></div>
     <div class="kpi hardrule red"><div class="label" id="kMaxLabel">Trailing Max Loss</div><div class="val edit" id="kMaxloss">-$3,000</div><div class="sub" id="kMaxsub">the only hard rule &middot; tap to edit</div></div>
@@ -456,7 +456,7 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},logs:{},accounts:[],activeId:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},days:{},logs:{},accounts:[],activeId:null};
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -490,7 +490,9 @@
     var c=baseCfg(),k=modeKey();
     c.target=state.targets[k]||c.target;
     c.maxloss=state.maxloss[k]||c.maxloss;
-    c.days=daysToTarget(c.size,c.target,c.minShort);
+    c.autoDays=daysToTarget(c.size,c.target,c.minShort);
+    c.daysManual=!!(state.days&&state.days[k]);
+    c.days=c.daysManual?state.days[k]:c.autoDays;
     return c;
   }
   function curLog(){if(!state.logs[modeKey()])state.logs[modeKey()]={};return state.logs[modeKey()];}
@@ -565,8 +567,15 @@
     if(left<=0)needTxt="target hit";
     else if(need===0)needTxt="all days logged — still "+fmt(left)+" short";
     else needTxt=need+(need===1?" day":" days")+" to target";
-    document.getElementById("h1").textContent="Week 1 — Build the Buffer (Day 1–"+buildCount+") · "+needTxt;
-    document.getElementById("h2").textContent="Week 2 — Push to Target (Day "+(buildCount+1)+"–"+c.days+")";
+    var hd1=document.getElementById("h1"),hd2=document.getElementById("h2");
+    if(buildCount>0){
+      hd1.style.display="";w1.style.display="";
+      hd1.textContent="Build the Buffer — Day 1–"+buildCount+" · "+needTxt;
+      hd2.textContent="Push to Target — Day "+(buildCount+1)+"–"+c.days;
+    }else{
+      hd1.style.display="none";w1.style.display="none";
+      hd2.textContent="Push to Target — Day 1–"+c.days+" · "+needTxt;
+    }
     for(var i=0;i<c.days;i++){
       var d=i+1,target=t[i],cumv=P.cum[i],phase=phases[i];
       var div=document.createElement("div");div.className="day";
@@ -662,7 +671,10 @@
     document.getElementById("kDays").textContent=c.days;
     document.getElementById("kAvg").textContent=fmt(Math.round(T/c.days));
     document.getElementById("kStop").textContent="-"+fmt(c.stop);
-    document.getElementById("kMinDays").textContent=c.mindays;
+    var wk=c.days/5,wkTxt;
+    if(c.days<5)wkTxt=c.days+(c.days===1?" day":" days");
+    else wkTxt=(Math.abs(wk-Math.round(wk))<0.05?Math.round(wk):Math.round(wk*10)/10)+(Math.abs(wk-1)<0.05?" wk":" wks");
+    document.getElementById("kMinDays").textContent=(c.daysManual?"manual":"auto")+" · "+wkTxt+" · tap to edit";
     var ddl=c.dd.toLowerCase();
     document.getElementById("kMaxsub").textContent=(ddl.indexOf("intraday")>=0?"intraday — watch live":(ddl.indexOf("static")>=0?"static — never moves":"end-of-day"))+" · tap to edit";
     document.getElementById("planTitle").textContent=c.title;
@@ -868,6 +880,26 @@
   });
   editKpi("kTarget",function(){return cfg().target;},function(v){state.targets[modeKey()]=v;});
   editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
+
+  // Trading days: tap to set your own plan length (0 or blank = back to auto)
+  (function(){
+    var el=document.getElementById("kDays");
+    el.addEventListener("click",function(){
+      if(el.querySelector("input"))return;
+      el.innerHTML='<input type="number" inputmode="numeric" min="0" max="40" value="'+cfg().days+'">';
+      var inp=el.querySelector("input");inp.focus();inp.select();
+      function commit(){
+        var v=parseFloat(inp.value),k=modeKey();
+        if(!state.days)state.days={};
+        if(isNaN(v)||v<=0)delete state.days[k];
+        else state.days[k]=Math.max(1,Math.min(40,Math.round(v)));
+        save().then(renderAll);
+      }
+      inp.addEventListener("blur",commit);
+      inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+      inp.addEventListener("click",function(ev){ev.stopPropagation();});
+    });
+  })();
 
   // ---- pre-trade checklist (from the trading-plan journal) ----
   var CHECKS=[
