@@ -63,6 +63,14 @@
   .mmtable td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line);color:var(--muted)}
   .mmtable td.k{font-weight:600}
   .mmtable td.up{color:var(--green)}.mmtable td.dn{color:var(--red)}
+  .mmtable td.cell{cursor:pointer}
+  .mmtable td.cell:hover{background:var(--card2);color:var(--text)}
+  .mmtable tr.ov td:first-child{color:var(--blue);font-weight:700}
+  .mmtable td.on{text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+  .mmtable td input{width:74px;background:#0f0f12;border:1px solid var(--green);color:var(--text);border-radius:7px;padding:3px 6px;font-size:12.5px;font-weight:600;text-align:right;font-family:inherit;outline:none}
+  .mmbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 0 0;font-size:11.5px;color:var(--muted2)}
+  .mmbar button{border:none;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:#2a2a30;color:var(--muted);flex-shrink:0}
+  .mmbar button:hover{color:var(--text)}
   .mmtable tr:last-child td{border-bottom:none}
   .mmgrid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
   .mmcard{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
@@ -288,6 +296,7 @@
       <thead><tr><th>Trade</th><th>Loss by trade</th><th>Win by trade</th><th>K evolution</th></tr></thead>
       <tbody id="mmBody"></tbody>
     </table></div>
+    <div class="mmbar"><span id="mmOvNote">Tap any Loss or Win cell to log what actually happened — two wins in a row, a bigger loss, anything. K evolution recalculates from there.</span><button type="button" id="mmReset">Reset rows</button></div>
     <div class="mmgrid2">
       <div class="mmcard"><h4>Consecutive losses until…</h4><ul id="mmLossList"></ul></div>
       <div class="mmcard"><h4>Consecutive wins until…</h4><ul id="mmWinList"></ul></div>
@@ -639,13 +648,14 @@
     if(!state.mm[k])state.mm[k]={eq:cfg().size,loss:0.5,rr:4,win:50};
     return state.mm[k];
   }
-  function mmSim(eq,lossPct,winPct,p,maxN){
+  function mmSim(eq,lossPct,winPct,p,maxN,seq){
     var k=eq,out=[],wins=0;
     for(var i=1;i<=maxN;i++){
-      var need=Math.floor(i*p+1e-9),isWin=wins<need;
-      if(isWin){k*=(1+winPct/100);wins++;}
-      else{k*=(1-lossPct/100);}
-      out.push({n:i,k:k,win:isWin});
+      var need=Math.floor(i*p+1e-9),auto=wins<need;
+      if(auto)wins++;
+      var ov=seq&&seq[i],isWin=ov?!!ov.w:auto,pct=ov?ov.p:(isWin?winPct:lossPct);
+      k*=isWin?(1+pct/100):(1-pct/100);
+      out.push({n:i,k:k,win:isWin,pct:pct,ov:!!ov});
     }
     return out;
   }
@@ -660,12 +670,19 @@
     setInp("mmEq",m.eq);setInp("mmLoss",m.loss);setInp("mmRR",m.rr);setInp("mmWin",m.win);
     var winPct=Math.round(m.loss*m.rr*100)/100;
     document.getElementById("mmNote").innerHTML="Win by trade = "+m.loss+"% × "+m.rr+" = <b>"+winPct+"%</b> ("+fmt(m.eq*winPct/100)+") · risk "+m.loss+"% = <b>"+fmt(m.eq*m.loss/100)+"</b> per trade · K evolution alternates wins/losses to match the "+m.win+"% win rate.";
-    var sim=mmSim(m.eq,m.loss,winPct,m.win/100,100),html="";
+    var sim=mmSim(m.eq,m.loss,winPct,m.win/100,100,m.seq),html="";
     sim.forEach(function(t){
       var cls=t.k>=m.eq?"up":"dn";
-      html+='<tr class="'+(t.win?"trw":"trl")+'"><td>'+t.n+'</td><td>'+(t.win?"—":"-"+m.loss+"%")+'</td><td>'+(t.win?"+"+winPct+"%":"—")+'</td><td class="k '+cls+'">'+fmt(t.k)+'</td></tr>';
+      html+='<tr class="'+(t.win?"trw":"trl")+(t.ov?" ov":"")+'"><td>'+t.n+'</td>'+
+        '<td class="cell'+(!t.win&&t.ov?" on":"")+'" data-n="'+t.n+'" data-col="l">'+(t.win?"—":"-"+t.pct+"%")+'</td>'+
+        '<td class="cell'+(t.win&&t.ov?" on":"")+'" data-n="'+t.n+'" data-col="w">'+(t.win?"+"+t.pct+"%":"—")+'</td>'+
+        '<td class="k '+cls+'">'+fmt(t.k)+'</td></tr>';
     });
+    var sc=document.querySelector(".mmscroll"),st=sc?sc.scrollTop:0;
     document.getElementById("mmBody").innerHTML=html;
+    if(sc)sc.scrollTop=st;
+    var nOv=m.seq?Object.keys(m.seq).length:0;
+    document.getElementById("mmOvNote").innerHTML=nOv?("<b>"+nOv+"</b> trade"+(nOv>1?"s":"")+" logged manually — K evolution follows your real sequence."):"Tap any Loss or Win cell to log what actually happened — two wins in a row, a bigger loss, anything. K evolution recalculates from there.";
     var lh="";
     [[0.9,"−10%"],[0.75,"−25%"],[0.5,"−50%"],[0.25,"−75%"]].forEach(function(t){
       var n=stepsTo(t[0],-m.loss/100);
@@ -686,6 +703,40 @@
     wh+='<li class="hl win"><span>🎯 Target hit → '+fmt(m.eq+c.target)+'</span><b>'+nT+' wins</b></li>';
     document.getElementById("mmWinList").innerHTML=wh;
   }
+  // tap a Loss/Win cell to record the real outcome for that trade
+  document.getElementById("mmBody").addEventListener("click",function(e){
+    var td=e.target.closest("td.cell");if(!td||td.querySelector("input"))return;
+    var n=parseInt(td.dataset.n,10),col=td.dataset.col,m=mmCfg();
+    var winPct=Math.round(m.loss*m.rr*100)/100;
+    var ov=m.seq&&m.seq[n];
+    var cur=(ov&&((col==="w")===!!ov.w))?ov.p:(col==="w"?winPct:m.loss);
+    td.innerHTML='<input type="number" inputmode="decimal" step="0.1" min="0" value="'+cur+'">';
+    var inp=td.querySelector("input");inp.focus();inp.select();
+    var done=false;
+    function commit(){
+      if(done)return;done=true;
+      var v=parseFloat(inp.value);
+      if(!m.seq)m.seq={};
+      if(isNaN(v)||v<=0)delete m.seq[n];
+      else m.seq[n]={w:col==="w"?1:0,p:Math.round(v*100)/100};
+      save().then(renderMM);
+    }
+    inp.addEventListener("blur",commit);
+    inp.addEventListener("change",commit);
+    inp.addEventListener("keydown",function(ev){
+      if(ev.key==="Enter"){ev.preventDefault();inp.blur();commit();}
+      if(ev.key==="Escape"){done=true;renderMM();}
+    });
+    inp.addEventListener("click",function(ev){ev.stopPropagation();});
+  });
+  document.getElementById("mmReset").addEventListener("click",function(){
+    var m=mmCfg();
+    if(!m.seq||!Object.keys(m.seq).length)return;
+    if(confirm("Clear all manually logged trades and go back to the modeled pattern?")){
+      m.seq={};save().then(renderMM);
+    }
+  });
+
   ["mmEq","mmLoss","mmRR","mmWin"].forEach(function(id){
     document.getElementById(id).addEventListener("input",function(){
       var m=mmCfg(),v=parseFloat(this.value);
