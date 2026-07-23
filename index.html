@@ -54,9 +54,11 @@
   .mmin input:focus{border-color:var(--green)}
   .mmnote{font-size:11.5px;color:var(--muted2);margin:0 0 12px}
   .mmnote b{color:var(--muted);font-weight:600}
-  .mmscroll{overflow-x:auto}
+  .mmscroll{overflow:auto;max-height:350px;border:1px solid var(--line);border-radius:12px;-webkit-overflow-scrolling:touch}
   .mmtable{width:100%;border-collapse:collapse;font-size:13px;min-width:420px}
-  .mmtable th{text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line2)}
+  .mmtable th{position:sticky;top:0;z-index:1;background:var(--card2);text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line2)}
+  .mmtable tr.trl td:nth-child(2){color:var(--red);font-weight:600}
+  .mmtable tr.trw td:nth-child(3){color:var(--green);font-weight:600}
   .mmtable th:first-child,.mmtable td:first-child{text-align:left}
   .mmtable td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line);color:var(--muted)}
   .mmtable td.k{font-weight:600}
@@ -631,7 +633,6 @@
   }
 
   // ---- money management calculator (journal layout) ----
-  var MMROWS=[1,2,3,5,10,25,50,75,100];
   function mmCfg(){
     if(!state.mm)state.mm={};
     var k=modeKey();
@@ -639,12 +640,12 @@
     return state.mm[k];
   }
   function mmSim(eq,lossPct,winPct,p,maxN){
-    var k=eq,out={},wins=0;
+    var k=eq,out=[],wins=0;
     for(var i=1;i<=maxN;i++){
-      var need=Math.floor(i*p+1e-9);
-      if(wins<need){k*=(1+winPct/100);wins++;}
+      var need=Math.floor(i*p+1e-9),isWin=wins<need;
+      if(isWin){k*=(1+winPct/100);wins++;}
       else{k*=(1-lossPct/100);}
-      out[i]=k;
+      out.push({n:i,k:k,win:isWin});
     }
     return out;
   }
@@ -660,9 +661,9 @@
     var winPct=Math.round(m.loss*m.rr*100)/100;
     document.getElementById("mmNote").innerHTML="Win by trade = "+m.loss+"% × "+m.rr+" = <b>"+winPct+"%</b> ("+fmt(m.eq*winPct/100)+") · risk "+m.loss+"% = <b>"+fmt(m.eq*m.loss/100)+"</b> per trade · K evolution alternates wins/losses to match the "+m.win+"% win rate.";
     var sim=mmSim(m.eq,m.loss,winPct,m.win/100,100),html="";
-    MMROWS.forEach(function(n){
-      var v=sim[n],cls=v>=m.eq?"up":"dn";
-      html+='<tr><td>'+n+'</td><td>-'+m.loss+'%</td><td>+'+winPct+'%</td><td class="k '+cls+'">'+fmt(v)+'</td></tr>';
+    sim.forEach(function(t){
+      var cls=t.k>=m.eq?"up":"dn";
+      html+='<tr class="'+(t.win?"trw":"trl")+'"><td>'+t.n+'</td><td>'+(t.win?"—":"-"+m.loss+"%")+'</td><td>'+(t.win?"+"+winPct+"%":"—")+'</td><td class="k '+cls+'">'+fmt(t.k)+'</td></tr>';
     });
     document.getElementById("mmBody").innerHTML=html;
     var lh="";
