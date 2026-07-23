@@ -358,9 +358,25 @@
   var DD_TRADEIFY="<b>End-of-day</b> trailing: the floor trails your end-of-day balance, then once you hit the profit target it locks permanently at just <b>$100 above your starting balance</b> — passing turns almost the whole account into cushion. Intraday drawdowns don't count; only the daily close moves the floor.";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor trails your daily close, not intraday swings — you can dip during the session and be fine as long as you close above it. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit, so it needs at least 3 trading days.";
 
-  var W10=[4,4,5,5,6,7,7,7,8,7],P10=["build","build","build","build","build","push","push","push","push","close"];
-  var W6=[2,2,2.5,2.5,3,3],P6=["build","build","build","push","push","close"];
-  function tpl(days){return days<=6?{w:W6,p:P6}:{w:W10,p:P10};}
+  // Build a day-plan for any number of days: weights ramp up (build small → push big),
+  // phases = first ~half "build", middle "push", final day "close".
+  function tpl(n){
+    n=Math.max(1,n|0);
+    var w=[],p=[],build=Math.max(1,Math.round(n*0.5));
+    for(var i=0;i<n;i++){
+      w.push(1+i*(2/Math.max(1,n-1)));
+      p.push(i===n-1?"close":(i<build?"build":"push"));
+    }
+    return {w:w,p:p};
+  }
+  // Days needed to reach the target under the money-management plan:
+  // 0.5% risk · 1:4 reward · ~50% win rate ≈ +0.75% of the account per trading day.
+  function daysToTarget(size,target,minShort){
+    var perDay=size*0.0075;
+    var need=perDay>0?Math.ceil(target/perDay):1;
+    var minD=parseInt(minShort,10);if(isNaN(minD))minD=1;
+    return Math.min(25,Math.max(minD,need));
+  }
 
   // per-trade risk/stop (your personal rules, scaled by account size)
   var RS={25000:{risk:75,stop:150},50000:{risk:100,stop:200},100000:{risk:200,stop:400},150000:{risk:300,stop:600}};
@@ -474,6 +490,7 @@
     var c=baseCfg(),k=modeKey();
     c.target=state.targets[k]||c.target;
     c.maxloss=state.maxloss[k]||c.maxloss;
+    c.days=daysToTarget(c.size,c.target,c.minShort);
     return c;
   }
   function curLog(){if(!state.logs[modeKey()])state.logs[modeKey()]={};return state.logs[modeKey()];}
@@ -506,7 +523,22 @@
     var w1=document.getElementById("week1"),w2=document.getElementById("week2");
     var cols=(c.days<=6)?"days d3":"days";
     w1.className=cols;w2.className=cols;w1.innerHTML="";w2.innerHTML="";
-    document.getElementById("h1").textContent="Week 1 — Build the Buffer (Day 1–"+buildCount+")";
+    // how many more days it takes to cover what's left, at the plan's own day targets
+    var loggedTotal=0;
+    for(var k=1;k<=c.days;k++){if(k in log)loggedTotal+=log[k];}
+    var left=c.target-loggedTotal,need=0,acc=0;
+    if(left>0){
+      for(var j=0;j<c.days;j++){
+        if(acc>=left)break;
+        if((j+1) in log)continue;
+        acc+=t[j];need++;
+      }
+    }
+    var needTxt;
+    if(left<=0)needTxt="target hit";
+    else if(need===0)needTxt="all days logged — still "+fmt(left)+" short";
+    else needTxt=need+(need===1?" day":" days")+" to target";
+    document.getElementById("h1").textContent="Week 1 — Build the Buffer (Day 1–"+buildCount+") · "+needTxt;
     document.getElementById("h2").textContent="Week 2 — Push to Target (Day "+(buildCount+1)+"–"+c.days+")";
     var cum=0;
     for(var i=0;i<c.days;i++){
