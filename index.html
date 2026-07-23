@@ -47,6 +47,31 @@
   .acch.add{color:var(--muted);font-weight:600;font-size:12.5px;border-style:dashed;border-color:var(--line2)}
   .acch.add:hover{color:var(--text)}
 
+  /* money management calculator */
+  .mmin{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+  .mmin .k{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+  .mmin input{width:100%;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:9px 11px;font-size:14px;font-weight:600;font-family:inherit;outline:none}
+  .mmin input:focus{border-color:var(--green)}
+  .mmnote{font-size:11.5px;color:var(--muted2);margin:0 0 12px}
+  .mmnote b{color:var(--muted);font-weight:600}
+  .mmscroll{overflow-x:auto}
+  .mmtable{width:100%;border-collapse:collapse;font-size:13px;min-width:420px}
+  .mmtable th{text-align:right;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line2)}
+  .mmtable th:first-child,.mmtable td:first-child{text-align:left}
+  .mmtable td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line);color:var(--muted)}
+  .mmtable td.k{font-weight:600}
+  .mmtable td.up{color:var(--green)}.mmtable td.dn{color:var(--red)}
+  .mmtable tr:last-child td{border-bottom:none}
+  .mmgrid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+  .mmcard{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .mmcard h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);font-weight:600}
+  .mmcard ul{list-style:none;margin:0;padding:0;font-size:13px}
+  .mmcard li{display:flex;justify-content:space-between;gap:10px;padding:4.5px 0;color:var(--muted)}
+  .mmcard li b{color:var(--text);font-weight:600;white-space:nowrap}
+  .mmcard li.hl{border-top:1px solid var(--line);margin-top:5px;padding-top:8px}
+  .mmcard li.hl.win b{color:var(--green)}
+  .mmcard li.hl.lose b{color:var(--red)}
+
   /* firm selector (primary) */
   .acctsel{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}
   .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:16px 8px;cursor:pointer;font-family:inherit;font-size:16px;font-weight:700;letter-spacing:-.3px;transition:.15s}
@@ -168,6 +193,8 @@
   .verdict button:hover{color:var(--text)}
 
   @media(max-width:760px){
+    .mmin{grid-template-columns:repeat(2,1fr)}
+    .mmgrid2{grid-template-columns:1fr}
     .acctsel{grid-template-columns:repeat(2,1fr)}
     .sel{grid-template-columns:repeat(2,1fr)}
     .kpis{grid-template-columns:repeat(2,1fr)}.kpi.hardrule{grid-column:span 2}
@@ -244,6 +271,25 @@
     <div class="srow"><div class="time">11:30 AM–12:30 PM</div><div class="desc">Lunch break — step away from screen</div><div class="pill off">Off</div></div>
     <div class="srow"><div class="time">12:30–1:30 PM</div><div class="desc">Optional — only if morning was green</div><div class="pill opt">Optional</div></div>
     <div class="srow"><div class="time">2:00 PM</div><div class="desc">Hard stop — close platform no matter what</div><div class="pill done">Done</div></div>
+  </div>
+
+  <h2 class="section">Money Management</h2>
+  <div class="plan">
+    <div class="mmin">
+      <div><div class="k">Equity ($)</div><input id="mmEq" type="number" inputmode="numeric" min="1" step="100"></div>
+      <div><div class="k">Loss per trade (%)</div><input id="mmLoss" type="number" inputmode="decimal" min="0.05" max="10" step="0.1"></div>
+      <div><div class="k">Risk : reward (1 : X)</div><input id="mmRR" type="number" inputmode="decimal" min="0.5" max="10" step="0.5"></div>
+      <div><div class="k">Win rate (%)</div><input id="mmWin" type="number" inputmode="numeric" min="5" max="95" step="5"></div>
+    </div>
+    <p class="mmnote" id="mmNote">Win by trade = loss × R:R. K evolution alternates wins and losses to match the win rate, like the journal.</p>
+    <div class="mmscroll"><table class="mmtable">
+      <thead><tr><th>Trade</th><th>Loss by trade</th><th>Win by trade</th><th>K evolution</th></tr></thead>
+      <tbody id="mmBody"></tbody>
+    </table></div>
+    <div class="mmgrid2">
+      <div class="mmcard"><h4>Consecutive losses until…</h4><ul id="mmLossList"></ul></div>
+      <div class="mmcard"><h4>Consecutive wins until…</h4><ul id="mmWinList"></ul></div>
+    </div>
   </div>
 
   <div class="callout">
@@ -584,7 +630,74 @@
     host.innerHTML=html;
   }
 
-  function renderAll(){renderAcctBar();renderPlan();renderDays();refreshProgress();}
+  // ---- money management calculator (journal layout) ----
+  var MMROWS=[1,2,3,5,10,25,50,75,100];
+  function mmCfg(){
+    if(!state.mm)state.mm={};
+    var k=modeKey();
+    if(!state.mm[k])state.mm[k]={eq:cfg().size,loss:0.5,rr:4,win:50};
+    return state.mm[k];
+  }
+  function mmSim(eq,lossPct,winPct,p,maxN){
+    var k=eq,out={},wins=0;
+    for(var i=1;i<=maxN;i++){
+      var need=Math.floor(i*p+1e-9);
+      if(wins<need){k*=(1+winPct/100);wins++;}
+      else{k*=(1-lossPct/100);}
+      out[i]=k;
+    }
+    return out;
+  }
+  function stepsTo(mult,per){
+    if(per===0||mult<=0)return null;
+    var n=Math.ceil(Math.log(mult)/Math.log(1+per)-1e-9);
+    return n>0?n:1;
+  }
+  function setInp(id,v){var el=document.getElementById(id);if(document.activeElement!==el)el.value=v;}
+  function renderMM(){
+    var m=mmCfg(),c=cfg();
+    setInp("mmEq",m.eq);setInp("mmLoss",m.loss);setInp("mmRR",m.rr);setInp("mmWin",m.win);
+    var winPct=Math.round(m.loss*m.rr*100)/100;
+    document.getElementById("mmNote").innerHTML="Win by trade = "+m.loss+"% × "+m.rr+" = <b>"+winPct+"%</b> ("+fmt(m.eq*winPct/100)+") · risk "+m.loss+"% = <b>"+fmt(m.eq*m.loss/100)+"</b> per trade · K evolution alternates wins/losses to match the "+m.win+"% win rate.";
+    var sim=mmSim(m.eq,m.loss,winPct,m.win/100,100),html="";
+    MMROWS.forEach(function(n){
+      var v=sim[n],cls=v>=m.eq?"up":"dn";
+      html+='<tr><td>'+n+'</td><td>-'+m.loss+'%</td><td>+'+winPct+'%</td><td class="k '+cls+'">'+fmt(v)+'</td></tr>';
+    });
+    document.getElementById("mmBody").innerHTML=html;
+    var lh="";
+    [[0.9,"−10%"],[0.75,"−25%"],[0.5,"−50%"],[0.25,"−75%"]].forEach(function(t){
+      var n=stepsTo(t[0],-m.loss/100);
+      lh+='<li><span>'+t[1]+' → '+fmt(m.eq*t[0])+'</span><b>'+n+' losses</b></li>';
+    });
+    var ML=c.maxloss;
+    if(ML<m.eq){
+      var nB=stepsTo((m.eq-ML)/m.eq,-m.loss/100);
+      lh+='<li class="hl lose"><span>Max loss hit → '+fmt(m.eq-ML)+'</span><b>'+nB+' losses</b></li>';
+    }
+    document.getElementById("mmLossList").innerHTML=lh;
+    var wh="";
+    [[1.1,"+10%"],[1.25,"+25%"],[1.5,"+50%"],[2,"+100%"]].forEach(function(t){
+      var n=stepsTo(t[0],winPct/100);
+      wh+='<li><span>'+t[1]+' → '+fmt(m.eq*t[0])+'</span><b>'+n+' wins</b></li>';
+    });
+    var nT=stepsTo((m.eq+c.target)/m.eq,winPct/100);
+    wh+='<li class="hl win"><span>🎯 Target hit → '+fmt(m.eq+c.target)+'</span><b>'+nT+' wins</b></li>';
+    document.getElementById("mmWinList").innerHTML=wh;
+  }
+  ["mmEq","mmLoss","mmRR","mmWin"].forEach(function(id){
+    document.getElementById(id).addEventListener("input",function(){
+      var m=mmCfg(),v=parseFloat(this.value);
+      if(isNaN(v))return;
+      if(id==="mmEq"&&v>0)m.eq=v;
+      if(id==="mmLoss"&&v>=0.05&&v<=10)m.loss=v;
+      if(id==="mmRR"&&v>=0.5&&v<=10)m.rr=v;
+      if(id==="mmWin"&&v>=5&&v<=95)m.win=v;
+      save().then(renderMM);
+    });
+  });
+
+  function renderAll(){renderAcctBar();renderPlan();renderDays();refreshProgress();renderMM();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
