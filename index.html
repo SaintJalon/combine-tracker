@@ -65,8 +65,8 @@
   .copybar{background:var(--blue-soft);border:1px solid rgba(142,156,245,.3);color:#aab4f7;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
   .copybar.on{display:block}
   .copybar b{color:var(--text);font-weight:600}
-  .day.mirror{cursor:default}
-  .day.mirror:active{transform:none}
+  .day.copied{border-color:rgba(142,156,245,.4);background:linear-gradient(180deg,var(--blue-soft),var(--card))}
+  .copytag{display:inline-block;font-size:10px;font-weight:700;color:var(--blue);background:var(--blue-soft);padding:1px 6px;border-radius:6px;vertical-align:middle}
   .acch.add{color:var(--muted);font-weight:600;font-size:12.5px;border-style:dashed;border-color:var(--line2)}
   .acch.add:hover{color:var(--text)}
 
@@ -473,7 +473,7 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},days:{},logs:{},logBackup:{},accounts:[],activeId:null,leaderId:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},days:{},logs:{},follow:{},accounts:[],activeId:null,leaderId:null};
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -523,29 +523,59 @@
     var a=activeAcct();if(!a||!a.follow)return null;
     var L=leaderAcct();if(!L||L.id===a.id)return null;return L;
   }
-  // Turn following on/off WITHOUT destroying the account's own real log.
-  // Starting to follow snapshots the account's real days; unfollowing restores them.
+  // A follow record keeps the follower's OWN logged days ({own}) and a snapshot of
+  // the leader's days that already existed when following began ({from}). The
+  // follower's own days are never overwritten; only the leader's NEW trades copy in.
+  function followRec(a){
+    if(!state.follow)state.follow={};
+    var k="acct:"+a.id;
+    if(a.follow&&!state.follow[k]){
+      var from={},L=leaderAcct(),d;
+      if(L){var ll=state.logs["acct:"+L.id]||{};for(d in ll)if(ll.hasOwnProperty(d))from[d]=1;}
+      state.follow[k]={own:Object.assign({},state.logs[k]||{}),from:from};
+    }
+    return state.follow[k];
+  }
   function setFollow(id,on){
     var a=acctById(id);if(!a)return;
-    if(!state.logBackup)state.logBackup={};
+    if(!state.follow)state.follow={};
     var k="acct:"+id;
     if(on){
-      if(!a.follow&&!state.logBackup.hasOwnProperty(k))state.logBackup[k]=Object.assign({},state.logs[k]||{});
+      if(!a.follow){
+        var from={},L=leaderAcct(),d;
+        if(L){var ll=state.logs["acct:"+L.id]||{};for(d in ll)if(ll.hasOwnProperty(d))from[d]=1;}
+        state.follow[k]={own:Object.assign({},state.logs[k]||{}),from:from};
+      }
       a.follow=true;
     }else{
-      if(state.logBackup.hasOwnProperty(k)){state.logs[k]=state.logBackup[k];delete state.logBackup[k];}
+      var rec=state.follow[k];
+      if(rec)state.logs[k]=Object.assign({},rec.own);   // restore your own days only
+      delete state.follow[k];
       a.follow=false;
     }
   }
-  // Recompute every follower's log from the leader's, scaled by size ratio.
+  // Which day numbers on the active follower are copied from the leader (not your own).
+  function copiedDaySet(){
+    var a=activeAcct();if(!a||!a.follow)return {};
+    var L=leaderAcct();if(!L||L.id===a.id)return {};
+    var rec=followRec(a),log=state.logs["acct:"+a.id]||{},set={};
+    for(var d in log){if(log.hasOwnProperty(d)&&!rec.own.hasOwnProperty(d))set[d]=1;}
+    return set;
+  }
+  // Rebuild each follower's log = its own days + the leader's NEW trades (scaled).
   function syncFollowers(){
     var L=leaderAcct();if(!L)return;
     if(L.follow)setFollow(L.id,false); // a leader can't follow itself
     var lead=state.logs["acct:"+L.id]||{},ls=sizeDollars(L);
     state.accounts.forEach(function(a){
       if(a.id===L.id||!a.follow)return;
-      var ratio=sizeDollars(a)/ls,out={};
-      for(var d in lead){if(lead.hasOwnProperty(d))out[d]=Math.round(lead[d]*ratio);}
+      var rec=followRec(a),ratio=sizeDollars(a)/ls,out=Object.assign({},rec.own),d;
+      for(d in lead){
+        if(!lead.hasOwnProperty(d))continue;
+        if(rec.own.hasOwnProperty(d))continue; // your own day wins, never overwritten
+        if(rec.from[d])continue;               // leader's pre-follow history, don't copy
+        out[d]=Math.round(lead[d]*ratio);
+      }
       state.logs["acct:"+a.id]=out;
     });
   }
@@ -596,9 +626,9 @@
 
   function renderDays(){
     var c=cfg(),P=livePlan(),t=P.live,phases=tpl(c.days).p,log=curLog(),ML=c.maxloss;
-    var followL=activeFollowLeader();
+    var followL=activeFollowLeader(),copied=copiedDaySet();
     var cb=document.getElementById("copyBar");
-    if(followL){cb.className="copybar on";cb.innerHTML="⇄ This account is <b>following "+esc(followL.name)+"</b> — days are mirrored automatically and can't be edited here. Turn it off in <b>Copy trading</b> up top.";}
+    if(followL){cb.className="copybar on";cb.innerHTML="⇄ <b>Currently following "+esc(followL.name)+"</b> — your own logged days stay put; its new trades copy in (scaled) and are tagged. You can still log or override any day.";}
     else{cb.className="copybar";cb.innerHTML="";}
     var buildCount=phases.filter(function(p){return p==="build";}).length;
     var w1=document.getElementById("week1"),w2=document.getElementById("week2");
@@ -630,14 +660,15 @@
     }
     for(var i=0;i<c.days;i++){
       var d=i+1,target=t[i],cumv=P.cum[i],phase=phases[i];
-      var div=document.createElement("div");div.className="day"+(followL?" mirror":"");
+      var isCopied=!!copied[d];
+      var div=document.createElement("div");div.className="day"+(isCopied?" copied":"");
       var logged=(d in log),val=logged?log[d]:null,check="",actualHtml="",pc="";
       if(logged){
         if(val>=target){div.classList.add("win");check="✅";pc="pnl-win";}
         else if(val>0){div.classList.add("partial");check="⚠️";pc="pnl-amber";}
         else{div.classList.add("loss");check="❌";pc="pnl-loss";}
         var notes=[];if(val<=-ML)notes.push("⚠ near max loss");
-        actualHtml='Actual: <b class="'+pc+'">'+fmt(val)+'</b>'+(notes.length?' · '+notes.join(" · "):'');
+        actualHtml='Actual: <b class="'+pc+'">'+fmt(val)+'</b>'+(isCopied?' <span class="copytag">⇄ copied</span>':'')+(notes.length?' · '+notes.join(" · "):'');
       }
       div.innerHTML=
         '<div class="dh"><span>Day '+d+'</span><span>'+check+'</span></div>'+
@@ -645,10 +676,9 @@
         '<div class="cum">Cumulative target: '+fmt(cumv)+'</div>'+
         '<div class="actual">'+actualHtml+'</div>'+
         '<span class="tag '+tagClass(phase)+'">'+tagLabel(phase)+'</span>'+
-        (followL?"":'<div class="editor"><div class="hint">Net P&L for the day (e.g. 240 or -120)</div>'+
+        '<div class="editor"><div class="hint">'+(isCopied?"Copied from "+esc(followL.name)+" — save to override with your own":"Net P&L for the day (e.g. 240 or -120)")+'</div>'+
         '<div class="row"><input type="number" inputmode="numeric" step="1" value="'+(logged?val:"")+'" placeholder="0">'+
-        '<button class="save">Save</button><button class="clear">Clear</button></div></div>');
-      if(followL){(phase==="build"?w1:w2).appendChild(div);continue;}
+        '<button class="save">Save</button><button class="clear">Clear</button></div></div>';
       (function(div,d){
         div.addEventListener("click",function(e){
           if(e.target.closest(".editor"))return;
@@ -659,10 +689,14 @@
         ed.querySelector(".save").addEventListener("click",function(ev){
           ev.stopPropagation();var v=parseFloat(ed.querySelector("input").value);var lg=curLog();
           if(isNaN(v)){delete lg[d];}else{lg[d]=v;}
+          var fa=activeAcct();
+          if(fa&&fa.follow){var rec=followRec(fa);if(isNaN(v))delete rec.own[d];else rec.own[d]=v;}
           save().then(function(){renderDays();refreshProgress();});
         });
         ed.querySelector(".clear").addEventListener("click",function(ev){
-          ev.stopPropagation();var lg=curLog();delete lg[d];save().then(function(){renderDays();refreshProgress();});
+          ev.stopPropagation();var lg=curLog();delete lg[d];
+          var fa=activeAcct();if(fa&&fa.follow){var rec=followRec(fa);delete rec.own[d];}
+          save().then(function(){renderDays();refreshProgress();});
         });
         ed.querySelector("input").addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();ed.querySelector(".save").click();}});
       })(div,d);
@@ -777,7 +811,7 @@
         html+='<div class="frow"><div class="fn"><b>'+esc(a.name)+'</b> <span class="sc">· copies at '+pct+'% of leader ('+a.size.toUpperCase()+' vs '+L.size.toUpperCase()+')</span></div>'+
           '<input type="checkbox" data-fol="'+a.id+'"'+(a.follow?" checked":"")+'></div>';
       });
-      html+='</div><div class="note">Followers mirror '+esc(L.name)+'’s logged days, scaled to their account size. Their day cards become read-only while following. Their own real log is kept safe and comes back if you unfollow.</div>';
+      html+='</div><div class="note">Followers keep their own logged days. From the moment they follow, '+esc(L.name)+'’s <b>new</b> trades copy in (scaled to their size) and are tagged ⇄ copied. Log or edit any day to override a copy; unfollow to drop the copies and keep just your own.</div>';
     }else{
       html+='<div class="note">Pick a leader account above. Your other accounts can then follow it — each logged day copies over, scaled to their size.</div>';
     }
@@ -924,7 +958,7 @@
       if(victim&&confirm('Delete "'+victim.name+'" and its P&L log?')){
         state.accounts=state.accounts.filter(function(x){return x.id!==del;});
         delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
-        if(state.logBackup)delete state.logBackup["acct:"+del];
+        if(state.follow)delete state.follow["acct:"+del];
         if(state.leaderId===del)state.leaderId=null;
         if(state.activeId===del)state.activeId=state.accounts[0].id;
         ensureAccounts();save().then(renderAll);
