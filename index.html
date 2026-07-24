@@ -220,6 +220,7 @@
   .edbar button{border:none;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:#2a2a30;color:var(--muted)}
   .edbar button:hover{color:var(--text)}
   .edbar button.primary{background:var(--green);color:#06281b}
+  .edrow .edc2{width:92px;flex:none}
   @media(max-width:760px){
     .edrow.sch{flex-wrap:wrap}
     .edrow.sch .edt{width:auto;flex:1 1 auto;min-width:104px;order:1}
@@ -329,43 +330,14 @@
     <p id="coCons"></p>
   </div>
 
-  <h2 class="section">The Rules</h2>
+  <h2 class="section withbtn">The Rules <button type="button" class="secbtn" id="rulesEdit">Edit</button></h2>
   <div class="rulegrid">
-    <div class="rules">
-      <h3>Risk management</h3>
-      <ul>
-        <li class="r">Max risk: <b id="rRisk">$200</b> per trade</li>
-        <li class="r">Max daily loss: <b id="rStop">$400</b> hard stop</li>
-        <li class="r">No over-leveraging — stick to predefined risk parameters</li>
-        <li class="a">Adjust position size to keep risk % consistent</li>
-        <li class="a">2 losses in a row = take a break</li>
-        <li class="g">Minimum 1:2 RRR — aim for 1:4 · <span id="rContracts">10-mini</span> cap</li>
-      </ul>
-    </div>
-    <div class="rules">
-      <h3>Trade execution</h3>
-      <ul>
-        <li class="r">Only enter when ALL checklist criteria are met — key level, OB, FVG, manipulation, MSS</li>
-        <li class="r">No manipulation = no trade</li>
-        <li class="r">Wait for confirmation — the MSS must validate the liquidity grab</li>
-        <li class="r">Follow stop placement — never move it after entry</li>
-        <li class="a">No revenge trading — stick to the plan even after a loss</li>
-        <li class="a" id="rCons">Keep best day under $3,000 (consistency)</li>
-      </ul>
-    </div>
+    <div class="rules"><h3>Risk management</h3><div class="rulebox" id="ruleRisk"></div></div>
+    <div class="rules"><h3>Trade execution</h3><div class="rulebox" id="ruleExec"></div></div>
   </div>
 
-  <h2 class="section">Expectations &amp; Discipline</h2>
-  <div class="rules">
-    <ul>
-      <li class="b">Focus on long-term growth, not individual trades — losses are part of the process</li>
-      <li class="b">Only take A+ setups — no forcing trades, execution quality over trade frequency</li>
-      <li class="b">Review and refine the strategy regularly — make data-driven improvements</li>
-      <li class="b">Track execution errors consistently</li>
-      <li class="g">~76 trades projected per year · trading window 9 AM–12 PM</li>
-      <li class="g">Report to your journal after every session</li>
-    </ul>
-  </div>
+  <h2 class="section withbtn">Expectations &amp; Discipline <button type="button" class="secbtn" id="discEdit">Edit</button></h2>
+  <div class="rules"><div class="rulebox" id="ruleDisc"></div></div>
 
 </div>
 
@@ -703,11 +675,6 @@
     document.getElementById("coDD").innerHTML="<b>Drawdown ("+c.dd+"):</b> "+c.ddDesc;
     if(c.consPct>0){document.getElementById("coCons").innerHTML="<b>"+c.consPct+"% consistency rule:</b> your single best day can't exceed "+c.consPct+"% of total profit — keep any one day under <b>"+fmt(c.consPct/100*T)+"</b>. The fix for a big day is always to add more green days, never trim.";}
     else{document.getElementById("coCons").innerHTML="<b>No consistency rule:</b> one big day is fine on this plan. The only thing that ends the eval is touching the Max Loss Limit — protect the floor and keep losers contained.";}
-    document.getElementById("rRisk").textContent=fmt(c.risk);
-    document.getElementById("rStop").textContent=fmt(c.stop);
-    document.getElementById("rContracts").textContent=c.contractsShort;
-    var rc=document.getElementById("rCons");
-    rc.textContent=c.consPct>0?("Keep best day under "+fmt(c.consPct/100*T)+" (consistency)"):"No consistency rule — trade your edge";
   }
 
   function renderAcctBar(){
@@ -833,7 +800,7 @@
     });
   });
 
-  function renderAll(){renderAcctBar();renderPlan();renderDays();refreshProgress();renderMM();}
+  function renderAll(){renderAcctBar();renderPlan();renderDays();refreshProgress();renderMM();renderRules();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
@@ -1036,6 +1003,100 @@
     var f=e.target.dataset.f;if(!f)return;
     schRows()[+e.target.dataset.i][f]=e.target.value;save();
   });
+
+  // ---- editable templates: the rules (three lists) ----
+  // Ships as the default template. Tokens fill in live per-account values:
+  //   {risk} {stop} {contracts} {bestday}   ·   **stars** = bold
+  var DEF_RULES={
+    risk:[
+      {t:"Max risk: {risk} per trade",c:"r"},
+      {t:"Max daily loss: {stop} hard stop",c:"r"},
+      {t:"No over-leveraging — stick to predefined risk parameters",c:"r"},
+      {t:"Adjust position size to keep risk % consistent",c:"a"},
+      {t:"2 losses in a row = take a break",c:"a"},
+      {t:"Minimum 1:2 RRR — aim for 1:4 · {contracts} cap",c:"g"}
+    ],
+    exec:[
+      {t:"Only enter when ALL checklist criteria are met — key level, OB, FVG, manipulation, MSS",c:"r"},
+      {t:"No manipulation = no trade",c:"r"},
+      {t:"Wait for confirmation — the MSS must validate the liquidity grab",c:"r"},
+      {t:"Follow stop placement — never move it after entry",c:"r"},
+      {t:"No revenge trading — stick to the plan even after a loss",c:"a"},
+      {t:"Keep best day under {bestday} (consistency)",c:"a"}
+    ],
+    disc:[
+      {t:"Focus on long-term growth, not individual trades — losses are part of the process",c:"b"},
+      {t:"Only take A+ setups — no forcing trades, execution quality over trade frequency",c:"b"},
+      {t:"Review and refine the strategy regularly — make data-driven improvements",c:"b"},
+      {t:"Track execution errors consistently",c:"b"},
+      {t:"~76 trades projected per year · trading window 9 AM–12 PM",c:"g"},
+      {t:"Report to your journal after every session",c:"g"}
+    ]
+  };
+  var RULE_COLORS=[{v:"r",n:"Red"},{v:"a",n:"Amber"},{v:"g",n:"Green"},{v:"b",n:"Blue"}];
+  var RULE_HOST={risk:"ruleRisk",exec:"ruleExec",disc:"ruleDisc"};
+  var editRules=false,editDisc=false;
+  function cpRule(x){return {t:x.t,c:(x.c||"r")};}
+  function ruleList(key){
+    if(!state.rules||typeof state.rules!=="object")state.rules={};
+    if(!Array.isArray(state.rules[key]))state.rules[key]=DEF_RULES[key].map(cpRule);
+    return state.rules[key];
+  }
+  function ruleText(s,c){
+    var t=esc(s);
+    t=t.replace(/\{risk\}/g,"<b>"+fmt(c.risk)+"</b>")
+       .replace(/\{stop\}/g,"<b>"+fmt(c.stop)+"</b>")
+       .replace(/\{contracts\}/g,"<b>"+esc(c.contractsShort)+"</b>")
+       .replace(/\{bestday\}/g,"<b>"+(c.consPct>0?fmt(c.consPct/100*c.target):"no cap")+"</b>");
+    return t.replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>");
+  }
+  function boxEditing(key){return key==="disc"?editDisc:editRules;}
+  function renderRuleBox(key){
+    var c=cfg(),items=ruleList(key),host=document.getElementById(RULE_HOST[key]),html="",i;
+    if(boxEditing(key)){
+      for(i=0;i<items.length;i++){
+        html+='<div class="edrow"><input class="edtxt rtxt" data-key="'+key+'" data-i="'+i+'" value="'+esc(items[i].t)+'" placeholder="Rule text">'+
+          '<select class="edc2 rcol" data-key="'+key+'" data-i="'+i+'">'+RULE_COLORS.map(function(p){return '<option value="'+p.v+'"'+(p.v===items[i].c?" selected":"")+'>'+p.n+'</option>';}).join("")+'</select>'+
+          '<button type="button" class="edel rdel" data-key="'+key+'" data-i="'+i+'">✕</button></div>';
+      }
+      html+='<div class="edbar"><button type="button" class="rAdd" data-key="'+key+'">+ Add rule</button>'+
+        '<button type="button" class="rTpl" data-key="'+key+'">Reset to template</button>'+
+        '<button type="button" class="primary rDone" data-group="'+(key==="disc"?"disc":"rules")+'">Done</button>'+
+        '<span class="hint">Tokens: {risk} {stop} {contracts} {bestday} · **bold**</span></div>';
+      host.innerHTML=html;return;
+    }
+    html="<ul>";
+    for(i=0;i<items.length;i++)html+='<li class="'+esc(items[i].c)+'">'+ruleText(items[i].t,c)+'</li>';
+    html+="</ul>";
+    if(!items.length)html='<p class="freeform">No rules yet — tap Edit to add some.</p>';
+    host.innerHTML=html;
+  }
+  function renderRules(){
+    document.getElementById("rulesEdit").textContent=editRules?"Done":"Edit";
+    document.getElementById("discEdit").textContent=editDisc?"Done":"Edit";
+    renderRuleBox("risk");renderRuleBox("exec");renderRuleBox("disc");
+  }
+  function ruleClick(e){
+    var t=e.target,key=t.dataset.key;
+    if(t.classList.contains("rDone")){if(t.dataset.group==="disc")editDisc=false;else editRules=false;renderRules();return;}
+    if(t.classList.contains("rAdd")){ruleList(key).push({t:"New rule",c:"r"});save().then(renderRules);return;}
+    if(t.classList.contains("rTpl")){state.rules[key]=DEF_RULES[key].map(cpRule);save().then(renderRules);return;}
+    if(t.classList.contains("rdel")){ruleList(key).splice(+t.dataset.i,1);save().then(renderRules);return;}
+  }
+  function ruleChange(e){
+    var t=e.target,key=t.dataset.key;if(!key)return;
+    var item=ruleList(key)[+t.dataset.i];if(!item)return;
+    if(t.classList.contains("rtxt"))item.t=t.value;
+    else if(t.classList.contains("rcol"))item.c=t.value;
+    save();
+  }
+  ["ruleRisk","ruleExec","ruleDisc"].forEach(function(id){
+    var el=document.getElementById(id);
+    el.addEventListener("click",ruleClick);
+    el.addEventListener("change",ruleChange);
+  });
+  document.getElementById("rulesEdit").addEventListener("click",function(){editRules=!editRules;renderRules();});
+  document.getElementById("discEdit").addEventListener("click",function(){editDisc=!editDisc;renderRules();});
 
   // re-check the date when the PWA comes back to the foreground (midnight rollover)
   document.addEventListener("visibilitychange",function(){if(!document.hidden)renderChecklist();});
