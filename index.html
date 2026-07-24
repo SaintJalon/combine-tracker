@@ -523,17 +523,13 @@
     var a=activeAcct();if(!a||!a.follow)return null;
     var L=leaderAcct();if(!L||L.id===a.id)return null;return L;
   }
-  // A follow record keeps the follower's OWN logged days ({own}) and a snapshot of
-  // the leader's days that already existed when following began ({from}). The
-  // follower's own days are never overwritten; only the leader's NEW trades copy in.
+  // A follow record keeps the follower's OWN logged days ({own}). Those are never
+  // overwritten; every other day mirrors the leader live, so leader edits flow through.
   function followRec(a){
     if(!state.follow)state.follow={};
     var k="acct:"+a.id;
-    if(a.follow&&!state.follow[k]){
-      var from={},L=leaderAcct(),d;
-      if(L){var ll=state.logs["acct:"+L.id]||{};for(d in ll)if(ll.hasOwnProperty(d))from[d]=1;}
-      state.follow[k]={own:Object.assign({},state.logs[k]||{}),from:from};
-    }
+    if(a.follow&&!state.follow[k])state.follow[k]={own:Object.assign({},state.logs[k]||{})};
+    if(state.follow[k]&&!state.follow[k].own)state.follow[k].own={};
     return state.follow[k];
   }
   function setFollow(id,on){
@@ -541,11 +537,7 @@
     if(!state.follow)state.follow={};
     var k="acct:"+id;
     if(on){
-      if(!a.follow){
-        var from={},L=leaderAcct(),d;
-        if(L){var ll=state.logs["acct:"+L.id]||{};for(d in ll)if(ll.hasOwnProperty(d))from[d]=1;}
-        state.follow[k]={own:Object.assign({},state.logs[k]||{}),from:from};
-      }
+      if(!a.follow)state.follow[k]={own:Object.assign({},state.logs[k]||{})};
       a.follow=true;
     }else{
       var rec=state.follow[k];
@@ -562,7 +554,7 @@
     for(var d in log){if(log.hasOwnProperty(d)&&!rec.own.hasOwnProperty(d))set[d]=1;}
     return set;
   }
-  // Rebuild each follower's log = its own days + the leader's NEW trades (scaled).
+  // Rebuild each follower's log = its own days + a live scaled copy of every leader day.
   function syncFollowers(){
     var L=leaderAcct();if(!L)return;
     if(L.follow)setFollow(L.id,false); // a leader can't follow itself
@@ -573,7 +565,6 @@
       for(d in lead){
         if(!lead.hasOwnProperty(d))continue;
         if(rec.own.hasOwnProperty(d))continue; // your own day wins, never overwritten
-        if(rec.from[d])continue;               // leader's pre-follow history, don't copy
         out[d]=Math.round(lead[d]*ratio);
       }
       state.logs["acct:"+a.id]=out;
@@ -628,7 +619,7 @@
     var c=cfg(),P=livePlan(),t=P.live,phases=tpl(c.days).p,log=curLog(),ML=c.maxloss;
     var followL=activeFollowLeader(),copied=copiedDaySet();
     var cb=document.getElementById("copyBar");
-    if(followL){cb.className="copybar on";cb.innerHTML="⇄ <b>Currently following "+esc(followL.name)+"</b> — your own logged days stay put; its new trades copy in (scaled) and are tagged. You can still log or override any day.";}
+    if(followL){cb.className="copybar on";cb.innerHTML="⇄ <b>Currently following "+esc(followL.name)+"</b> — your own logged days stay put; every other day mirrors "+esc(followL.name)+" live (scaled) and updates when it changes. Log or override any day to make it yours.";}
     else{cb.className="copybar";cb.innerHTML="";}
     var buildCount=phases.filter(function(p){return p==="build";}).length;
     var w1=document.getElementById("week1"),w2=document.getElementById("week2");
@@ -691,12 +682,12 @@
           if(isNaN(v)){delete lg[d];}else{lg[d]=v;}
           var fa=activeAcct();
           if(fa&&fa.follow){var rec=followRec(fa);if(isNaN(v))delete rec.own[d];else rec.own[d]=v;}
-          save().then(function(){renderDays();refreshProgress();});
+          syncFollowers();save().then(function(){renderDays();refreshProgress();});
         });
         ed.querySelector(".clear").addEventListener("click",function(ev){
           ev.stopPropagation();var lg=curLog();delete lg[d];
           var fa=activeAcct();if(fa&&fa.follow){var rec=followRec(fa);delete rec.own[d];}
-          save().then(function(){renderDays();refreshProgress();});
+          syncFollowers();save().then(function(){renderDays();refreshProgress();});
         });
         ed.querySelector("input").addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();ed.querySelector(".save").click();}});
       })(div,d);
@@ -811,7 +802,7 @@
         html+='<div class="frow"><div class="fn"><b>'+esc(a.name)+'</b> <span class="sc">· copies at '+pct+'% of leader ('+a.size.toUpperCase()+' vs '+L.size.toUpperCase()+')</span></div>'+
           '<input type="checkbox" data-fol="'+a.id+'"'+(a.follow?" checked":"")+'></div>';
       });
-      html+='</div><div class="note">Followers keep their own logged days. From the moment they follow, '+esc(L.name)+'’s <b>new</b> trades copy in (scaled to their size) and are tagged ⇄ copied. Log or edit any day to override a copy; unfollow to drop the copies and keep just your own.</div>';
+      html+='</div><div class="note">Followers keep their own logged days. Every other day mirrors '+esc(L.name)+' (scaled to their size) and <b>updates whenever '+esc(L.name)+' changes</b> — tagged ⇄ copied. Log or edit any day to override a copy; unfollow to drop the copies and keep just your own.</div>';
     }else{
       html+='<div class="note">Pick a leader account above. Your other accounts can then follow it — each logged day copies over, scaled to their size.</div>';
     }
