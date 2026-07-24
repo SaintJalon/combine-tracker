@@ -44,6 +44,29 @@
   .acch.active .sb{color:var(--green)}
   .acch .x{border:none;background:transparent;color:var(--muted2);font-size:15px;cursor:pointer;padding:2px 5px;line-height:1;font-family:inherit;border-radius:6px}
   .acch .x:hover{color:var(--red);background:var(--red-soft)}
+  .acch .badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 6px;border-radius:6px;margin-top:3px}
+  .acch .badge.lead{background:var(--amber-soft);color:var(--amber)}
+  .acch .badge.foll{background:var(--blue-soft);color:var(--blue)}
+
+  /* copy trading panel */
+  .copy{background:linear-gradient(180deg,rgba(142,156,245,0.05),var(--card));border:1px solid rgba(142,156,245,0.2);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+  .copy .ch{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .copy .ch h4{margin:0;font-size:13px;font-weight:600;color:#aab4f7}
+  .copy .ch .lead{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+  .copy select{background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:6px 8px;font-size:12.5px;font-family:inherit;outline:none}
+  .copy select:focus{border-color:var(--green)}
+  .copy .fol{display:flex;flex-direction:column;gap:7px;margin-top:11px}
+  .copy .frow{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted);background:#0f0f12;border:1px solid var(--line);border-radius:9px;padding:8px 11px}
+  .copy .frow .fn{flex:1;min-width:0}
+  .copy .frow .fn b{color:var(--text);font-weight:600}
+  .copy .frow .sc{font-size:11px;color:var(--muted2)}
+  .copy .frow input{width:18px;height:18px;accent-color:var(--green);flex-shrink:0;cursor:pointer}
+  .copy .note{font-size:11px;color:var(--muted2);margin-top:9px}
+  .copybar{background:var(--blue-soft);border:1px solid rgba(142,156,245,.3);color:#aab4f7;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
+  .copybar.on{display:block}
+  .copybar b{color:var(--text);font-weight:600}
+  .day.mirror{cursor:default}
+  .day.mirror:active{transform:none}
   .acch.add{color:var(--muted);font-weight:600;font-size:12.5px;border-style:dashed;border-color:var(--line2)}
   .acch.add:hover{color:var(--text)}
 
@@ -249,6 +272,7 @@
   <h1 class="apptitle">Trading Tracker</h1>
 
   <div class="accts" id="acctBar"></div>
+  <div class="copy" id="copyPanel" style="display:none"></div>
 
   <div class="acctsel" id="firmSel">
     <button data-firm="topstep">TopStep</button>
@@ -293,6 +317,7 @@
     <div class="consistency" id="pConsist"></div>
   </div>
 
+  <div class="copybar" id="copyBar"></div>
   <h2 class="section" id="h1">Week 1 — Build the Buffer</h2>
   <div class="days" id="week1"></div>
   <h2 class="section" id="h2">Week 2 — Push to Target</h2>
@@ -448,7 +473,7 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},days:{},logs:{},accounts:[],activeId:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},days:{},logs:{},accounts:[],activeId:null,leaderId:null};
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -488,6 +513,28 @@
     return c;
   }
   function curLog(){if(!state.logs[modeKey()])state.logs[modeKey()]={};return state.logs[modeKey()];}
+
+  // ---- copy trading: mirror one of my accounts into the others ----
+  var SIZE$={ "25k":25000,"50k":50000,"100k":100000,"150k":150000 };
+  function acctById(id){for(var i=0;i<state.accounts.length;i++){if(state.accounts[i].id===id)return state.accounts[i];}return null;}
+  function sizeDollars(a){return SIZE$[a.size]||FIRMS[a.firm].plans[a.plan].sizes[a.size].size;}
+  function leaderAcct(){return state.leaderId?acctById(state.leaderId):null;}
+  function activeFollowLeader(){
+    var a=activeAcct();if(!a||!a.follow)return null;
+    var L=leaderAcct();if(!L||L.id===a.id)return null;return L;
+  }
+  // Recompute every follower's log from the leader's, scaled by size ratio.
+  function syncFollowers(){
+    var L=leaderAcct();if(!L)return;
+    if(L.follow)L.follow=false; // a leader can't follow itself
+    var lead=state.logs["acct:"+L.id]||{},ls=sizeDollars(L);
+    state.accounts.forEach(function(a){
+      if(a.id===L.id||!a.follow)return;
+      var ratio=sizeDollars(a)/ls,out={};
+      for(var d in lead){if(lead.hasOwnProperty(d))out[d]=Math.round(lead[d]*ratio);}
+      state.logs["acct:"+a.id]=out;
+    });
+  }
 
   function dayTargets(){
     var c=cfg(),w=tpl(c.days).w,ws=w.reduce(function(a,b){return a+b;},0),T=c.target,out=[],acc=0;
@@ -535,6 +582,10 @@
 
   function renderDays(){
     var c=cfg(),P=livePlan(),t=P.live,phases=tpl(c.days).p,log=curLog(),ML=c.maxloss;
+    var followL=activeFollowLeader();
+    var cb=document.getElementById("copyBar");
+    if(followL){cb.className="copybar on";cb.innerHTML="⇄ This account is <b>following "+esc(followL.name)+"</b> — days are mirrored automatically and can't be edited here. Turn it off in <b>Copy trading</b> up top.";}
+    else{cb.className="copybar";cb.innerHTML="";}
     var buildCount=phases.filter(function(p){return p==="build";}).length;
     var w1=document.getElementById("week1"),w2=document.getElementById("week2");
     var cols=(c.days<=6)?"days d3":"days";
@@ -565,7 +616,7 @@
     }
     for(var i=0;i<c.days;i++){
       var d=i+1,target=t[i],cumv=P.cum[i],phase=phases[i];
-      var div=document.createElement("div");div.className="day";
+      var div=document.createElement("div");div.className="day"+(followL?" mirror":"");
       var logged=(d in log),val=logged?log[d]:null,check="",actualHtml="",pc="";
       if(logged){
         if(val>=target){div.classList.add("win");check="✅";pc="pnl-win";}
@@ -580,9 +631,10 @@
         '<div class="cum">Cumulative target: '+fmt(cumv)+'</div>'+
         '<div class="actual">'+actualHtml+'</div>'+
         '<span class="tag '+tagClass(phase)+'">'+tagLabel(phase)+'</span>'+
-        '<div class="editor"><div class="hint">Net P&L for the day (e.g. 240 or -120)</div>'+
+        (followL?"":'<div class="editor"><div class="hint">Net P&L for the day (e.g. 240 or -120)</div>'+
         '<div class="row"><input type="number" inputmode="numeric" step="1" value="'+(logged?val:"")+'" placeholder="0">'+
-        '<button class="save">Save</button><button class="clear">Clear</button></div></div>';
+        '<button class="save">Save</button><button class="clear">Clear</button></div></div>');
+      if(followL){(phase==="build"?w1:w2).appendChild(div);continue;}
       (function(div,d){
         div.addEventListener("click",function(e){
           if(e.target.closest(".editor"))return;
@@ -683,12 +735,38 @@
       var f=FIRMS[a.firm]||FIRMS.topstep;
       var pl=f.plans[a.plan]||f.plans[f.planOrder[0]];
       var sub=f.name+" · "+pl.name+" · "+a.size.toUpperCase();
+      var badge=(a.id===state.leaderId)?'<span class="badge lead">★ Leader</span>':(a.follow&&leaderAcct()&&a.id!==state.leaderId?'<span class="badge foll">⇄ Follows</span>':"");
       html+='<div class="acch'+(a.id===state.activeId?" active":"")+'" data-id="'+a.id+'" title="'+(a.id===state.activeId?"Tap to rename":"Switch to this account")+'">'+
-        '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span></div>'+
+        '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span>'+badge+'</div>'+
         (state.accounts.length>1?'<button type="button" class="x" data-del="'+a.id+'" title="Delete account">×</button>':'')+
         '</div>';
     });
     html+='<div class="acch add" id="acctAdd">＋ Add account</div>';
+    host.innerHTML=html;
+  }
+
+  function renderCopyPanel(){
+    var host=document.getElementById("copyPanel");
+    if(state.accounts.length<2){host.style.display="none";host.innerHTML="";return;}
+    host.style.display="block";
+    var L=leaderAcct();
+    var opts='<option value="">— none —</option>'+state.accounts.map(function(a){
+      return '<option value="'+a.id+'"'+(a.id===state.leaderId?" selected":"")+'>'+esc(a.name)+'</option>';
+    }).join("");
+    var html='<div class="ch"><h4>Copy trading</h4><div class="lead">Leader <select id="leadSel">'+opts+'</select></div></div>';
+    if(L){
+      html+='<div class="fol">';
+      state.accounts.forEach(function(a){
+        if(a.id===L.id)return;
+        var ratio=sizeDollars(a)/sizeDollars(L);
+        var pct=Math.round(ratio*100);
+        html+='<div class="frow"><div class="fn"><b>'+esc(a.name)+'</b> <span class="sc">· copies at '+pct+'% of leader ('+a.size.toUpperCase()+' vs '+L.size.toUpperCase()+')</span></div>'+
+          '<input type="checkbox" data-fol="'+a.id+'"'+(a.follow?" checked":"")+'></div>';
+      });
+      html+='</div><div class="note">Followers mirror '+esc(L.name)+'’s logged days, scaled to their account size. Their day cards become read-only while following.</div>';
+    }else{
+      html+='<div class="note">Pick a leader account above. Your other accounts can then follow it — each logged day copies over, scaled to their size.</div>';
+    }
     host.innerHTML=html;
   }
 
@@ -800,7 +878,7 @@
     });
   });
 
-  function renderAll(){renderAcctBar();renderPlan();renderDays();refreshProgress();renderMM();renderRules();}
+  function renderAll(){syncFollowers();renderCopyPanel();renderAcctBar();renderPlan();renderDays();refreshProgress();renderMM();renderRules();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
@@ -832,6 +910,7 @@
       if(victim&&confirm('Delete "'+victim.name+'" and its P&L log?')){
         state.accounts=state.accounts.filter(function(x){return x.id!==del;});
         delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
+        if(state.leaderId===del)state.leaderId=null;
         if(state.activeId===del)state.activeId=state.accounts[0].id;
         ensureAccounts();save().then(renderAll);
       }
@@ -860,6 +939,21 @@
     state.activeId=chip.dataset.id;
     ensureAccounts();save().then(renderAll);
   });
+
+  // copy-trading panel: choose leader + toggle followers
+  document.getElementById("copyPanel").addEventListener("change",function(e){
+    if(e.target.id==="leadSel"){
+      state.leaderId=e.target.value||null;
+      var L=leaderAcct();if(L)L.follow=false;
+      save().then(renderAll);return;
+    }
+    var fol=e.target.getAttribute("data-fol");
+    if(fol){
+      var a=acctById(fol);if(a)a.follow=e.target.checked;
+      save().then(renderAll);return;
+    }
+  });
+
   editKpi("kTarget",function(){return cfg().target;},function(v){state.targets[modeKey()]=v;});
   editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
 
