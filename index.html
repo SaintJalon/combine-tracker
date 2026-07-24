@@ -503,31 +503,26 @@
     return out;
   }
 
-  // Re-targets the plan off real results: logged days keep the target they were
-  // judged against, unlogged days split whatever is still left to earn, and the
-  // cumulative line follows actual P&L so it always lands on the real target.
+  // Re-targets the plan off real results, walking day by day in order.
+  // Each day's target is its weighted share of whatever was still left to earn
+  // going INTO that day, so the number a day shows never changes once you log
+  // it — hit the figure on the card and it counts as a win.
   function livePlan(){
-    var c=cfg(),w=tpl(c.days).w,log=curLog(),base=dayTargets(),live=base.slice();
-    var totalLogged=0,d;
-    for(d=1;d<=c.days;d++){if(d in log)totalLogged+=log[d];}
-    var remaining=c.target-totalLogged;
-    var idx=[],wsum=0,i;
-    for(i=0;i<c.days;i++){if(!((i+1) in log)){idx.push(i);wsum+=w[i];}}
-    if(idx.length){
-      if(remaining<=0){
-        for(i=0;i<idx.length;i++)live[idx[i]]=0;
-      }else{
-        var placed=0;
-        for(i=0;i<idx.length;i++){
-          var k=idx[i];
-          var v=(i<idx.length-1)?Math.round(w[k]/wsum*remaining):(remaining-placed);
-          live[k]=v;placed+=v;
-        }
-      }
+    var c=cfg(),w=tpl(c.days).w,log=curLog(),n=c.days,base=dayTargets();
+    var suf=new Array(n+1);suf[n]=0;
+    for(var i=n-1;i>=0;i--)suf[i]=suf[i+1]+w[i];
+    var live=[],cum=[],banked=0,totalLogged=0,d,tgt,remaining;
+    for(i=0;i<n;i++){
+      remaining=c.target-banked;
+      if(remaining<=0)tgt=0;
+      else tgt=(suf[i]>0)?Math.round(remaining*w[i]/suf[i]):remaining;
+      live.push(tgt);
+      d=i+1;
+      if(d in log){banked+=log[d];totalLogged+=log[d];}
+      else banked+=tgt;
+      cum.push(banked);
     }
-    var cum=[],run=0;
-    for(i=0;i<c.days;i++){run+=(((i+1) in log)?log[i+1]:live[i]);cum.push(run);}
-    return {base:base,live:live,cum:cum,remaining:remaining,totalLogged:totalLogged};
+    return {base:base,live:live,cum:cum,remaining:c.target-totalLogged,totalLogged:totalLogged};
   }
 
   async function load(){
