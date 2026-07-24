@@ -202,6 +202,33 @@
   .verdict button{border:none;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:#2a2a30;color:var(--muted);flex-shrink:0}
   .verdict button:hover{color:var(--text)}
 
+  /* editable templates (checklist + schedule) */
+  h2.section.withbtn{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .secbtn{background:#2a2a30;color:var(--muted);border:none;border-radius:8px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;flex-shrink:0}
+  .secbtn:hover{color:var(--text)}
+  .edrow{display:flex;gap:7px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line)}
+  .edrow input,.edrow select{background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:7px 9px;font-size:13px;font-family:inherit;outline:none;min-width:0}
+  .edrow input:focus,.edrow select:focus{border-color:var(--green)}
+  .edrow .edtxt{flex:1}
+  .edrow.sch .edt{width:118px;flex:none}
+  .edrow.sch .edd{flex:1}
+  .edrow.sch .edl{width:86px;flex:none}
+  .edrow.sch .edc{width:82px;flex:none}
+  .edel{background:#2a2a30;color:var(--muted);border:none;border-radius:8px;padding:7px 10px;cursor:pointer;font-family:inherit;font-size:12px;flex-shrink:0}
+  .edel:hover{color:var(--red)}
+  .edbar{display:flex;gap:8px;padding:11px 12px;flex-wrap:wrap;align-items:center}
+  .edbar button{border:none;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:#2a2a30;color:var(--muted)}
+  .edbar button:hover{color:var(--text)}
+  .edbar button.primary{background:var(--green);color:#06281b}
+  @media(max-width:760px){
+    .edrow.sch{flex-wrap:wrap}
+    .edrow.sch .edt{width:auto;flex:1 1 auto;min-width:104px;order:1}
+    .edrow.sch .edl{width:auto;flex:1 1 auto;min-width:70px;order:2}
+    .edrow.sch .edc{width:auto;flex:0 1 auto;order:3}
+    .edrow.sch .edel{order:4}
+    .edrow.sch .edd{flex:1 1 100%;order:5}
+  }
+
   @media(max-width:760px){
     .mmin{grid-template-columns:repeat(2,1fr)}
     .mmgrid2{grid-template-columns:1fr}
@@ -270,18 +297,11 @@
   <h2 class="section" id="h2">Week 2 — Push to Target</h2>
   <div class="days" id="week2"></div>
 
-  <h2 class="section">Pre-Trade Checklist — Entry Signal</h2>
+  <h2 class="section withbtn">Pre-Trade Checklist — Entry Signal <button type="button" class="secbtn" id="chkEdit">Edit</button></h2>
   <div class="checklist" id="checklist"></div>
 
-  <h2 class="section">Daily Schedule (CST)</h2>
-  <div class="sched">
-    <div class="srow"><div class="time">8:00–8:30 AM</div><div class="desc">Check levels, news, pre-market bias</div><div class="pill prep">Prep</div></div>
-    <div class="srow"><div class="time">8:30–9:15 AM</div><div class="desc">Watch open — NO trading, just observe</div><div class="pill no">No trade</div></div>
-    <div class="srow"><div class="time">9:15–11:30 AM</div><div class="desc">Primary window — take only A+ setups</div><div class="pill trade">Trade</div></div>
-    <div class="srow"><div class="time">11:30 AM–12:30 PM</div><div class="desc">Lunch break — step away from screen</div><div class="pill off">Off</div></div>
-    <div class="srow"><div class="time">12:30–1:30 PM</div><div class="desc">Optional — only if morning was green</div><div class="pill opt">Optional</div></div>
-    <div class="srow"><div class="time">2:00 PM</div><div class="desc">Hard stop — close platform no matter what</div><div class="pill done">Done</div></div>
-  </div>
+  <h2 class="section withbtn">Daily Schedule (CST) <button type="button" class="secbtn" id="schEdit">Edit</button></h2>
+  <div class="sched" id="sched"></div>
 
   <h2 class="section">Money Management</h2>
   <div class="plan">
@@ -896,42 +916,131 @@
     });
   })();
 
-  // ---- pre-trade checklist (from the trading-plan journal) ----
-  var CHECKS=[
-    "<b>Weekly key levels + PDH/PDL</b> marked on the Daily",
-    "<b>4H high/low, OBs and FVGs</b> marked (Daily FVGs too)",
-    "<b>15-min framework</b> set — 15m FVGs, bullish/bearish OBs, liquidity pools",
-    "Price is <b>reacting at a key level</b> — weekly, PDH/PDL, FVG, or OB",
-    "<b>Manipulation seen</b> — liquidity grab / stop hunt at the level",
-    "<b>MSS confirms</b> — rejection from a strong OB or reclaim through FVG",
-    "<b>Stop beyond the zone</b> · TP at liquidity target · RRR ≥ 1:2"
+  // ---- editable templates: pre-trade checklist + daily schedule ----
+  // These ship as the default template; anything you change is saved on this device.
+  var DEF_CHECKS=[
+    "**Weekly key levels + PDH/PDL** marked on the Daily",
+    "**4H high/low, OBs and FVGs** marked (Daily FVGs too)",
+    "**15-min framework** set — 15m FVGs, bullish/bearish OBs, liquidity pools",
+    "Price is **reacting at a key level** — weekly, PDH/PDL, FVG, or OB",
+    "**Manipulation seen** — liquidity grab / stop hunt at the level",
+    "**MSS confirms** — rejection from a strong OB or reclaim through FVG",
+    "**Stop beyond the zone** · TP at liquidity target · RRR ≥ 1:2"
   ];
+  var DEF_SCHED=[
+    {t:"8:00–8:30 AM",d:"Check levels, news, pre-market bias",l:"Prep",c:"prep"},
+    {t:"8:30–9:15 AM",d:"Watch open — NO trading, just observe",l:"No trade",c:"no"},
+    {t:"9:15–11:30 AM",d:"Primary window — take only A+ setups",l:"Trade",c:"trade"},
+    {t:"11:30 AM–12:30 PM",d:"Lunch break — step away from screen",l:"Off",c:"off"},
+    {t:"12:30–1:30 PM",d:"Optional — only if morning was green",l:"Optional",c:"prep"},
+    {t:"2:00 PM",d:"Hard stop — close platform no matter what",l:"Done",c:"no"}
+  ];
+  var PILLS=[{v:"trade",n:"Green"},{v:"prep",n:"Amber"},{v:"no",n:"Red"},{v:"off",n:"Grey"}];
+  var editChk=false,editSch=false;
+
+  function esc(s){return String(s).replace(/[&<>"]/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m];});}
+  function rich(s){return esc(s).replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>");}
+  function chkItems(){
+    if(!Array.isArray(state.checklist))state.checklist=DEF_CHECKS.slice();
+    return state.checklist;
+  }
+  function schRows(){
+    if(!Array.isArray(state.schedule))state.schedule=DEF_SCHED.map(function(r){return{t:r.t,d:r.d,l:r.l,c:r.c};});
+    return state.schedule;
+  }
   function today(){var d=new Date();return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();}
   function curChecks(){
-    if(!state.checks||state.checks.d!==today())state.checks={d:today(),v:CHECKS.map(function(){return false;})};
-    if(!Array.isArray(state.checks.v)||state.checks.v.length!==CHECKS.length)state.checks.v=CHECKS.map(function(){return false;});
+    var items=chkItems();
+    if(!state.checks||state.checks.d!==today())state.checks={d:today(),v:items.map(function(){return false;})};
+    if(!Array.isArray(state.checks.v))state.checks.v=[];
+    while(state.checks.v.length<items.length)state.checks.v.push(false);
+    if(state.checks.v.length>items.length)state.checks.v.length=items.length;
     return state.checks;
   }
+
   function renderChecklist(){
-    var ck=curChecks(),host=document.getElementById("checklist"),html="";
-    for(var i=0;i<CHECKS.length;i++){
-      html+='<div class="chk'+(ck.v[i]?" on":"")+'" data-i="'+i+'"><div class="box">'+(ck.v[i]?"✓":"")+'</div><div class="txt">'+CHECKS[i]+'</div></div>';
+    var items=chkItems(),host=document.getElementById("checklist"),html="",i;
+    document.getElementById("chkEdit").textContent=editChk?"Done":"Edit";
+    if(editChk){
+      for(i=0;i<items.length;i++){
+        html+='<div class="edrow"><input class="edtxt" data-i="'+i+'" value="'+esc(items[i])+'" placeholder="Checklist item"><button type="button" class="edel" data-i="'+i+'">✕</button></div>';
+      }
+      html+='<div class="edbar"><button type="button" id="chkAdd">+ Add item</button><button type="button" id="chkTpl">Reset to template</button><button type="button" class="primary" id="chkDone">Done</button>'+
+            '<span class="hint">Wrap words in **stars** to bold them.</span></div>';
+      host.innerHTML=html;return;
     }
-    var all=ck.v.every(function(x){return x;});
-    html+='<div class="verdict '+(all?"go":"wait")+'"><span>'+(all?"A+ setup — every criterion met. Take the trade.":"Wait — no manipulation, no trade. ("+ck.v.filter(function(x){return x;}).length+"/"+CHECKS.length+")")+'</span><button type="button" id="chkReset">Reset</button></div>';
+    var ck=curChecks();
+    for(i=0;i<items.length;i++){
+      html+='<div class="chk'+(ck.v[i]?" on":"")+'" data-i="'+i+'"><div class="box">'+(ck.v[i]?"✓":"")+'</div><div class="txt">'+rich(items[i])+'</div></div>';
+    }
+    var done=ck.v.filter(function(x){return x;}).length,all=items.length>0&&done===items.length;
+    html+='<div class="verdict '+(all?"go":"wait")+'"><span>'+(all?"A+ setup — every criterion met. Take the trade.":(items.length?"Wait — no manipulation, no trade. ("+done+"/"+items.length+")":"No checklist items — tap Edit to add some."))+'</span><button type="button" id="chkReset">Reset</button></div>';
     host.innerHTML=html;
   }
+
+  function renderSched(){
+    var rows=schRows(),host=document.getElementById("sched"),html="",i,r;
+    document.getElementById("schEdit").textContent=editSch?"Done":"Edit";
+    if(editSch){
+      for(i=0;i<rows.length;i++){
+        r=rows[i];
+        html+='<div class="edrow sch">'+
+          '<input class="edt" data-i="'+i+'" data-f="t" value="'+esc(r.t)+'" placeholder="Time">'+
+          '<input class="edd" data-i="'+i+'" data-f="d" value="'+esc(r.d)+'" placeholder="What happens">'+
+          '<input class="edl" data-i="'+i+'" data-f="l" value="'+esc(r.l)+'" placeholder="Tag">'+
+          '<select class="edc" data-i="'+i+'" data-f="c">'+PILLS.map(function(p){return '<option value="'+p.v+'"'+(p.v===r.c?" selected":"")+'>'+p.n+'</option>';}).join("")+'</select>'+
+          '<button type="button" class="edel" data-i="'+i+'">✕</button></div>';
+      }
+      html+='<div class="edbar"><button type="button" id="schAdd">+ Add row</button><button type="button" id="schTpl">Reset to template</button><button type="button" class="primary" id="schDone">Done</button></div>';
+      host.innerHTML=html;return;
+    }
+    for(i=0;i<rows.length;i++){
+      r=rows[i];
+      html+='<div class="srow"><div class="time">'+esc(r.t)+'</div><div class="desc">'+esc(r.d)+'</div><div class="pill '+esc(r.c)+'">'+esc(r.l)+'</div></div>';
+    }
+    if(!rows.length)html='<div class="srow"><div class="desc">No rows yet — tap Edit to build your schedule.</div></div>';
+    host.innerHTML=html;
+  }
+
+  document.getElementById("chkEdit").addEventListener("click",function(){editChk=!editChk;renderChecklist();});
+  document.getElementById("schEdit").addEventListener("click",function(){editSch=!editSch;renderSched();});
+
   document.getElementById("checklist").addEventListener("click",function(e){
-    if(e.target.id==="chkReset"){state.checks={d:today(),v:CHECKS.map(function(){return false;})};save().then(renderChecklist);return;}
-    var row=e.target.closest(".chk");if(!row)return;
-    var ck=curChecks();ck.v[row.dataset.i]=!ck.v[row.dataset.i];
+    var t=e.target,i;
+    if(t.id==="chkReset"){var it=chkItems();state.checks={d:today(),v:it.map(function(){return false;})};save().then(renderChecklist);return;}
+    if(t.id==="chkAdd"){chkItems().push("New check");save().then(renderChecklist);return;}
+    if(t.id==="chkTpl"){state.checklist=DEF_CHECKS.slice();state.checks={d:today(),v:DEF_CHECKS.map(function(){return false;})};save().then(renderChecklist);return;}
+    if(t.id==="chkDone"){editChk=false;renderChecklist();return;}
+    if(t.classList.contains("edel")){
+      i=+t.dataset.i;chkItems().splice(i,1);
+      if(state.checks&&Array.isArray(state.checks.v))state.checks.v.splice(i,1);
+      save().then(renderChecklist);return;
+    }
+    if(editChk)return;
+    var row=t.closest(".chk");if(!row)return;
+    var ck=curChecks();i=+row.dataset.i;ck.v[i]=!ck.v[i];
     save().then(renderChecklist);
+  });
+  document.getElementById("checklist").addEventListener("change",function(e){
+    if(e.target.classList.contains("edtxt")){chkItems()[+e.target.dataset.i]=e.target.value;save();}
+  });
+
+  document.getElementById("sched").addEventListener("click",function(e){
+    var t=e.target;
+    if(t.id==="schAdd"){schRows().push({t:"9:00 AM",d:"New block",l:"Trade",c:"trade"});save().then(renderSched);return;}
+    if(t.id==="schTpl"){state.schedule=DEF_SCHED.map(function(r){return{t:r.t,d:r.d,l:r.l,c:r.c};});save().then(renderSched);return;}
+    if(t.id==="schDone"){editSch=false;renderSched();return;}
+    if(t.classList.contains("edel")){schRows().splice(+t.dataset.i,1);save().then(renderSched);return;}
+  });
+  document.getElementById("sched").addEventListener("change",function(e){
+    var f=e.target.dataset.f;if(!f)return;
+    schRows()[+e.target.dataset.i][f]=e.target.value;save();
   });
 
   // re-check the date when the PWA comes back to the foreground (midnight rollover)
   document.addEventListener("visibilitychange",function(){if(!document.hidden)renderChecklist();});
 
-  load().then(function(){renderAll();renderChecklist();});
+  load().then(function(){renderAll();renderChecklist();renderSched();});
 })();
 </script>
 <script>
