@@ -473,7 +473,7 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},days:{},logs:{},accounts:[],activeId:null,leaderId:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},days:{},logs:{},logBackup:{},accounts:[],activeId:null,leaderId:null};
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -523,10 +523,24 @@
     var a=activeAcct();if(!a||!a.follow)return null;
     var L=leaderAcct();if(!L||L.id===a.id)return null;return L;
   }
+  // Turn following on/off WITHOUT destroying the account's own real log.
+  // Starting to follow snapshots the account's real days; unfollowing restores them.
+  function setFollow(id,on){
+    var a=acctById(id);if(!a)return;
+    if(!state.logBackup)state.logBackup={};
+    var k="acct:"+id;
+    if(on){
+      if(!a.follow&&!state.logBackup.hasOwnProperty(k))state.logBackup[k]=Object.assign({},state.logs[k]||{});
+      a.follow=true;
+    }else{
+      if(state.logBackup.hasOwnProperty(k)){state.logs[k]=state.logBackup[k];delete state.logBackup[k];}
+      a.follow=false;
+    }
+  }
   // Recompute every follower's log from the leader's, scaled by size ratio.
   function syncFollowers(){
     var L=leaderAcct();if(!L)return;
-    if(L.follow)L.follow=false; // a leader can't follow itself
+    if(L.follow)setFollow(L.id,false); // a leader can't follow itself
     var lead=state.logs["acct:"+L.id]||{},ls=sizeDollars(L);
     state.accounts.forEach(function(a){
       if(a.id===L.id||!a.follow)return;
@@ -763,7 +777,7 @@
         html+='<div class="frow"><div class="fn"><b>'+esc(a.name)+'</b> <span class="sc">· copies at '+pct+'% of leader ('+a.size.toUpperCase()+' vs '+L.size.toUpperCase()+')</span></div>'+
           '<input type="checkbox" data-fol="'+a.id+'"'+(a.follow?" checked":"")+'></div>';
       });
-      html+='</div><div class="note">Followers mirror '+esc(L.name)+'’s logged days, scaled to their account size. Their day cards become read-only while following.</div>';
+      html+='</div><div class="note">Followers mirror '+esc(L.name)+'’s logged days, scaled to their account size. Their day cards become read-only while following. Their own real log is kept safe and comes back if you unfollow.</div>';
     }else{
       html+='<div class="note">Pick a leader account above. Your other accounts can then follow it — each logged day copies over, scaled to their size.</div>';
     }
@@ -910,6 +924,7 @@
       if(victim&&confirm('Delete "'+victim.name+'" and its P&L log?')){
         state.accounts=state.accounts.filter(function(x){return x.id!==del;});
         delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
+        if(state.logBackup)delete state.logBackup["acct:"+del];
         if(state.leaderId===del)state.leaderId=null;
         if(state.activeId===del)state.activeId=state.accounts[0].id;
         ensureAccounts();save().then(renderAll);
@@ -944,12 +959,12 @@
   document.getElementById("copyPanel").addEventListener("change",function(e){
     if(e.target.id==="leadSel"){
       state.leaderId=e.target.value||null;
-      var L=leaderAcct();if(L)L.follow=false;
+      var L=leaderAcct();if(L&&L.follow)setFollow(L.id,false);
       save().then(renderAll);return;
     }
     var fol=e.target.getAttribute("data-fol");
     if(fol){
-      var a=acctById(fol);if(a)a.follow=e.target.checked;
+      setFollow(fol,e.target.checked);
       save().then(renderAll);return;
     }
   });
