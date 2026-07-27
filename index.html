@@ -62,6 +62,14 @@
   .copy .frow .sc{font-size:11px;color:var(--muted2)}
   .copy .frow input{width:18px;height:18px;accent-color:var(--green);flex-shrink:0;cursor:pointer}
   .copy .note{font-size:11px;color:var(--muted2);margin-top:9px}
+  .breachbar{border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none;font-weight:600}
+  .breachbar.on{display:block}
+  .breachbar.warn{background:var(--amber-soft);border:1px solid rgba(245,179,64,.35);color:#f3cd8e}
+  .breachbar.bad{background:var(--red-soft);border:1px solid rgba(243,115,111,.4);color:#f3a9a6}
+  .day .flag{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;vertical-align:middle}
+  .day .flag.stop{background:var(--amber-soft);color:var(--amber)}
+  .day .flag.max{background:var(--red-soft);color:var(--red)}
+  .day.breach{border-color:var(--red);box-shadow:0 0 0 1px rgba(243,115,111,.35)}
   .copybar{background:var(--blue-soft);border:1px solid rgba(142,156,245,.3);color:#aab4f7;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
   .copybar.on{display:block}
   .copybar b{color:var(--text);font-weight:600}
@@ -318,6 +326,7 @@
   </div>
 
   <div class="copybar" id="copyBar"></div>
+  <div class="breachbar" id="breachBar"></div>
   <h2 class="section" id="h1">Week 1 — Build the Buffer</h2>
   <div class="days" id="week1"></div>
   <h2 class="section" id="h2">Week 2 — Push to Target</h2>
@@ -659,6 +668,7 @@
       hd1.style.display="none";w1.style.display="none";
       hd2.textContent="Push to Target — Day 1–"+c.days+" · "+needTxt;
     }
+    var stopBreaches=0,maxBreaches=0;
     for(var i=0;i<c.days;i++){
       var d=i+1,target=t[i],cumv=P.cum[i],phase=phases[i];
       var isCopied=!!copied[d];
@@ -668,8 +678,10 @@
         if(val>=target){div.classList.add("win");check="✅";pc="pnl-win";}
         else if(val>0){div.classList.add("partial");check="⚠️";pc="pnl-amber";}
         else{div.classList.add("loss");check="❌";pc="pnl-loss";}
-        var notes=[];if(val<=-ML)notes.push("⚠ near max loss");
-        actualHtml='Actual: <b class="'+pc+'">'+fmt(val)+'</b>'+(isCopied?' <span class="copytag">⇄ copied</span>':'')+(notes.length?' · '+notes.join(" · "):'');
+        var notes="";
+        if(val<=-ML){div.classList.add("breach");notes=' <span class="flag max">⛔ max-loss breach</span>';maxBreaches++;}
+        else if(val<=-c.stop){notes=' <span class="flag stop">⚠ over daily stop</span>';stopBreaches++;}
+        actualHtml='Actual: <b class="'+pc+'">'+fmt(val)+'</b>'+(isCopied?' <span class="copytag">⇄ copied</span>':'')+notes;
       }
       div.innerHTML=
         '<div class="dh"><span>Day '+d+'</span><span>'+check+'</span></div>'+
@@ -703,6 +715,10 @@
       })(div,d);
       (phase==="build"?w1:w2).appendChild(div);
     }
+    var bb=document.getElementById("breachBar");
+    if(maxBreaches>0){bb.className="breachbar on bad";bb.innerHTML="⛔ "+maxBreaches+" day"+(maxBreaches>1?"s":"")+" hit your Max Loss ("+fmt(ML)+") — that ends the account. Reset and protect the floor.";}
+    else if(stopBreaches>0){bb.className="breachbar on warn";bb.innerHTML="⚠ "+stopBreaches+" day"+(stopBreaches>1?"s":"")+" went past your hard daily stop (-"+fmt(c.stop)+"). Keep losers inside the stop.";}
+    else{bb.className="breachbar";bb.innerHTML="";}
   }
 
   function refreshProgress(){
