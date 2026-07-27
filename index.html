@@ -70,6 +70,23 @@
   .day .flag.stop{background:var(--amber-soft);color:var(--amber)}
   .day .flag.max{background:var(--red-soft);color:var(--red)}
   .day.breach{border-color:var(--red);box-shadow:0 0 0 1px rgba(243,115,111,.35)}
+
+  /* stats */
+  .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 12px;text-align:center}
+  .stat .sl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+  .stat .sv{font-size:20px;font-weight:700;letter-spacing:-.4px}
+  .stat .ss{font-size:10px;color:var(--muted2);margin-top:3px}
+  .stat .sv.g{color:var(--green)}.stat .sv.r{color:var(--red)}.stat .sv.a{color:var(--amber)}
+  .eqcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 16px 12px;margin-top:12px}
+  .eqcard .eqh{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+  .eqcard .eqt{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  .eqcard .eqleg{font-size:11px;color:var(--muted2)}
+  .eqcard .eqleg b{font-weight:600}
+  .eqcard .eqleg .lp{color:var(--muted)}.eqcard .eqleg .la{color:var(--green)}
+  .eqcard svg{width:100%;height:auto;display:block}
+  .eqcard .empty{color:var(--muted2);font-size:12.5px;text-align:center;padding:22px 0}
+  @media(max-width:760px){.statgrid{grid-template-columns:repeat(2,1fr)}}
   .copybar{background:var(--blue-soft);border:1px solid rgba(142,156,245,.3);color:#aab4f7;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
   .copybar.on{display:block}
   .copybar b{color:var(--text);font-weight:600}
@@ -331,6 +348,10 @@
   <div class="days" id="week1"></div>
   <h2 class="section" id="h2">Week 2 — Push to Target</h2>
   <div class="days" id="week2"></div>
+
+  <h2 class="section">Stats</h2>
+  <div class="statgrid" id="statGrid"></div>
+  <div class="eqcard" id="eqCard"></div>
 
   <h2 class="section withbtn">Pre-Trade Checklist — Entry Signal <button type="button" class="secbtn" id="chkEdit">Edit</button></h2>
   <div class="checklist" id="checklist"></div>
@@ -704,12 +725,12 @@
           if(isNaN(v)){delete lg[d];}else{lg[d]=v;}
           var fa=activeAcct();
           if(fa&&fa.follow){var rec=followRec(fa);if(isNaN(v))delete rec.own[d];else rec.own[d]=v;}
-          syncFollowers();save().then(function(){renderDays();refreshProgress();});
+          syncFollowers();save().then(function(){renderDays();refreshProgress();renderStats();});
         });
         ed.querySelector(".clear").addEventListener("click",function(ev){
           ev.stopPropagation();var lg=curLog();delete lg[d];
           var fa=activeAcct();if(fa&&fa.follow){var rec=followRec(fa);delete rec.own[d];}
-          syncFollowers();save().then(function(){renderDays();refreshProgress();});
+          syncFollowers();save().then(function(){renderDays();refreshProgress();renderStats();});
         });
         ed.querySelector("input").addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();ed.querySelector(".save").click();}});
       })(div,d);
@@ -744,6 +765,52 @@
       if(share>cap){el.classList.add("warn");el.innerHTML="Consistency watch: best day "+fmt(best)+" = "+Math.round(share*100)+"% of total so far (cap "+consPct+"%). Keep stacking days so no single day finishes above "+fmt(cap*T)+".";}
       else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total. Cap is "+consPct+"% — keep any one day under "+fmt(cap*T)+".";}
     }
+  }
+
+  function equitySVG(c,log,base){
+    var n=c.days,W=320,H=132,padL=6,padR=6,padT=10,padB=12,i;
+    var planCum=[],actCum=[],pc=0,ac=0;
+    for(i=0;i<n;i++){pc+=base[i];planCum.push(pc);if((i+1) in log)ac+=log[i+1];actCum.push(ac);}
+    var vals=planCum.concat(actCum).concat([0,c.target]);
+    var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);if(mx===mn)mx=mn+1;
+    var x=function(i){return padL+(n<=1?(W-padL-padR)/2:(i/(n-1))*(W-padL-padR));};
+    var y=function(v){return padT+(1-(v-mn)/(mx-mn))*(H-padT-padB);};
+    function poly(a){return a.map(function(v,i){return x(i).toFixed(1)+","+y(v).toFixed(1);}).join(" ");}
+    var tgtY=y(c.target).toFixed(1),zeroY=y(0).toFixed(1);
+    var actColor=actCum[n-1]>=0?"var(--green)":"var(--red)";
+    var s='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">';
+    s+='<line x1="'+padL+'" y1="'+tgtY+'" x2="'+(W-padR)+'" y2="'+tgtY+'" stroke="rgba(52,211,153,.4)" stroke-width="1" stroke-dasharray="4 4"/>';
+    if(mn<0)s+='<line x1="'+padL+'" y1="'+zeroY+'" x2="'+(W-padR)+'" y2="'+zeroY+'" stroke="rgba(255,255,255,.14)" stroke-width="1"/>';
+    s+='<polyline points="'+poly(planCum)+'" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1.5" stroke-dasharray="3 3"/>';
+    s+='<polyline points="'+poly(actCum)+'" fill="none" stroke="'+actColor+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+    s+='</svg>';
+    return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
+  }
+  function renderStats(){
+    var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
+    var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
+    for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
+    var grid=document.getElementById("statGrid"),eq=document.getElementById("eqCard");
+    if(cnt===0){
+      grid.innerHTML='<div class="stat" style="grid-column:1/-1"><div class="sl">No data yet</div><div class="sv" style="font-size:14px;color:var(--muted)">Log a day to see your stats</div></div>';
+      eq.innerHTML='<div class="empty">Your equity curve appears once you log a day.</div>';return;
+    }
+    var winRate=Math.round(greens/cnt*100),avg=Math.round(total/cnt);
+    var last=seq[seq.length-1],sgn=last>0?1:(last<0?-1:0),run=0;
+    for(var i=seq.length-1;i>=0;i--){var g=seq[i]>0?1:(seq[i]<0?-1:0);if(g===sgn&&g!==0)run++;else break;}
+    var streakTxt=sgn>0?run+" green":(sgn<0?run+" red":"—");
+    var onPace=(total/c.target)>=(cnt/n)-0.0001;
+    function tile(l,val,cls,sub){return '<div class="stat"><div class="sl">'+l+'</div><div class="sv '+(cls||"")+'">'+val+'</div>'+(sub?'<div class="ss">'+sub+'</div>':'')+'</div>';}
+    grid.innerHTML=
+      tile("Win rate",winRate+"%",winRate>=50?"g":"a",greens+"/"+cnt+" green")+
+      tile("Net P&L",fmt(total),total>=0?"g":"r",cnt+" day"+(cnt>1?"s":"")+" logged")+
+      tile("Best day",fmt(best),"g","")+
+      tile("Worst day",fmt(worst),worst<0?"r":"g","")+
+      tile("Avg / day",fmt(avg),avg>=0?"g":"r","")+
+      tile("Green / red",greens+" / "+reds,"","")+
+      tile("Streak",streakTxt,sgn>0?"g":(sgn<0?"r":""),"current run")+
+      tile("Pace",onPace?"On track":"Behind",onPace?"g":"a",Math.round(total/c.target*100)+"% of target");
+    eq.innerHTML=equitySVG(c,log,base);
   }
 
   function renderPlanSel(){
@@ -943,7 +1010,7 @@
     });
   });
 
-  function renderAll(){syncFollowers();renderCopyPanel();renderAcctBar();renderPlan();renderDays();refreshProgress();renderMM();renderRules();}
+  function renderAll(){syncFollowers();renderCopyPanel();renderAcctBar();renderPlan();renderDays();refreshProgress();renderStats();renderMM();renderRules();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
