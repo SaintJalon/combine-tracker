@@ -135,6 +135,11 @@
 
   /* money management calculator */
   .mmin{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+  .psbig{font-size:26px;font-weight:700;letter-spacing:-.5px;color:var(--green)}
+  .psbig.bad{color:var(--red);font-size:16px}
+  .psout{font-size:13px;color:var(--muted);line-height:1.6}
+  .psout b{color:var(--text);font-weight:600}
+  .psout .bad{color:var(--red)}
   .mmin .k{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
   .mmin input{width:100%;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:9px 11px;font-size:14px;font-weight:600;font-family:inherit;outline:none}
   .mmin input:focus{border-color:var(--green)}
@@ -420,6 +425,17 @@
     </div>
   </div>
 
+  <h2 class="section">Position Size</h2>
+  <div class="plan">
+    <div class="mmin">
+      <div><div class="k">Instrument</div><select id="psInstr"></select></div>
+      <div><div class="k">Stop (points)</div><input id="psStop" type="number" inputmode="decimal" min="0" step="0.25"></div>
+      <div><div class="k">Risk ($)</div><input id="psRisk" type="number" inputmode="numeric" min="1" step="10"></div>
+      <div><div class="k">&nbsp;</div><div class="psbig" id="psBig">—</div></div>
+    </div>
+    <div class="psout" id="psOut"></div>
+  </div>
+
   <div class="callout">
     <h3>⚠ The rules that decide this account</h3>
     <p id="coDD"></p>
@@ -553,7 +569,15 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},balance:{},follow:{},accounts:[],activeId:null,leaderId:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,leaderId:null};
+  var INSTR=[
+    {k:"NQ",n:"NQ · E-mini Nasdaq",pp:20},{k:"MNQ",n:"MNQ · Micro Nasdaq",pp:2},
+    {k:"ES",n:"ES · E-mini S&P",pp:50},{k:"MES",n:"MES · Micro S&P",pp:5},
+    {k:"YM",n:"YM · E-mini Dow",pp:5},{k:"MYM",n:"MYM · Micro Dow",pp:0.5},
+    {k:"RTY",n:"RTY · E-mini Russell",pp:50},{k:"M2K",n:"M2K · Micro Russell",pp:5},
+    {k:"GC",n:"GC · Gold",pp:100},{k:"MGC",n:"MGC · Micro Gold",pp:10},
+    {k:"CL",n:"CL · Crude Oil",pp:1000},{k:"MCL",n:"MCL · Micro Crude",pp:100}
+  ];
   var openDay=null;
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
@@ -937,6 +961,29 @@
       });
     })();
   }
+  // ---- futures position-size calculator ----
+  function psState(){if(!state.calc)state.calc={instr:"NQ",stop:10,risk:null};return state.calc;}
+  function renderPS(){
+    var ps=psState(),sel=document.getElementById("psInstr");
+    if(sel.options.length!==INSTR.length){sel.innerHTML=INSTR.map(function(x){return '<option value="'+x.k+'">'+esc(x.n)+'</option>';}).join("");}
+    sel.value=ps.instr;
+    var inst=INSTR.filter(function(x){return x.k===ps.instr;})[0]||INSTR[0];
+    var risk=(ps.risk!=null&&!isNaN(ps.risk))?ps.risk:cfg().risk;
+    var stopEl=document.getElementById("psStop"),riskEl=document.getElementById("psRisk");
+    if(document.activeElement!==stopEl)stopEl.value=(ps.stop!=null?ps.stop:"");
+    if(document.activeElement!==riskEl)riskEl.value=risk;
+    var stop=parseFloat(ps.stop),big=document.getElementById("psBig"),out=document.getElementById("psOut");
+    if(isNaN(stop)||stop<=0){big.className="psbig bad";big.textContent="—";out.innerHTML="Enter a stop distance in points to size the trade.";return;}
+    var perCon=stop*inst.pp,contracts=Math.floor(risk/perCon);
+    if(contracts<1){
+      big.className="psbig bad";big.textContent="0 contracts";
+      out.innerHTML='<span class="bad">Stop too wide:</span> 1 '+esc(inst.k)+' at '+stop+' pts risks <b>'+fmt(perCon)+'</b>, over your <b>'+fmt(risk)+'</b> risk. Tighten the stop or raise risk. (Micros risk less per point.)';
+      return;
+    }
+    var actual=contracts*perCon;
+    big.className="psbig";big.textContent=contracts+" contract"+(contracts>1?"s":"");
+    out.innerHTML='<b>'+contracts+' '+esc(inst.k)+'</b> · 1 contract = <b>'+fmt(inst.pp)+'</b>/pt, so '+stop+' pts = <b>'+fmt(perCon)+'</b> risk each.<br>Actual risk at '+contracts+': <b>'+fmt(actual)+'</b> (of '+fmt(risk)+' allowed · '+fmt(risk-actual)+' unused).';
+  }
   function parseR(rr){if(rr==null||rr==="")return null;var m=String(rr).split(":");var n=parseFloat(m.length>1?m[1]:m[0]);return isNaN(n)?null:n;}
   function renderSetups(){
     var host=document.getElementById("setupCard"),j=state.journal[modeKey()]||{},groups={},order=[],d,i,any=false;
@@ -1155,7 +1202,7 @@
     });
   });
 
-  function renderAll(){syncFollowers();renderCopyPanel();renderAcctBar();renderPlan();renderDays();refreshProgress();renderStats();renderMM();renderRules();}
+  function renderAll(){syncFollowers();renderCopyPanel();renderAcctBar();renderPlan();renderDays();refreshProgress();renderStats();renderMM();renderPS();renderRules();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
@@ -1502,6 +1549,11 @@
     };
     rd.readAsText(f);
   });
+
+  // position-size calculator inputs
+  document.getElementById("psInstr").addEventListener("change",function(e){psState().instr=e.target.value;save();renderPS();});
+  document.getElementById("psStop").addEventListener("input",function(e){psState().stop=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
+  document.getElementById("psRisk").addEventListener("input",function(e){psState().risk=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
 
   load().then(function(){renderAll();renderChecklist();renderSched();});
 })();
