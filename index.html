@@ -100,6 +100,13 @@
   .eqcard .eqleg .lp{color:var(--muted)}.eqcard .eqleg .la{color:var(--green)}
   .eqcard svg{width:100%;height:auto;display:block}
   .eqcard .empty{color:var(--muted2);font-size:12.5px;text-align:center;padding:22px 0}
+  .setuptbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .setuptbl th{text-align:right;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em;font-size:10px;padding:0 0 8px;border-bottom:1px solid var(--line)}
+  .setuptbl th:first-child{text-align:left}
+  .setuptbl td{padding:9px 0;border-bottom:1px solid var(--line);text-align:right}
+  .setuptbl td:first-child{text-align:left;color:var(--text);font-weight:600}
+  .setuptbl tr:last-child td{border-bottom:none}
+  .setuptbl .g{color:var(--green)}.setuptbl .r{color:var(--red)}.setuptbl .m{color:var(--muted)}
   @media(max-width:760px){.statgrid{grid-template-columns:repeat(2,1fr)}}
   .copybar{background:var(--blue-soft);border:1px solid rgba(142,156,245,.3);color:#aab4f7;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
   .copybar.on{display:block}
@@ -366,6 +373,7 @@
   <h2 class="section">Stats</h2>
   <div class="statgrid" id="statGrid"></div>
   <div class="eqcard" id="eqCard"></div>
+  <div class="eqcard" id="setupCard" style="margin-top:12px"></div>
 
   <h2 class="section withbtn">Pre-Trade Checklist — Entry Signal <button type="button" class="secbtn" id="chkEdit">Edit</button></h2>
   <div class="checklist" id="checklist"></div>
@@ -864,6 +872,27 @@
       tile("Streak",streakTxt,sgn>0?"g":(sgn<0?"r":""),"current run")+
       tile("Pace",onPace?"On track":"Behind",onPace?"g":"a",Math.round(total/c.target*100)+"% of target");
     eq.innerHTML=equitySVG(c,log,base);
+    renderSetups();
+  }
+  function parseR(rr){if(rr==null||rr==="")return null;var m=String(rr).split(":");var n=parseFloat(m.length>1?m[1]:m[0]);return isNaN(n)?null:n;}
+  function renderSetups(){
+    var host=document.getElementById("setupCard"),j=state.journal[modeKey()]||{},groups={},order=[],d,i,any=false;
+    for(d in j){if(!j.hasOwnProperty(d))continue;var tr=(j[d].trades)||[];
+      for(i=0;i<tr.length;i++){var p=parseFloat(tr[i].p);if(isNaN(p))continue;any=true;
+        var name=(tr[i].s||"").trim()||"(untagged)";
+        if(!groups[name]){groups[name]={n:0,w:0,net:0,rs:0,rc:0};order.push(name);}
+        var G=groups[name];G.n++;if(p>0)G.w++;G.net+=p;var r=parseR(tr[i].rr);if(r!=null){G.rs+=r;G.rc++;}
+      }
+    }
+    if(!any){host.innerHTML='<div class="eqh"><span class="eqt">By setup</span></div><div class="empty">Tag your trades with a setup name to see which ones make money.</div>';return;}
+    order.sort(function(a,b){return groups[b].net-groups[a].net;});
+    var rows=order.map(function(name){
+      var G=groups[name],wr=Math.round(G.w/G.n*100),avg=Math.round(G.net/G.n),ar=G.rc?(Math.round(G.rs/G.rc*10)/10):null;
+      return '<tr><td>'+esc(name)+'</td><td class="m">'+G.n+'</td><td class="'+(wr>=50?"g":"m")+'">'+wr+'%</td>'+
+        '<td class="'+(G.net>=0?"g":"r")+'">'+fmt(G.net)+'</td><td class="'+(avg>=0?"g":"r")+'">'+fmt(avg)+'</td><td class="m">'+(ar!=null?ar+"R":"—")+'</td></tr>';
+    }).join("");
+    host.innerHTML='<div class="eqh"><span class="eqt">By setup</span><span class="eqleg">ranked by net P&L</span></div>'+
+      '<table class="setuptbl"><thead><tr><th>Setup</th><th>Trades</th><th>Win%</th><th>Net</th><th>Avg</th><th>R</th></tr></thead><tbody>'+rows+'</tbody></table>';
   }
 
   function renderPlanSel(){
