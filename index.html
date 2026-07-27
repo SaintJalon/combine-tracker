@@ -364,6 +364,15 @@
   <h2 class="section withbtn">Expectations &amp; Discipline <button type="button" class="secbtn" id="discEdit">Edit</button></h2>
   <div class="rules"><div class="rulebox" id="ruleDisc"></div></div>
 
+  <h2 class="section">Backup</h2>
+  <div class="rules">
+    <div class="edbar">
+      <button type="button" class="primary" id="btnExport">⬇ Export backup</button>
+      <label class="secbtn" style="cursor:pointer">⬆ Import backup<input type="file" id="fileImport" accept="application/json,.json" style="display:none"></label>
+      <span class="hint" id="backupNote">Your data lives only in this browser. Export saves every account, log, rule and setting to a file; import restores it on a new phone or after a wipe.</span>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -1236,6 +1245,35 @@
 
   // re-check the date when the PWA comes back to the foreground (midnight rollover)
   document.addEventListener("visibilitychange",function(){if(!document.hidden)renderChecklist();});
+
+  // ---- backup: export / import all data ----
+  document.getElementById("btnExport").addEventListener("click",function(){
+    var data=localStorage.getItem(KEY)||JSON.stringify(state);
+    var blob=new Blob([data],{type:"application/json"});
+    var url=URL.createObjectURL(blob);
+    var d=new Date(),pad=function(n){return (n<10?"0":"")+n;};
+    var a=document.createElement("a");
+    a.href=url;a.download="combine-tracker-backup-"+d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+".json";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    var n=document.getElementById("backupNote");n.textContent="✓ Backup downloaded. Keep the file somewhere safe.";
+  });
+  document.getElementById("fileImport").addEventListener("change",function(e){
+    var f=e.target.files&&e.target.files[0];if(!f)return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      var obj;
+      try{obj=JSON.parse(rd.result);}catch(err){alert("That file isn't a valid backup (couldn't read it).");e.target.value="";return;}
+      if(!obj||typeof obj!=="object"||!("accounts" in obj)||!("logs" in obj)){
+        alert("That doesn't look like a Combine Tracker backup.");e.target.value="";return;
+      }
+      var nAcc=Array.isArray(obj.accounts)?obj.accounts.length:0;
+      if(!confirm("Import this backup? It replaces everything currently on this device with "+nAcc+" account"+(nAcc===1?"":"s")+" from the file. Export your current data first if you want to keep it.")){e.target.value="";return;}
+      try{localStorage.setItem(KEY,JSON.stringify(obj));}catch(err){alert("Couldn't save the imported data.");e.target.value="";return;}
+      location.reload();
+    };
+    rd.readAsText(f);
+  });
 
   load().then(function(){renderAll();renderChecklist();renderSched();});
 })();
