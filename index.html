@@ -62,6 +62,23 @@
   .copy .frow .sc{font-size:11px;color:var(--muted2)}
   .copy .frow input{width:18px;height:18px;accent-color:var(--green);flex-shrink:0;cursor:pointer}
   .copy .note{font-size:11px;color:var(--muted2);margin-top:9px}
+  /* buffer tracker */
+  .bufcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-top:14px}
+  .bufcard .bh{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+  .bufcard .bttl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  .bufcard .bbig{font-size:29px;font-weight:700;letter-spacing:-.5px}
+  .bufcard .bbig.g{color:var(--green)}.bufcard .bbig.a{color:var(--amber)}.bufcard .bbig.r{color:var(--red)}
+  .bufbar{height:10px;background:#26262b;border-radius:99px;margin:14px 0 12px;overflow:hidden}
+  .bufbar .fill{height:100%;border-radius:99px;transition:width .4s cubic-bezier(.2,.7,.3,1)}
+  .bufcard .brow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .bufcard .bcell .k{font-size:10.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+  .bufcard .bcell .v{font-size:15px;font-weight:600}
+  .bufcard .bcell .v.edit{cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.18);display:inline-block}
+  .bufcard .bcell .v input{width:104px;background:#0f0f12;border:1px solid var(--green);color:var(--text);border-radius:8px;padding:3px 6px;font-size:14px;font-weight:600;font-family:inherit;outline:none}
+  .bufcard .bmsg{font-size:12px;margin-top:11px;padding:9px 12px;border-radius:10px;border:1px solid var(--line)}
+  .bufcard .bmsg.ok{background:var(--green-soft);border-color:rgba(52,211,153,.25);color:#9be9c8}
+  .bufcard .bmsg.warn{background:var(--amber-soft);border-color:rgba(245,179,64,.3);color:#f3cd8e}
+  .bufcard .bmsg.bad{background:var(--red-soft);border-color:rgba(243,115,111,.32);color:#f3a9a6}
   .breachbar{border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none;font-weight:600}
   .breachbar.on{display:block}
   .breachbar.warn{background:var(--amber-soft);border:1px solid rgba(245,179,64,.35);color:#f3cd8e}
@@ -363,6 +380,8 @@
     <div class="consistency" id="pConsist"></div>
   </div>
 
+  <div class="bufcard" id="bufCard"></div>
+
   <div class="copybar" id="copyBar"></div>
   <div class="breachbar" id="breachBar"></div>
   <h2 class="section" id="h1">Week 1 — Build the Buffer</h2>
@@ -534,7 +553,7 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},follow:{},accounts:[],activeId:null,leaderId:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},balance:{},follow:{},accounts:[],activeId:null,leaderId:null};
   var openDay=null;
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
@@ -848,6 +867,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
+    renderBuffer();renderSetups();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -872,7 +892,50 @@
       tile("Streak",streakTxt,sgn>0?"g":(sgn<0?"r":""),"current run")+
       tile("Pace",onPace?"On track":"Behind",onPace?"g":"a",Math.round(total/c.target*100)+"% of target");
     eq.innerHTML=equitySVG(c,log,base);
-    renderSetups();
+  }
+  // Live buffer vs the trailing/static drawdown floor.
+  function renderBuffer(){
+    var c=cfg(),log=curLog(),host=document.getElementById("bufCard"),k=modeKey();
+    var total=0,run=0,hwm=c.size,d;
+    for(d=1;d<=c.days;d++){if(d in log){total+=log[d];run+=log[d];if(c.size+run>hwm)hwm=c.size+run;}}
+    var autoBal=c.size+total;
+    var bal=(state.balance&&state.balance[k])?state.balance[k]:autoBal;
+    var ddl=(c.dd||"").toLowerCase(),isStatic=ddl.indexOf("static")>=0;
+    var floor;
+    if(isStatic)floor=c.size-c.maxloss;
+    else{var trail=hwm-c.maxloss;floor=c.locks?Math.min(c.size,trail):trail;}
+    var buffer=bal-floor;
+    var cls=buffer<=0?"r":(buffer<500?"a":"g");
+    var pct=Math.max(0,Math.min(100,(buffer/c.maxloss)*100));
+    var barColor=buffer<=0?"var(--red)":(buffer<500?"var(--amber)":"var(--green)");
+    var msg,mcls;
+    if(buffer<=0){mcls="bad";msg="⛔ Floor breached — this ends the account.";}
+    else if(buffer<500){mcls="warn";msg="⚠ Under $500 buffer — drop to micros or stop for the day.";}
+    else{mcls="ok";msg="Healthy buffer. Keep any single loss well inside it.";}
+    var floorNote=isStatic?"static — fixed":(c.locks?(floor>=c.size?"locked at start":"trailing up"):"trailing");
+    var balNote=(state.balance&&state.balance[k])?"tap to edit · your entry":"tap to edit · auto from P&L";
+    host.innerHTML=
+      '<div class="bh"><span class="bttl">Buffer to floor</span><span class="bbig '+cls+'">'+fmt(buffer)+'</span></div>'+
+      '<div class="bufbar"><div class="fill" style="width:'+pct+'%;background:'+barColor+'"></div></div>'+
+      '<div class="brow">'+
+        '<div class="bcell"><div class="k">Balance</div><div class="v edit" id="bufBal">'+fmt(bal)+'</div><div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">'+balNote+'</div></div>'+
+        '<div class="bcell"><div class="k">Current floor</div><div class="v">'+fmt(floor)+'</div><div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">'+floorNote+'</div></div>'+
+        '<div class="bcell"><div class="k">Max loss</div><div class="v">'+fmt(c.maxloss)+'</div><div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">'+esc(c.dd)+'</div></div>'+
+      '</div>'+
+      '<div class="bmsg '+mcls+'">'+msg+'</div>';
+    (function(){
+      var el=document.getElementById("bufBal");if(!el)return;
+      el.addEventListener("click",function(){
+        if(el.querySelector("input"))return;
+        el.innerHTML='<input type="number" inputmode="numeric" value="'+bal+'">';
+        var inp=el.querySelector("input");inp.focus();inp.select();
+        function commit(){var val=parseFloat(inp.value);if(!state.balance)state.balance={};
+          if(isNaN(val)||val<=0||val===autoBal)delete state.balance[k];else state.balance[k]=Math.round(val);
+          save().then(renderBuffer);}
+        inp.addEventListener("blur",commit);
+        inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+      });
+    })();
   }
   function parseR(rr){if(rr==null||rr==="")return null;var m=String(rr).split(":");var n=parseFloat(m.length>1?m[1]:m[0]);return isNaN(n)?null:n;}
   function renderSetups(){
