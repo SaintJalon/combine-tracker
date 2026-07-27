@@ -140,6 +140,7 @@
   .psout{font-size:13px;color:var(--muted);line-height:1.6}
   .psout b{color:var(--text);font-weight:600}
   .psout .bad{color:var(--red)}
+  .psout .gg{color:var(--green)}
   .mmin .k{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
   .mmin input{width:100%;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:9px 11px;font-size:14px;font-weight:600;font-family:inherit;outline:none}
   .mmin input:focus{border-color:var(--green)}
@@ -429,9 +430,12 @@
   <div class="plan">
     <div class="mmin">
       <div><div class="k">Instrument</div><select id="psInstr"></select></div>
-      <div><div class="k">Stop (points)</div><input id="psStop" type="number" inputmode="decimal" min="0" step="0.25"></div>
-      <div><div class="k">Risk ($)</div><input id="psRisk" type="number" inputmode="numeric" min="1" step="10"></div>
-      <div><div class="k">&nbsp;</div><div class="psbig" id="psBig">—</div></div>
+      <div><div class="k">Stop <span id="psUnitLbl">(points)</span></div><input id="psStop" type="number" inputmode="decimal" min="0" step="0.25"></div>
+      <div><div class="k">Target <span class="psul">(points)</span> · optional</div><input id="psTgt" type="number" inputmode="decimal" min="0" step="0.25"></div>
+      <div><div class="k">Units</div><select id="psUnit"><option value="pts">Points</option><option value="ticks">Ticks</option></select></div>
+      <div><div class="k">Risk</div><input id="psRisk" type="number" inputmode="decimal" min="0" step="10"></div>
+      <div><div class="k">Risk in</div><select id="psRiskUnit"><option value="$">$ dollars</option><option value="%">% of size</option></select></div>
+      <div style="grid-column:span 2"><div class="k">&nbsp;</div><div class="psbig" id="psBig">—</div></div>
     </div>
     <div class="psout" id="psOut"></div>
   </div>
@@ -571,12 +575,12 @@
   var mem={};
   var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,leaderId:null};
   var INSTR=[
-    {k:"NQ",n:"NQ · E-mini Nasdaq",pp:20},{k:"MNQ",n:"MNQ · Micro Nasdaq",pp:2},
-    {k:"ES",n:"ES · E-mini S&P",pp:50},{k:"MES",n:"MES · Micro S&P",pp:5},
-    {k:"YM",n:"YM · E-mini Dow",pp:5},{k:"MYM",n:"MYM · Micro Dow",pp:0.5},
-    {k:"RTY",n:"RTY · E-mini Russell",pp:50},{k:"M2K",n:"M2K · Micro Russell",pp:5},
-    {k:"GC",n:"GC · Gold",pp:100},{k:"MGC",n:"MGC · Micro Gold",pp:10},
-    {k:"CL",n:"CL · Crude Oil",pp:1000},{k:"MCL",n:"MCL · Micro Crude",pp:100}
+    {k:"NQ",n:"NQ · E-mini Nasdaq",pp:20,t:0.25},{k:"MNQ",n:"MNQ · Micro Nasdaq",pp:2,t:0.25},
+    {k:"ES",n:"ES · E-mini S&P",pp:50,t:0.25},{k:"MES",n:"MES · Micro S&P",pp:5,t:0.25},
+    {k:"YM",n:"YM · E-mini Dow",pp:5,t:1},{k:"MYM",n:"MYM · Micro Dow",pp:0.5,t:1},
+    {k:"RTY",n:"RTY · E-mini Russell",pp:50,t:0.1},{k:"M2K",n:"M2K · Micro Russell",pp:5,t:0.1},
+    {k:"GC",n:"GC · Gold",pp:100,t:0.1},{k:"MGC",n:"MGC · Micro Gold",pp:10,t:0.1},
+    {k:"CL",n:"CL · Crude Oil",pp:1000,t:0.01},{k:"MCL",n:"MCL · Micro Crude",pp:100,t:0.01}
   ];
   var openDay=null;
 
@@ -962,27 +966,48 @@
     })();
   }
   // ---- futures position-size calculator ----
-  function psState(){if(!state.calc)state.calc={instr:"NQ",stop:10,risk:null};return state.calc;}
+  function psState(){if(!state.calc)state.calc={instr:"NQ",stop:10,risk:null,unit:"pts",tgt:null,riskUnit:"$"};
+    var p=state.calc;if(!p.unit)p.unit="pts";if(!p.riskUnit)p.riskUnit="$";return p;}
   function renderPS(){
     var ps=psState(),sel=document.getElementById("psInstr");
     if(sel.options.length!==INSTR.length){sel.innerHTML=INSTR.map(function(x){return '<option value="'+x.k+'">'+esc(x.n)+'</option>';}).join("");}
     sel.value=ps.instr;
+    document.getElementById("psUnit").value=ps.unit;
+    document.getElementById("psRiskUnit").value=ps.riskUnit;
+    var unitTxt=ps.unit==="ticks"?"(ticks)":"(points)";
+    document.getElementById("psUnitLbl").textContent=unitTxt;
+    [].forEach.call(document.querySelectorAll(".psul"),function(e){e.textContent=unitTxt;});
     var inst=INSTR.filter(function(x){return x.k===ps.instr;})[0]||INSTR[0];
-    var risk=(ps.risk!=null&&!isNaN(ps.risk))?ps.risk:cfg().risk;
-    var stopEl=document.getElementById("psStop"),riskEl=document.getElementById("psRisk");
+    var c=cfg();
+    var riskDefault=ps.riskUnit==="%"?Math.round(c.risk/c.size*1000)/10:c.risk;
+    var risk=(ps.risk!=null&&!isNaN(ps.risk))?ps.risk:riskDefault;
+    var stopEl=document.getElementById("psStop"),riskEl=document.getElementById("psRisk"),tgtEl=document.getElementById("psTgt");
     if(document.activeElement!==stopEl)stopEl.value=(ps.stop!=null?ps.stop:"");
     if(document.activeElement!==riskEl)riskEl.value=risk;
-    var stop=parseFloat(ps.stop),big=document.getElementById("psBig"),out=document.getElementById("psOut");
-    if(isNaN(stop)||stop<=0){big.className="psbig bad";big.textContent="—";out.innerHTML="Enter a stop distance in points to size the trade.";return;}
-    var perCon=stop*inst.pp,contracts=Math.floor(risk/perCon);
+    if(document.activeElement!==tgtEl)tgtEl.value=(ps.tgt!=null?ps.tgt:"");
+    var big=document.getElementById("psBig"),out=document.getElementById("psOut");
+    var stopUnits=parseFloat(ps.stop);
+    var perTick=inst.pp*inst.t;
+    if(isNaN(stopUnits)||stopUnits<=0){big.className="psbig bad";big.textContent="—";out.innerHTML="Enter a stop distance to size the trade. <b>"+esc(inst.k)+"</b>: "+fmt(inst.pp)+"/pt · "+fmt(perTick)+"/tick.";return;}
+    var stopPts=ps.unit==="ticks"?stopUnits*inst.t:stopUnits;
+    var riskDollars=ps.riskUnit==="%"?(c.size*risk/100):risk;
+    var perCon=stopPts*inst.pp,contracts=Math.floor(riskDollars/perCon);
     if(contracts<1){
       big.className="psbig bad";big.textContent="0 contracts";
-      out.innerHTML='<span class="bad">Stop too wide:</span> 1 '+esc(inst.k)+' at '+stop+' pts risks <b>'+fmt(perCon)+'</b>, over your <b>'+fmt(risk)+'</b> risk. Tighten the stop or raise risk. (Micros risk less per point.)';
+      out.innerHTML='<span class="bad">Stop too wide:</span> 1 '+esc(inst.k)+' risks <b>'+fmt(perCon)+'</b> at this stop, over your <b>'+fmt(riskDollars)+'</b> risk. Tighten the stop or use a micro.';
       return;
     }
     var actual=contracts*perCon;
     big.className="psbig";big.textContent=contracts+" contract"+(contracts>1?"s":"");
-    out.innerHTML='<b>'+contracts+' '+esc(inst.k)+'</b> · 1 contract = <b>'+fmt(inst.pp)+'</b>/pt, so '+stop+' pts = <b>'+fmt(perCon)+'</b> risk each.<br>Actual risk at '+contracts+': <b>'+fmt(actual)+'</b> (of '+fmt(risk)+' allowed · '+fmt(risk-actual)+' unused).';
+    var html='<b>'+contracts+' '+esc(inst.k)+'</b> · 1 contract = <b>'+fmt(inst.pp)+'</b>/pt ('+fmt(perTick)+'/tick), so this stop = <b>'+fmt(perCon)+'</b> each.<br>'+
+      'Actual risk: <b>'+fmt(actual)+'</b> of '+fmt(riskDollars)+' allowed · '+fmt(riskDollars-actual)+' unused.';
+    var tgtUnits=parseFloat(ps.tgt);
+    if(!isNaN(tgtUnits)&&tgtUnits>0){
+      var tgtPts=ps.unit==="ticks"?tgtUnits*inst.t:tgtUnits;
+      var rewardCon=tgtPts*inst.pp,totalReward=contracts*rewardCon,rr=Math.round(tgtPts/stopPts*100)/100;
+      html+='<br>Target: <b class="gg">'+fmt(totalReward)+'</b> ('+fmt(rewardCon)+'/contract) · <b>'+rr+':1</b> reward-to-risk'+(rr<2?' <span class="bad">(under 1:2)</span>':'')+'.';
+    }
+    out.innerHTML=html;
   }
   function parseR(rr){if(rr==null||rr==="")return null;var m=String(rr).split(":");var n=parseFloat(m.length>1?m[1]:m[0]);return isNaN(n)?null:n;}
   function renderSetups(){
@@ -1553,7 +1578,10 @@
   // position-size calculator inputs
   document.getElementById("psInstr").addEventListener("change",function(e){psState().instr=e.target.value;save();renderPS();});
   document.getElementById("psStop").addEventListener("input",function(e){psState().stop=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
+  document.getElementById("psTgt").addEventListener("input",function(e){psState().tgt=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
   document.getElementById("psRisk").addEventListener("input",function(e){psState().risk=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
+  document.getElementById("psUnit").addEventListener("change",function(e){psState().unit=e.target.value;save();renderPS();});
+  document.getElementById("psRiskUnit").addEventListener("change",function(e){var p=psState();p.riskUnit=e.target.value;p.risk=null;save();renderPS();});
 
   load().then(function(){renderAll();renderChecklist();renderSched();});
 })();
