@@ -70,6 +70,20 @@
   .day .flag.stop{background:var(--amber-soft);color:var(--amber)}
   .day .flag.max{background:var(--red-soft);color:var(--red)}
   .day.breach{border-color:var(--red);box-shadow:0 0 0 1px rgba(243,115,111,.35)}
+  .day .jbadge{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
+  .day .jbadge span{font-size:10px;font-weight:600;color:var(--blue);background:var(--blue-soft);padding:1px 7px;border-radius:6px}
+  .editor input[readonly]{opacity:.65}
+  .jtrades{display:flex;flex-direction:column;gap:6px;margin-top:2px}
+  .trow{display:flex;gap:6px}
+  .trow input{background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:6px 8px;font-size:12.5px;font-family:inherit;outline:none;min-width:0}
+  .trow .tp{width:72px;flex:none}.trow .trr{width:52px;flex:none}.trow .ts{flex:1}
+  .trow input:focus{border-color:var(--green)}
+  .trow .trm{background:#2a2a30;color:var(--muted);border:none;border-radius:8px;padding:0 9px;cursor:pointer;font-family:inherit;font-size:12px;flex:none}
+  .trow .trm:hover{color:var(--red)}
+  .addtrade{align-self:flex-start;background:#2a2a30;color:var(--muted);border:none;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+  .addtrade:hover{color:var(--text)}
+  .jnote{width:100%;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:8px 10px;font-size:12.5px;font-family:inherit;outline:none;resize:vertical;margin-top:7px}
+  .jnote:focus{border-color:var(--green)}
 
   /* stats */
   .statgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -512,7 +526,8 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},follow:{},accounts:[],activeId:null,leaderId:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},follow:{},accounts:[],activeId:null,leaderId:null};
+  var openDay=null;
 
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -553,6 +568,17 @@
     return c;
   }
   function curLog(){if(!state.logs[modeKey()])state.logs[modeKey()]={};return state.logs[modeKey()];}
+  // per-day journal: { "3": { note:"", trades:[{p:120,rr:2,s:"OB reclaim"}, ...] } }
+  function curJournal(){if(!state.journal)state.journal={};if(!state.journal[modeKey()])state.journal[modeKey()]={};return state.journal[modeKey()];}
+  function dayJ(d){var j=curJournal();if(!j[d])j[d]={note:"",trades:[]};if(!Array.isArray(j[d].trades))j[d].trades=[];return j[d];}
+  function sumTrades(tr){var s=0;for(var i=0;i<tr.length;i++){var p=parseFloat(tr[i].p);if(!isNaN(p))s+=p;}return Math.round(s);}
+  // Write a day's net into the log (and mirror into a follower's own-days record).
+  function setDayNet(d,v){
+    var lg=curLog();
+    if(v===null||isNaN(v))delete lg[d];else lg[d]=v;
+    var fa=activeAcct();
+    if(fa&&fa.follow){var rec=followRec(fa);if(v===null||isNaN(v))delete rec.own[d];else rec.own[d]=v;}
+  }
 
   // ---- copy trading: mirror one of my accounts into the others ----
   var SIZE$={ "25k":25000,"50k":50000,"100k":100000,"150k":150000 };
@@ -704,35 +730,62 @@
         else if(val<=-c.stop){notes=' <span class="flag stop">⚠ over daily stop</span>';stopBreaches++;}
         actualHtml='Actual: <b class="'+pc+'">'+fmt(val)+'</b>'+(isCopied?' <span class="copytag">⇄ copied</span>':'')+notes;
       }
+      var jj=(state.journal[modeKey()]||{})[d]||null;
+      var trs=(jj&&jj.trades)||[],jnote=(jj&&jj.note)||"",hasTr=trs.length>0;
+      var jbadge=(hasTr||jnote)?'<div class="jbadge">'+(hasTr?'<span>🧾 '+trs.length+' trade'+(trs.length>1?"s":"")+'</span>':'')+(jnote?'<span>📝 note</span>':'')+'</div>':'';
+      var trowsHtml=trs.map(function(t,ti){
+        return '<div class="trow"><input class="tp" data-ti="'+ti+'" type="number" inputmode="numeric" placeholder="P&L" value="'+(t.p!==""&&t.p!=null?esc(String(t.p)):"")+'">'+
+          '<input class="trr" data-ti="'+ti+'" type="text" placeholder="R:R" value="'+esc(t.rr!=null?String(t.rr):"")+'">'+
+          '<input class="ts" data-ti="'+ti+'" type="text" placeholder="Setup" value="'+esc(t.s||"")+'">'+
+          '<button type="button" class="trm" data-ti="'+ti+'">✕</button></div>';
+      }).join("");
+      var netHint=hasTr?("Net = sum of "+trs.length+" trade"+(trs.length>1?"s":"")+" ("+fmt(sumTrades(trs))+")"):(isCopied?"Copied from "+esc(followL.name)+" — save to override":"Net P&L for the day (e.g. 240 or -120)");
       div.innerHTML=
         '<div class="dh"><span>Day '+d+'</span><span>'+check+'</span></div>'+
         '<div class="tgt">+'+fmt(target)+'</div>'+
         '<div class="cum">Cumulative target: '+fmt(cumv)+'</div>'+
         '<div class="actual">'+actualHtml+'</div>'+
+        jbadge+
         '<span class="tag '+tagClass(phase)+'">'+tagLabel(phase)+'</span>'+
-        '<div class="editor"><div class="hint">'+(isCopied?"Copied from "+esc(followL.name)+" — save to override with your own":"Net P&L for the day (e.g. 240 or -120)")+'</div>'+
-        '<div class="row"><input type="number" inputmode="numeric" step="1" value="'+(logged?val:"")+'" placeholder="0">'+
-        '<button class="save">Save</button><button class="clear">Clear</button></div></div>';
+        '<div class="editor'+(openDay===d?" open":"")+'"><div class="hint">'+netHint+'</div>'+
+        '<div class="row"><input class="netin" type="number" inputmode="numeric" step="1" value="'+(logged?val:"")+'" placeholder="0"'+(hasTr?" readonly":"")+'>'+
+        '<button class="save">Save</button><button class="clear">Clear</button></div>'+
+        '<div class="jtrades">'+trowsHtml+'<button type="button" class="addtrade">＋ Trade</button></div>'+
+        '<textarea class="jnote" rows="2" placeholder="Session notes — setups, mistakes, how you felt…">'+esc(jnote)+'</textarea></div>';
       (function(div,d){
         div.addEventListener("click",function(e){
           if(e.target.closest(".editor"))return;
-          var ed=div.querySelector(".editor");ed.classList.toggle("open");
-          if(ed.classList.contains("open")){var inp=ed.querySelector("input");inp.focus();inp.select();}
+          var ed=div.querySelector(".editor");var willOpen=!ed.classList.contains("open");
+          ed.classList.toggle("open");openDay=willOpen?d:null;
+          if(willOpen){var inp=ed.querySelector(".netin");if(inp&&!inp.readOnly){inp.focus();inp.select();}}
         });
         var ed=div.querySelector(".editor");
+        function persist(){syncFollowers();save().then(function(){renderDays();refreshProgress();renderStats();});}
         ed.querySelector(".save").addEventListener("click",function(ev){
-          ev.stopPropagation();var v=parseFloat(ed.querySelector("input").value);var lg=curLog();
-          if(isNaN(v)){delete lg[d];}else{lg[d]=v;}
-          var fa=activeAcct();
-          if(fa&&fa.follow){var rec=followRec(fa);if(isNaN(v))delete rec.own[d];else rec.own[d]=v;}
-          syncFollowers();save().then(function(){renderDays();refreshProgress();renderStats();});
+          ev.stopPropagation();var inp=ed.querySelector(".netin");if(inp.readOnly)return;
+          var v=parseFloat(inp.value);setDayNet(d,isNaN(v)?null:v);openDay=d;persist();
         });
         ed.querySelector(".clear").addEventListener("click",function(ev){
-          ev.stopPropagation();var lg=curLog();delete lg[d];
-          var fa=activeAcct();if(fa&&fa.follow){var rec=followRec(fa);delete rec.own[d];}
-          syncFollowers();save().then(function(){renderDays();refreshProgress();renderStats();});
+          ev.stopPropagation();var j=dayJ(d);j.trades=[];setDayNet(d,null);openDay=d;persist();
         });
-        ed.querySelector("input").addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();ed.querySelector(".save").click();}});
+        ed.querySelector(".netin").addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();ed.querySelector(".save").click();}});
+        ed.addEventListener("click",function(e){
+          var t=e.target;
+          if(t.classList.contains("addtrade")){e.stopPropagation();dayJ(d).trades.push({p:"",rr:"",s:""});openDay=d;save().then(renderDays);return;}
+          if(t.classList.contains("trm")){e.stopPropagation();var tr=dayJ(d).trades;tr.splice(+t.dataset.ti,1);if(tr.length)setDayNet(d,sumTrades(tr));openDay=d;persist();return;}
+        });
+        ed.addEventListener("change",function(e){
+          var t=e.target;
+          if(t.classList.contains("jnote")){dayJ(d).note=t.value;openDay=d;save().then(renderDays);return;}
+          if(t.classList.contains("tp")||t.classList.contains("trr")||t.classList.contains("ts")){
+            var tr=dayJ(d).trades,ti=+t.dataset.ti;if(!tr[ti])return;
+            if(t.classList.contains("tp"))tr[ti].p=t.value;
+            else if(t.classList.contains("trr"))tr[ti].rr=t.value;
+            else tr[ti].s=t.value;
+            if(tr.length)setDayNet(d,sumTrades(tr));
+            openDay=d;persist();
+          }
+        });
       })(div,d);
       (phase==="build"?w1:w2).appendChild(div);
     }
