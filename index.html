@@ -135,6 +135,12 @@
   .cal .cd.win{background:var(--green);color:#06281b;font-weight:700}
   .cal .cd.partial{background:var(--amber);color:#3a2a06;font-weight:700}
   .cal .cd.loss{background:var(--red);color:#3a0a09;font-weight:700}
+  .atrow{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:7px 0;border-top:1px solid var(--line)}
+  .atrow .an{font-weight:700;color:var(--muted)}
+  .atrow .ar{font-size:10px;font-weight:700;text-transform:uppercase;padding:1px 7px;border-radius:6px}
+  .atrow .ar.g{background:var(--green-soft);color:var(--green)}.atrow .ar.r{background:var(--red-soft);color:var(--red)}.atrow .ar.m{background:var(--card2);color:var(--muted)}
+  .atrow .am{color:var(--muted);flex:1}
+  .plan .v input{background:#0f0f12;border:1px solid var(--green);color:var(--text);border-radius:6px;padding:2px 5px;font-size:13px;font-family:inherit;outline:none;width:120px}
   @media(max-width:760px){.statgrid{grid-template-columns:repeat(2,1fr)}}
   .copybar{background:var(--blue-soft);border:1px solid rgba(142,156,245,.3);color:#aab4f7;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
   .copybar.on{display:block}
@@ -418,6 +424,16 @@
   <div class="days" id="week1"></div>
   <h2 class="section" id="h2">Week 2 — Push to Target</h2>
   <div class="days" id="week2"></div>
+
+  <h2 class="section withbtn">Attempt <button type="button" class="secbtn" id="atNew">＋ New attempt</button></h2>
+  <div class="plan">
+    <div class="grid">
+      <div class="item"><div class="k">Attempt #</div><div class="v" id="atNo">1</div></div>
+      <div class="item"><div class="k">Started</div><div class="v edit" id="atStart">—</div></div>
+      <div class="item"><div class="k">Expires in</div><div class="v edit" id="atExp">—</div></div>
+    </div>
+    <div id="atList" style="margin-top:6px"></div>
+  </div>
 
   <h2 class="section">Stats</h2>
   <div class="statgrid" id="statGrid"></div>
@@ -948,7 +964,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
-    renderBuffer();renderSetups();renderRiskLab();renderAnalytics();
+    renderBuffer();renderSetups();renderRiskLab();renderAnalytics();renderAttempt();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -1108,6 +1124,26 @@
     var fv=cStart*Math.pow(1+cRate/100,cMonths),gain=fv-cStart,ce=document.getElementById("rlCompOut");
     if(!(cStart>0)||isNaN(fv))ce.innerHTML='Enter a starting balance.';
     else ce.innerHTML=fmt(cStart)+' → <b class="g">'+fmt(Math.round(fv))+'</b> in '+cMonths+' mo at '+cRate+'%/mo (<b>'+fmt(Math.round(gain))+'</b> gain).';
+  }
+  // ---- attempt history + expiration ----
+  function isoDate(dt){var d=dt||new Date(),p=function(n){return(n<10?"0":"")+n;};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
+  function attemptMeta(){if(!state.attemptMeta)state.attemptMeta={};var id=state.activeId;if(!state.attemptMeta[id])state.attemptMeta[id]={no:1,start:isoDate(),evalDays:null};return state.attemptMeta[id];}
+  function attemptsList(){if(!state.attempts)state.attempts={};if(!state.attempts[state.activeId])state.attempts[state.activeId]=[];return state.attempts[state.activeId];}
+  function daysBetween(iso){var a=new Date(iso+"T00:00:00"),b=new Date(isoDate()+"T00:00:00");return Math.round((b-a)/86400000);}
+  function renderAttempt(){
+    var m=attemptMeta(),list=attemptsList();
+    document.getElementById("atNo").textContent=m.no;
+    var se=document.getElementById("atStart");if(!se.querySelector("input"))se.textContent=m.start||"—";
+    var ee=document.getElementById("atExp");
+    if(!ee.querySelector("input")){
+      if(m.evalDays){var left=m.evalDays-daysBetween(m.start);ee.textContent=(left>0?left+" day"+(left===1?"":"s"):"expired")+" · "+m.evalDays+"d eval";ee.style.color=left<=3?"var(--red)":(left<=7?"var(--amber)":"");}
+      else{ee.textContent="no limit";ee.style.color="";}
+    }
+    var host=document.getElementById("atList");
+    if(!list.length){host.innerHTML="";return;}
+    var rows=list.map(function(a){var col=a.result==="passed"?"g":(a.result==="failed"?"r":"m");
+      return '<div class="atrow"><span class="an">#'+a.no+'</span><span class="ar '+col+'">'+a.result+'</span><span class="am">'+fmt(a.net)+' · '+a.days+'d · ended '+a.ended+'</span></div>';}).reverse().join("");
+    host.innerHTML='<div style="margin-top:8px;font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em">Past attempts</div>'+rows;
   }
   function renderAnalytics(){
     var c=cfg(),log=curLog(),j=state.journal[modeKey()]||{},d,i,tr,p;
@@ -1400,6 +1436,7 @@
         state.accounts=state.accounts.filter(function(x){return x.id!==del;});
         delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
         if(state.follow)delete state.follow["acct:"+del];
+        if(state.attempts)delete state.attempts[del];if(state.attemptMeta)delete state.attemptMeta[del];
         if(state.leaderId===del)state.leaderId=null;
         if(state.activeId===del)state.activeId=state.accounts[0].id;
         ensureAccounts();save().then(renderAll);
@@ -1722,6 +1759,34 @@
   document.getElementById("psRisk").addEventListener("input",function(e){psState().risk=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
   document.getElementById("psUnit").addEventListener("change",function(e){psState().unit=e.target.value;save();renderPS();});
   document.getElementById("psRiskUnit").addEventListener("change",function(e){var p=psState();p.riskUnit=e.target.value;p.risk=null;save();renderPS();});
+
+  // attempt history
+  document.getElementById("atNew").addEventListener("click",function(){
+    var c=cfg(),log=curLog(),total=0,daysUsed=0,d,breached=false;
+    for(d=1;d<=c.days;d++){if(d in log){total+=log[d];daysUsed++;if(log[d]<=-c.maxloss)breached=true;}}
+    var result=breached?"failed":(total>=c.target?"passed":"reset");
+    if(daysUsed>0&&!confirm("Archive this attempt (net "+fmt(total)+" · "+daysUsed+" days · "+result+") and start fresh? Logged days and trades for this account are cleared (settings kept)."))return;
+    if(daysUsed===0&&!confirm("Start a new attempt? (Nothing logged yet.)"))return;
+    var m=attemptMeta();
+    if(daysUsed>0)attemptsList().push({no:m.no,result:result,net:total,days:daysUsed,ended:isoDate()});
+    state.logs["acct:"+state.activeId]={};
+    if(state.journal)state.journal["acct:"+state.activeId]={};
+    if(daysUsed>0)m.no=m.no+1;
+    m.start=isoDate();
+    save().then(renderAll);
+  });
+  document.getElementById("atStart").addEventListener("click",function(){
+    var el=this;if(el.querySelector("input"))return;var m=attemptMeta();
+    el.innerHTML='<input type="date" value="'+(m.start||isoDate())+'">';var inp=el.querySelector("input");inp.focus();
+    function done(){m.start=inp.value||isoDate();save().then(renderAttempt);}
+    inp.addEventListener("change",done);inp.addEventListener("blur",done);
+  });
+  document.getElementById("atExp").addEventListener("click",function(){
+    var el=this;if(el.querySelector("input"))return;var m=attemptMeta();
+    el.innerHTML='<input type="number" min="0" placeholder="eval days" value="'+(m.evalDays||"")+'">';var inp=el.querySelector("input");inp.focus();inp.select();
+    function commit(){var v=parseInt(inp.value,10);m.evalDays=(isNaN(v)||v<=0)?null:v;save().then(renderAttempt);}
+    inp.addEventListener("blur",commit);inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+  });
 
   // risk lab inputs
   [["rlToday","todayPnl"],["rlkW","kW"],["rlkB","kB"],["rlrW","rW"],["rlrB","rB"],["rlrRisk","rRisk"],["rlcStart","cStart"],["rlcRate","cRate"],["rlcMonths","cMonths"]].forEach(function(pair){
