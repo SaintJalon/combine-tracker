@@ -141,6 +141,19 @@
   .psout b{color:var(--text);font-weight:600}
   .psout .bad{color:var(--red)}
   .psout .gg{color:var(--green)}
+  /* risk lab */
+  .rlab{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .rcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+  .rcard h4{margin:0 0 12px;font-size:13px;font-weight:600;color:#aab4f7}
+  .rcard .ri,.rcard .ri2{margin-bottom:10px}
+  .rcard .ri2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .rcard label{display:block;font-size:10.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+  .rcard input{width:100%;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;outline:none}
+  .rcard input:focus{border-color:var(--green)}
+  .rcard .rout{font-size:12.5px;color:var(--muted);line-height:1.6;margin-top:4px}
+  .rcard .rout b{color:var(--text);font-weight:600}
+  .rcard .rout .bad{color:var(--red)}.rcard .rout .warn{color:var(--amber)}.rcard .rout .g{color:var(--green)}
+  @media(max-width:760px){.rlab{grid-template-columns:1fr}}
   .mmin .k{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
   .mmin input{width:100%;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:9px 11px;font-size:14px;font-weight:600;font-family:inherit;outline:none}
   .mmin input:focus{border-color:var(--green)}
@@ -438,6 +451,32 @@
       <div style="grid-column:span 2"><div class="k">&nbsp;</div><div class="psbig" id="psBig">—</div></div>
     </div>
     <div class="psout" id="psOut"></div>
+  </div>
+
+  <h2 class="section">Risk Lab</h2>
+  <div class="rlab">
+    <div class="rcard">
+      <h4>Today · daily stop</h4>
+      <div class="ri"><label>P&amp;L so far ($)</label><input id="rlToday" type="number" inputmode="numeric"></div>
+      <div class="rout" id="rlTodayOut"></div>
+    </div>
+    <div class="rcard">
+      <h4>Kelly sizing</h4>
+      <div class="ri2"><div><label>Win rate %</label><input id="rlkW" type="number" inputmode="numeric"></div><div><label>Payoff (avg W ÷ L)</label><input id="rlkB" type="number" inputmode="decimal" step="0.1"></div></div>
+      <div class="rout" id="rlKellyOut"></div>
+    </div>
+    <div class="rcard">
+      <h4>Risk of ruin</h4>
+      <div class="ri2"><div><label>Win rate %</label><input id="rlrW" type="number" inputmode="numeric"></div><div><label>Payoff (avg W ÷ L)</label><input id="rlrB" type="number" inputmode="decimal" step="0.1"></div></div>
+      <div class="ri"><label>Risk / trade ($)</label><input id="rlrRisk" type="number" inputmode="numeric"></div>
+      <div class="rout" id="rlRuinOut"></div>
+    </div>
+    <div class="rcard">
+      <h4>Compounding</h4>
+      <div class="ri2"><div><label>Start ($)</label><input id="rlcStart" type="number" inputmode="numeric"></div><div><label>Monthly %</label><input id="rlcRate" type="number" inputmode="decimal" step="0.5"></div></div>
+      <div class="ri"><label>Months</label><input id="rlcMonths" type="number" inputmode="numeric"></div>
+      <div class="rout" id="rlCompOut"></div>
+    </div>
   </div>
 
   <div class="callout">
@@ -895,7 +934,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
-    renderBuffer();renderSetups();
+    renderBuffer();renderSetups();renderRiskLab();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -1008,6 +1047,53 @@
       html+='<br>Target: <b class="gg">'+fmt(totalReward)+'</b> ('+fmt(rewardCon)+'/contract) · <b>'+rr+':1</b> reward-to-risk'+(rr<2?' <span class="bad">(under 1:2)</span>':'')+'.';
     }
     out.innerHTML=html;
+  }
+  // ---- risk lab: today's stop, kelly, risk of ruin, compounding ----
+  function accStats(){
+    var c=cfg(),log=curLog(),g=0,l=0,gs=0,ls=0,cnt=0,d,v;
+    for(d=1;d<=c.days;d++){if(d in log){v=log[d];cnt++;if(v>0){g++;gs+=v;}else if(v<0){l++;ls+=Math.abs(v);}}}
+    var avgWin=g?gs/g:null,avgLoss=l?ls/l:null;
+    return {winRate:cnt?Math.round(g/cnt*100):null,payoff:(avgWin&&avgLoss)?avgWin/avgLoss:null,cnt:cnt};
+  }
+  function riskOfRuin(p,b,risk,maxLoss,trades){
+    if(!(risk>0)||!(maxLoss>0)||!(b>0)||!(p>0))return null;
+    var sims=2500,ruined=0,s,i,bal,peak;
+    for(s=0;s<sims;s++){bal=0;peak=0;
+      for(i=0;i<trades;i++){if(Math.random()<p)bal+=b*risk;else bal-=risk;if(bal>peak)peak=bal;if(peak-bal>=maxLoss){ruined++;break;}}
+    }
+    return Math.round(ruined/sims*100);
+  }
+  function rlab(){if(!state.rlab)state.rlab={};return state.rlab;}
+  function setInput(id,v){var e=document.getElementById(id);if(e&&document.activeElement!==e)e.value=(v==null?"":v);}
+  function renderRiskLab(){
+    var c=cfg(),st=accStats(),R=rlab();
+    var kW=R.kW!=null?R.kW:(st.winRate!=null?st.winRate:50);
+    var kB=R.kB!=null?R.kB:(st.payoff!=null?Math.round(st.payoff*10)/10:2);
+    var rW=R.rW!=null?R.rW:(st.winRate!=null?st.winRate:50);
+    var rB=R.rB!=null?R.rB:(st.payoff!=null?Math.round(st.payoff*10)/10:2);
+    var rRisk=R.rRisk!=null?R.rRisk:c.risk;
+    var cStart=R.cStart!=null?R.cStart:c.size;
+    var cRate=R.cRate!=null?R.cRate:5,cMonths=R.cMonths!=null?R.cMonths:12;
+    setInput("rlToday",R.todayPnl);setInput("rlkW",kW);setInput("rlkB",kB);
+    setInput("rlrW",rW);setInput("rlrB",rB);setInput("rlrRisk",rRisk);
+    setInput("rlcStart",cStart);setInput("rlcRate",cRate);setInput("rlcMonths",cMonths);
+    // Today vs hard stop
+    var stop=c.stop,today=parseFloat(R.todayPnl),te=document.getElementById("rlTodayOut");
+    if(isNaN(today))te.innerHTML='Enter your running P&L for the session. Hard stop: <b>-'+fmt(stop)+'</b>.';
+    else if(today<=-stop)te.innerHTML='<span class="bad">⛔ Daily stop hit ('+fmt(today)+') — done for the day.</span>';
+    else{var room=stop+today;te.innerHTML='<b class="'+(room<stop*0.25?"warn":"g")+'">'+fmt(Math.max(0,room))+'</b> left before your -'+fmt(stop)+' stop.'+(room<stop*0.25?' Close to the line — tighten up.':'');}
+    // Kelly
+    var p=kW/100,q=1-p,b=kB,f=(b>0)?(p*b-q)/b:-1,ke=document.getElementById("rlKellyOut");
+    if(f<=0)ke.innerHTML='No positive edge at these inputs — Kelly says size 0.';
+    else{var half=f/2;ke.innerHTML='Full Kelly <b>'+(Math.round(f*1000)/10)+'%</b> · half-Kelly <b>'+(Math.round(half*1000)/10)+'%</b> = <b>'+fmt(Math.round(c.size*half))+'</b>/trade. Most traders use half or less.';}
+    // Risk of ruin
+    var ror=riskOfRuin(rW/100,rB,rRisk,c.maxloss,400),re=document.getElementById("rlRuinOut");
+    if(ror==null)re.innerHTML='Fill win rate, payoff and risk to estimate.';
+    else{var cls=ror>=25?"bad":(ror>=5?"warn":"g");re.innerHTML='<b class="'+cls+'">'+ror+'%</b> chance of hitting the '+fmt(c.maxloss)+' max loss over ~400 trades at '+fmt(rRisk)+'/trade. <span class="'+(ror>=5?"warn":"g")+'">'+(ror>=25?"High — cut risk.":(ror>=5?"Watch it.":"Low."))+'</span>';}
+    // Compounding
+    var fv=cStart*Math.pow(1+cRate/100,cMonths),gain=fv-cStart,ce=document.getElementById("rlCompOut");
+    if(!(cStart>0)||isNaN(fv))ce.innerHTML='Enter a starting balance.';
+    else ce.innerHTML=fmt(cStart)+' → <b class="g">'+fmt(Math.round(fv))+'</b> in '+cMonths+' mo at '+cRate+'%/mo (<b>'+fmt(Math.round(gain))+'</b> gain).';
   }
   function parseR(rr){if(rr==null||rr==="")return null;var m=String(rr).split(":");var n=parseFloat(m.length>1?m[1]:m[0]);return isNaN(n)?null:n;}
   function renderSetups(){
@@ -1582,6 +1668,13 @@
   document.getElementById("psRisk").addEventListener("input",function(e){psState().risk=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
   document.getElementById("psUnit").addEventListener("change",function(e){psState().unit=e.target.value;save();renderPS();});
   document.getElementById("psRiskUnit").addEventListener("change",function(e){var p=psState();p.riskUnit=e.target.value;p.risk=null;save();renderPS();});
+
+  // risk lab inputs
+  [["rlToday","todayPnl"],["rlkW","kW"],["rlkB","kB"],["rlrW","rW"],["rlrB","rB"],["rlrRisk","rRisk"],["rlcStart","cStart"],["rlcRate","cRate"],["rlcMonths","cMonths"]].forEach(function(pair){
+    document.getElementById(pair[0]).addEventListener("input",function(e){
+      rlab()[pair[1]]=e.target.value===""?null:parseFloat(e.target.value);save();renderRiskLab();
+    });
+  });
 
   load().then(function(){renderAll();renderChecklist();renderSched();});
 })();
