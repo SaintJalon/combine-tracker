@@ -1,4 +1,4 @@
-const CACHE = 'combine-tracker-v31';
+const CACHE = 'combine-tracker-v32';
 const ASSETS = [
   './',
   './index.html',

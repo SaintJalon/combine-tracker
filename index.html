@@ -505,6 +505,14 @@
   <div class="statgrid" id="discGrid"></div>
   <div class="eqcard" id="discLog" style="margin-top:12px"></div>
 
+  <h2 class="section">Planning &amp; Goals</h2>
+  <div class="rlab">
+    <div class="rcard" id="pgCard"></div>
+    <div class="rcard" id="ipCard"></div>
+    <div class="rcard" id="wiCard"></div>
+    <div class="rcard" id="spCard"></div>
+  </div>
+
   <h2 class="section withbtn">Pre-Trade Checklist — Entry Signal <button type="button" class="secbtn" id="chkEdit">Edit</button></h2>
   <div class="checklist" id="checklist"></div>
 
@@ -1090,7 +1098,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
-    renderBuffer();renderSetups();renderTradeLog();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();renderDiscipline();
+    renderBuffer();renderSetups();renderTradeLog();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();renderDiscipline();renderPlanning();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -1296,6 +1304,61 @@
       return '<div class="atrow"><span class="an">#'+a.no+'</span><span class="ar '+col+'">'+a.result+'</span><span class="am">'+fmt(a.net)+' · '+a.days+'d · ended '+a.ended+'</span></div>';}).reverse().join("");
     host.innerHTML='<div style="margin-top:8px;font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em">Past attempts</div>'+rows;
   }
+  // ---- planning & goals (#21-24) ----
+  function planningOf(){if(!state.planning)state.planning={};if(!state.planning[state.activeId])state.planning[state.activeId]={};return state.planning[state.activeId];}
+  function payoutGoalOf(){if(!state.payoutGoal)state.payoutGoal={};return state.payoutGoal[state.activeId];}
+  function payoutsList(){if(!state.payouts)state.payouts={};if(!state.payouts[state.activeId])state.payouts[state.activeId]=[];return state.payouts[state.activeId];}
+  function renderPayoutGoal(){
+    var goal=payoutGoalOf(),list=payoutsList(),total=list.reduce(function(s,x){return s+x.amount;},0);
+    var pct=goal?Math.max(0,Math.min(100,total/goal*100)):0,host=document.getElementById("pgCard");
+    host.innerHTML='<h4>Payout Goal</h4>'+
+      '<div class="ri"><label>Goal ($)</label><input id="pgGoal" type="number" inputmode="numeric" placeholder="e.g. 10000" value="'+(goal!=null?goal:"")+'"></div>'+
+      (goal?'<div class="bufbar" style="margin:9px 0 8px"><div class="fill" style="width:'+pct+'%;background:var(--green)"></div></div>':"")+
+      '<div class="rout">'+fmt(total)+(goal?" of "+fmt(goal)+" ("+Math.round(pct)+"%)":" logged so far")+'</div>'+
+      '<button type="button" class="addtrade" id="pgAdd" style="margin-top:8px">＋ Log payout</button>'+
+      (list.length?'<div style="margin-top:9px">'+list.slice().reverse().slice(0,6).map(function(p){return '<div class="atrow"><span class="an">'+fmt(p.amount)+'</span><span class="am">'+esc(p.date||"")+'</span></div>';}).join("")+'</div>':"");
+  }
+  function renderIncomeProj(){
+    var c=cfg(),st=accStats(),P=planningOf(),tpw=P.tpw!=null?P.tpw:5;
+    var winRate=st.winRate!=null?st.winRate:50,payoff=st.payoff!=null?st.payoff:2,risk=c.risk;
+    var p=winRate/100,q=1-p,expPerTrade=risk*(p*payoff-q);
+    var weekly=expPerTrade*tpw,monthly=weekly*4.33,yearly=weekly*52,host=document.getElementById("ipCard");
+    host.innerHTML='<h4>Income Projection</h4>'+
+      '<div class="ri"><label>Trades / week</label><input id="ipTpw" type="number" inputmode="numeric" value="'+tpw+'"></div>'+
+      '<div class="rout">At '+winRate+'% win rate &amp; '+(Math.round(payoff*10)/10)+' payoff, '+fmt(risk)+'/trade risk: expectancy <b>'+fmt(Math.round(expPerTrade))+'</b>/trade.<br>'+
+      'Weekly <b class="'+(weekly>=0?"g":"r")+'">'+fmt(Math.round(weekly))+'</b> · Monthly <b class="'+(monthly>=0?"g":"r")+'">'+fmt(Math.round(monthly))+'</b> · Yearly <b class="'+(yearly>=0?"g":"r")+'">'+fmt(Math.round(yearly))+'</b><br>'+
+      '<span style="color:var(--muted2);font-size:11px">Projection from your own results — not a guarantee.</span></div>';
+  }
+  function whatIfSim(p,b,risk,trades){
+    var sims=1000,ends=[],s,i,bal;
+    for(s=0;s<sims;s++){bal=0;for(i=0;i<trades;i++){if(Math.random()<p)bal+=risk*b;else bal-=risk;}ends.push(bal);}
+    ends.sort(function(a,b2){return a-b2;});
+    var pct=function(q){return ends[Math.max(0,Math.min(ends.length-1,Math.floor(q*(ends.length-1))))];};
+    return {p10:pct(0.10),median:pct(0.50),p90:pct(0.90),winPct:Math.round(ends.filter(function(x){return x>0;}).length/sims*100)};
+  }
+  function renderWhatIf(){
+    var c=cfg(),st=accStats(),P=planningOf();
+    var w=P.wiW!=null?P.wiW:(st.winRate!=null?st.winRate:50);
+    var b=P.wiB!=null?P.wiB:(st.payoff!=null?Math.round(st.payoff*10)/10:2);
+    var risk=P.wiRisk!=null?P.wiRisk:c.risk,trades=P.wiTrades!=null?P.wiTrades:100;
+    var res=(w>0&&b>0&&risk>0&&trades>0)?whatIfSim(w/100,b,risk,trades):null,host=document.getElementById("wiCard");
+    host.innerHTML='<h4>What-If Simulator</h4>'+
+      '<div class="ri2"><div><label>Win rate %</label><input id="wiW" type="number" value="'+w+'"></div><div><label>Payoff (avg W÷L)</label><input id="wiB" type="number" step="0.1" value="'+b+'"></div></div>'+
+      '<div class="ri2"><div><label>Risk / trade ($)</label><input id="wiRisk" type="number" value="'+risk+'"></div><div><label>Trades</label><input id="wiTrades" type="number" value="'+trades+'"></div></div>'+
+      '<div class="rout">'+(res?('Over '+trades+' trades (1,000 sims):<br>Worst 10%: <b class="'+(res.p10>=0?"g":"r")+'">'+fmt(res.p10)+'</b> · Median: <b class="'+(res.median>=0?"g":"r")+'">'+fmt(res.median)+'</b> · Best 10%: <b class="g">'+fmt(res.p90)+'</b><br><b class="'+(res.winPct>=50?"g":"a")+'">'+res.winPct+'%</b> of runs ended profitable.'):"Fill in the inputs to run the simulation.")+'</div>';
+  }
+  function renderScaling(){
+    var c=cfg(),P=planningOf();
+    var start=P.spStart!=null?P.spStart:c.size,trigger=P.spTrigger!=null?P.spTrigger:Math.round(c.target);
+    var pct=P.spPct!=null?P.spPct:20,levels=P.spLevels!=null?P.spLevels:5,host=document.getElementById("spCard");
+    var rows="",size=start,cum=0;
+    for(var i=1;i<=levels;i++){cum+=trigger;size=Math.round(size*(1+pct/100));rows+='<tr><td>Lvl '+i+'</td><td class="m">'+fmt(cum)+'</td><td class="g">'+fmt(size)+'</td></tr>';}
+    host.innerHTML='<h4>Scaling Plan</h4>'+
+      '<div class="ri2"><div><label>Start size ($)</label><input id="spStart" type="number" value="'+start+'"></div><div><label>Scale % / level</label><input id="spPct" type="number" step="1" value="'+pct+'"></div></div>'+
+      '<div class="ri2"><div><label>Profit / level ($)</label><input id="spTrigger" type="number" value="'+trigger+'"></div><div><label>Levels</label><input id="spLevels" type="number" min="1" max="10" value="'+levels+'"></div></div>'+
+      '<table class="setuptbl"><thead><tr><th>Level</th><th>Cum. profit</th><th>New size</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+  function renderPlanning(){renderPayoutGoal();renderIncomeProj();renderWhatIf();renderScaling();}
   function renderDiscipline(){
     var c=cfg(),log=curLog(),j=state.journal[modeKey()]||{},cap=maxTradesOf(),d,i;
     document.getElementById("mtEdit").textContent="Cap: "+cap+"/day";
@@ -1684,6 +1747,7 @@
         if(state.follow)delete state.follow["acct:"+del];
         if(state.attempts)delete state.attempts[del];if(state.attemptMeta)delete state.attemptMeta[del];
         if(state.maxTrades)delete state.maxTrades[del];if(state.stage)delete state.stage[del];if(state.payout)delete state.payout[del];
+        if(state.planning)delete state.planning[del];if(state.payoutGoal)delete state.payoutGoal[del];if(state.payouts)delete state.payouts[del];
         if(state.leaderId===del)state.leaderId=null;
         if(state.activeId===del)state.activeId=state.accounts[0].id;
         ensureAccounts();save().then(renderAll);
@@ -2027,6 +2091,31 @@
     el.innerHTML='<input type="number" min="0" value="'+cur+'">';var inp=el.querySelector("input");inp.focus();inp.select();
     function commit(){var v=parseFloat(inp.value);P[field]=(isNaN(v)||v<0)?null:Math.round(v);save().then(renderPayout);}
     inp.addEventListener("blur",commit);inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+  });
+
+  // planning & goals
+  document.getElementById("pgCard").addEventListener("change",function(e){
+    if(e.target.id==="pgGoal"){var v=parseFloat(e.target.value);if(!state.payoutGoal)state.payoutGoal={};state.payoutGoal[state.activeId]=(isNaN(v)||v<=0)?null:Math.round(v);save().then(renderPayoutGoal);}
+  });
+  document.getElementById("pgCard").addEventListener("click",function(e){
+    if(e.target.id!=="pgAdd")return;
+    var stage=(state.stage&&state.stage[state.activeId])||"eval";
+    var def=stage==="funded"?(function(){var c=cfg(),log=curLog(),t=0;for(var d=1;d<=c.days;d++)if(d in log)t+=log[d];return Math.max(0,Math.round(t));})():"";
+    var amt=prompt("Payout amount ($):",def);if(amt===null)return;var n=parseFloat(amt);if(isNaN(n)||n<=0)return;
+    var dt=prompt("Date (YYYY-MM-DD):",isoDate());if(dt===null)return;
+    payoutsList().push({amount:Math.round(n),date:dt||isoDate()});
+    save().then(renderPayoutGoal);
+  });
+  document.getElementById("ipCard").addEventListener("change",function(e){
+    if(e.target.id==="ipTpw"){var v=parseFloat(e.target.value);planningOf().tpw=isNaN(v)?null:v;save().then(renderIncomeProj);}
+  });
+  document.getElementById("wiCard").addEventListener("change",function(e){
+    var id=e.target.id,map={wiW:"wiW",wiB:"wiB",wiRisk:"wiRisk",wiTrades:"wiTrades"};
+    if(map[id]){var v=parseFloat(e.target.value);planningOf()[map[id]]=isNaN(v)?null:v;save().then(renderWhatIf);}
+  });
+  document.getElementById("spCard").addEventListener("change",function(e){
+    var id=e.target.id,map={spStart:"spStart",spPct:"spPct",spTrigger:"spTrigger",spLevels:"spLevels"};
+    if(map[id]){var v=parseFloat(e.target.value);planningOf()[map[id]]=isNaN(v)?null:v;save().then(renderScaling);}
   });
 
   // trade log search & filters
