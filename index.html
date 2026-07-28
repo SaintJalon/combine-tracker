@@ -124,6 +124,17 @@
   .setuptbl td:first-child{text-align:left;color:var(--text);font-weight:600}
   .setuptbl tr:last-child td{border-bottom:none}
   .setuptbl .g{color:var(--green)}.setuptbl .r{color:var(--red)}.setuptbl .m{color:var(--muted)}
+  .rdist{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+  .rbar{display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--muted)}
+  .rbar .rl{width:34px;flex:none;text-align:right;font-weight:600;color:var(--muted2)}
+  .rbar .rt{flex:1;background:#26262b;border-radius:6px;overflow:hidden;height:16px;display:block}
+  .rbar .rf{display:block;height:100%;border-radius:6px}
+  .rbar .rn{width:22px;flex:none;text-align:left;color:var(--text)}
+  .cal{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .cal .cd{width:26px;height:26px;border-radius:6px;background:#26262b;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted2);position:relative}
+  .cal .cd.win{background:var(--green);color:#06281b;font-weight:700}
+  .cal .cd.partial{background:var(--amber);color:#3a2a06;font-weight:700}
+  .cal .cd.loss{background:var(--red);color:#3a0a09;font-weight:700}
   @media(max-width:760px){.statgrid{grid-template-columns:repeat(2,1fr)}}
   .copybar{background:var(--blue-soft);border:1px solid rgba(142,156,245,.3);color:#aab4f7;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
   .copybar.on{display:block}
@@ -412,6 +423,9 @@
   <div class="statgrid" id="statGrid"></div>
   <div class="eqcard" id="eqCard"></div>
   <div class="eqcard" id="setupCard" style="margin-top:12px"></div>
+  <div class="statgrid" id="anaGrid" style="margin-top:12px"></div>
+  <div class="eqcard" id="rdistCard" style="margin-top:12px"></div>
+  <div class="eqcard" id="calCard" style="margin-top:12px"></div>
 
   <h2 class="section withbtn">Pre-Trade Checklist — Entry Signal <button type="button" class="secbtn" id="chkEdit">Edit</button></h2>
   <div class="checklist" id="checklist"></div>
@@ -934,7 +948,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
-    renderBuffer();renderSetups();renderRiskLab();
+    renderBuffer();renderSetups();renderRiskLab();renderAnalytics();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -1094,6 +1108,46 @@
     var fv=cStart*Math.pow(1+cRate/100,cMonths),gain=fv-cStart,ce=document.getElementById("rlCompOut");
     if(!(cStart>0)||isNaN(fv))ce.innerHTML='Enter a starting balance.';
     else ce.innerHTML=fmt(cStart)+' → <b class="g">'+fmt(Math.round(fv))+'</b> in '+cMonths+' mo at '+cRate+'%/mo (<b>'+fmt(Math.round(gain))+'</b> gain).';
+  }
+  function renderAnalytics(){
+    var c=cfg(),log=curLog(),j=state.journal[modeKey()]||{},d,i,tr,p;
+    var pnls=[];for(d in j){if(!j.hasOwnProperty(d))continue;tr=j[d].trades||[];for(i=0;i<tr.length;i++){p=parseFloat(tr[i].p);if(!isNaN(p))pnls.push(p);}}
+    var dayVals=[];for(d=1;d<=c.days;d++){if(d in log)dayVals.push(log[d]);}
+    var grid=document.getElementById("anaGrid"),rc=document.getElementById("rdistCard"),cal=document.getElementById("calCard");
+    if(!pnls.length&&!dayVals.length){
+      grid.innerHTML='<div class="stat" style="grid-column:1/-1"><div class="sl">Analytics</div><div class="sv" style="font-size:14px;color:var(--muted)">Log days and trades to unlock expectancy, R-distribution and streaks</div></div>';
+      rc.innerHTML="";cal.innerHTML="";return;
+    }
+    var src=pnls.length?pnls:dayVals,gw=0,gl=0,sum=0;
+    for(i=0;i<src.length;i++){sum+=src[i];if(src[i]>0)gw+=src[i];else gl+=Math.abs(src[i]);}
+    var pf=gl>0?(Math.round(gw/gl*100)/100):(gw>0?"∞":"0");
+    var exp=Math.round(sum/src.length),riskPer=c.risk,expR=riskPer?Math.round(exp/riskPer*100)/100:0;
+    var last=dayVals.slice(-10),lw=last.filter(function(v){return v>0;}).length,rollWR=last.length?Math.round(lw/last.length*100):0;
+    var bestG=0,bestR=0,cg=0,cr=0;
+    dayVals.forEach(function(v){if(v>0){cg++;cr=0;if(cg>bestG)bestG=cg;}else if(v<0){cr++;cg=0;if(cr>bestR)bestR=cr;}else{cg=0;cr=0;}});
+    function tile(l,val,cls,sub){return '<div class="stat"><div class="sl">'+l+'</div><div class="sv '+(cls||"")+'">'+val+'</div>'+(sub?'<div class="ss">'+sub+'</div>':'')+'</div>';}
+    grid.innerHTML=
+      tile("Expectancy",fmt(exp),exp>=0?"g":"r","per "+(pnls.length?"trade":"day"))+
+      tile("Avg R",(expR>=0?"+":"")+expR+"R",expR>=0?"g":"r","vs "+fmt(riskPer)+" risk")+
+      tile("Profit factor",pf,(pf==="∞"||pf>=1.5)?"g":(pf>=1?"a":"r"),"gross win ÷ loss")+
+      tile("Rolling win%",rollWR+"%",rollWR>=50?"g":"a","last "+last.length+" days")+
+      tile("Best streak",bestG+"",bestG?"g":"","green in a row")+
+      tile("Worst streak",bestR+"",bestR?"r":"","red in a row");
+    // R-multiple distribution (trades → realised R vs per-trade risk)
+    if(pnls.length&&riskPer>0){
+      var buckets={};var labels=[-3,-2,-1,0,1,2,3,4];labels.forEach(function(k){buckets[k]=0;});
+      pnls.forEach(function(v){var R=Math.round(v/riskPer);if(R< -3)R=-3;if(R>4)R=4;buckets[R]++;});
+      var mx=Math.max.apply(null,labels.map(function(k){return buckets[k];}))||1;
+      var bars=labels.map(function(k){
+        var n=buckets[k],w=Math.round(n/mx*100),col=k<0?"var(--red)":(k===0?"var(--muted)":"var(--green)");
+        var lab=(k===-3?"≤-3":(k===4?"≥+4":(k>0?"+"+k:""+k)))+"R";
+        return '<div class="rbar"><span class="rl">'+lab+'</span><span class="rt"><span class="rf" style="width:'+w+'%;background:'+col+'"></span></span><span class="rn">'+n+'</span></div>';
+      }).join("");
+      rc.innerHTML='<div class="eqh"><span class="eqt">R-multiple distribution</span><span class="eqleg">'+pnls.length+' trades vs '+fmt(riskPer)+' risk</span></div><div class="rdist">'+bars+'</div>';
+    }else rc.innerHTML='<div class="eqh"><span class="eqt">R-multiple distribution</span></div><div class="empty">Log individual trades to see your R distribution.</div>';
+    // calendar heatmap of plan days
+    var cells="";for(d=1;d<=c.days;d++){var cls="cd",t="Day "+d;if(d in log){var vv=log[d];t+=": "+fmt(vv);cls+=vv>=dayTargets()[d-1]?" win":(vv>0?" partial":(vv<0?" loss":""));}cells+='<div class="'+cls+'" title="'+t+'">'+d+'</div>';}
+    cal.innerHTML='<div class="eqh"><span class="eqt">Day heatmap</span><span class="eqleg">green hit target · amber partial · red loss</span></div><div class="cal">'+cells+'</div>';
   }
   function parseR(rr){if(rr==null||rr==="")return null;var m=String(rr).split(":");var n=parseFloat(m.length>1?m[1]:m[0]);return isNaN(n)?null:n;}
   function renderSetups(){
