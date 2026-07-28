@@ -99,6 +99,10 @@
   .trow .trm:hover{color:var(--red)}
   .addtrade{align-self:flex-start;background:#2a2a30;color:var(--muted);border:none;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
   .addtrade:hover{color:var(--text)}
+  .jdrow{display:flex;align-items:center;gap:9px;margin-top:8px}
+  .jdrow .hint{flex:none}
+  .jdate{flex:1;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:6px 9px;font-size:12.5px;font-family:inherit;outline:none}
+  .jdate:focus{border-color:var(--green)}
   .jnote{width:100%;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:8px 10px;font-size:12.5px;font-family:inherit;outline:none;resize:vertical;margin-top:7px}
   .jnote:focus{border-color:var(--green)}
 
@@ -442,6 +446,8 @@
   <div class="statgrid" id="anaGrid" style="margin-top:12px"></div>
   <div class="eqcard" id="rdistCard" style="margin-top:12px"></div>
   <div class="eqcard" id="calCard" style="margin-top:12px"></div>
+  <div class="eqcard" id="wdayCard" style="margin-top:12px"></div>
+  <div class="eqcard" id="periodCard" style="margin-top:12px"></div>
 
   <h2 class="section withbtn">Pre-Trade Checklist — Entry Signal <button type="button" class="secbtn" id="chkEdit">Edit</button></h2>
   <div class="checklist" id="checklist"></div>
@@ -696,10 +702,12 @@
   function curJournal(){if(!state.journal)state.journal={};if(!state.journal[modeKey()])state.journal[modeKey()]={};return state.journal[modeKey()];}
   function dayJ(d){var j=curJournal();if(!j[d])j[d]={note:"",trades:[]};if(!Array.isArray(j[d].trades))j[d].trades=[];return j[d];}
   function sumTrades(tr){var s=0;for(var i=0;i<tr.length;i++){var p=parseFloat(tr[i].p);if(!isNaN(p))s+=p;}return Math.round(s);}
+  var WKD=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  function weekdayLbl(iso){var dt=new Date(iso+"T00:00:00");if(isNaN(dt))return"";var p=iso.split("-");return WKD[dt.getDay()]+" "+parseInt(p[1],10)+"/"+parseInt(p[2],10);}
   // Write a day's net into the log (and mirror into a follower's own-days record).
   function setDayNet(d,v){
     var lg=curLog();
-    if(v===null||isNaN(v))delete lg[d];else lg[d]=v;
+    if(v===null||isNaN(v))delete lg[d];else{lg[d]=v;var jd=dayJ(d);if(!jd.date)jd.date=isoDate();}
     var fa=activeAcct();
     if(fa&&fa.follow){var rec=followRec(fa);if(v===null||isNaN(v))delete rec.own[d];else rec.own[d]=v;}
   }
@@ -855,7 +863,8 @@
         actualHtml='Actual: <b class="'+pc+'">'+fmt(val)+'</b>'+(isCopied?' <span class="copytag">⇄ copied</span>':'')+notes;
       }
       var jj=(state.journal[modeKey()]||{})[d]||null;
-      var trs=(jj&&jj.trades)||[],jnote=(jj&&jj.note)||"",hasTr=trs.length>0;
+      var trs=(jj&&jj.trades)||[],jnote=(jj&&jj.note)||"",jdate=(jj&&jj.date)||"",hasTr=trs.length>0;
+      var wkLbl=jdate?'<small style="color:var(--muted2);font-weight:500;font-size:10px">'+weekdayLbl(jdate)+'</small>':'';
       var jbadge=(hasTr||jnote)?'<div class="jbadge">'+(hasTr?'<span>🧾 '+trs.length+' trade'+(trs.length>1?"s":"")+'</span>':'')+(jnote?'<span>📝 note</span>':'')+'</div>':'';
       var trowsHtml=trs.map(function(t,ti){
         return '<div class="trow"><input class="tp" data-ti="'+ti+'" type="number" inputmode="numeric" placeholder="P&L" value="'+(t.p!==""&&t.p!=null?esc(String(t.p)):"")+'">'+
@@ -865,7 +874,7 @@
       }).join("");
       var netHint=hasTr?("Net = sum of "+trs.length+" trade"+(trs.length>1?"s":"")+" ("+fmt(sumTrades(trs))+")"):(isCopied?"Copied from "+esc(followL.name)+" — save to override":"Net P&L for the day (e.g. 240 or -120)");
       div.innerHTML=
-        '<div class="dh"><span>Day '+d+'</span><span>'+check+'</span></div>'+
+        '<div class="dh"><span>Day '+d+' '+wkLbl+'</span><span>'+check+'</span></div>'+
         '<div class="tgt">+'+fmt(target)+'</div>'+
         '<div class="cum">Cumulative target: '+fmt(cumv)+'</div>'+
         '<div class="actual">'+actualHtml+'</div>'+
@@ -875,6 +884,7 @@
         '<div class="row"><input class="netin" type="number" inputmode="numeric" step="1" value="'+(logged?val:"")+'" placeholder="0"'+(hasTr?" readonly":"")+'>'+
         '<button class="save">Save</button><button class="clear">Clear</button></div>'+
         '<div class="jtrades">'+trowsHtml+'<button type="button" class="addtrade">＋ Trade</button></div>'+
+        '<div class="jdrow"><span class="hint">Date</span><input class="jdate" type="date" value="'+esc(jdate)+'"></div>'+
         '<textarea class="jnote" rows="2" placeholder="Session notes — setups, mistakes, how you felt…">'+esc(jnote)+'</textarea></div>';
       (function(div,d){
         div.addEventListener("click",function(e){
@@ -901,6 +911,7 @@
         ed.addEventListener("change",function(e){
           var t=e.target;
           if(t.classList.contains("jnote")){dayJ(d).note=t.value;openDay=d;save().then(renderDays);return;}
+          if(t.classList.contains("jdate")){dayJ(d).date=t.value||"";openDay=d;save().then(function(){renderDays();renderStats();});return;}
           if(t.classList.contains("tp")||t.classList.contains("trr")||t.classList.contains("ts")){
             var tr=dayJ(d).trades,ti=+t.dataset.ti;if(!tr[ti])return;
             if(t.classList.contains("tp"))tr[ti].p=t.value;
@@ -1184,6 +1195,27 @@
     // calendar heatmap of plan days
     var cells="";for(d=1;d<=c.days;d++){var cls="cd",t="Day "+d;if(d in log){var vv=log[d];t+=": "+fmt(vv);cls+=vv>=dayTargets()[d-1]?" win":(vv>0?" partial":(vv<0?" loss":""));}cells+='<div class="'+cls+'" title="'+t+'">'+d+'</div>';}
     cal.innerHTML='<div class="eqh"><span class="eqt">Day heatmap</span><span class="eqleg">green hit target · amber partial · red loss</span></div><div class="cal">'+cells+'</div>';
+    renderDateAnalytics();
+  }
+  function weekKey(iso){var dt=new Date(iso+"T00:00:00"),oj=new Date(dt.getFullYear(),0,1);var wk=Math.ceil(((dt-oj)/86400000+oj.getDay()+1)/7);return dt.getFullYear()+" · wk "+wk;}
+  function renderDateAnalytics(){
+    var c=cfg(),log=curLog(),j=state.journal[modeKey()]||{},d,dated=[];
+    for(d=1;d<=c.days;d++){if((d in log)&&j[d]&&j[d].date)dated.push({date:j[d].date,v:log[d]});}
+    var wc=document.getElementById("wdayCard"),pc=document.getElementById("periodCard");
+    if(!dated.length){wc.innerHTML='<div class="eqh"><span class="eqt">By weekday</span></div><div class="empty">Add a date to your logged days to unlock weekday, weekly and monthly stats.</div>';pc.innerHTML="";return;}
+    // #8 weekday
+    var wd={};dated.forEach(function(x){var g=new Date(x.date+"T00:00:00").getDay();if(!wd[g])wd[g]={n:0,w:0,net:0};wd[g].n++;if(x.v>0)wd[g].w++;wd[g].net+=x.v;});
+    var order=[1,2,3,4,5,6,0],rows=order.filter(function(g){return wd[g];}).map(function(g){var G=wd[g];
+      return '<tr><td>'+WKD[g]+'</td><td class="m">'+G.n+'</td><td class="'+(G.w/G.n>=0.5?"g":"m")+'">'+Math.round(G.w/G.n*100)+'%</td><td class="'+(G.net>=0?"g":"r")+'">'+fmt(G.net)+'</td></tr>';}).join("");
+    wc.innerHTML='<div class="eqh"><span class="eqt">By weekday</span></div><table class="setuptbl"><thead><tr><th>Day</th><th>Days</th><th>Win%</th><th>Net</th></tr></thead><tbody>'+rows+'</tbody></table>';
+    // #9 weekly / monthly
+    if(!state.periodMode)state.periodMode="month";
+    var mode=state.periodMode,grp={},keys=[];
+    dated.forEach(function(x){var k=mode==="week"?weekKey(x.date):x.date.slice(0,7);if(!grp[k]){grp[k]={n:0,w:0,net:0};keys.push(k);}grp[k].n++;if(x.v>0)grp[k].w++;grp[k].net+=x.v;});
+    keys.sort();
+    var prows=keys.map(function(k){var G=grp[k];return '<tr><td>'+esc(k)+'</td><td class="m">'+G.n+'</td><td class="'+(G.w/G.n>=0.5?"g":"m")+'">'+Math.round(G.w/G.n*100)+'%</td><td class="'+(G.net>=0?"g":"r")+'">'+fmt(G.net)+'</td></tr>';}).join("");
+    pc.innerHTML='<div class="eqh"><span class="eqt">By '+(mode==="week"?"week":"month")+'</span><span class="eqleg" id="periodTog" style="cursor:pointer;text-decoration:underline">show '+(mode==="week"?"months":"weeks")+'</span></div>'+
+      '<table class="setuptbl"><thead><tr><th>'+(mode==="week"?"Week":"Month")+'</th><th>Days</th><th>Win%</th><th>Net</th></tr></thead><tbody>'+prows+'</tbody></table>';
   }
   function parseR(rr){if(rr==null||rr==="")return null;var m=String(rr).split(":");var n=parseFloat(m.length>1?m[1]:m[0]);return isNaN(n)?null:n;}
   function renderSetups(){
@@ -1759,6 +1791,11 @@
   document.getElementById("psRisk").addEventListener("input",function(e){psState().risk=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
   document.getElementById("psUnit").addEventListener("change",function(e){psState().unit=e.target.value;save();renderPS();});
   document.getElementById("psRiskUnit").addEventListener("change",function(e){var p=psState();p.riskUnit=e.target.value;p.risk=null;save();renderPS();});
+
+  // weekly/monthly toggle
+  document.getElementById("periodCard").addEventListener("click",function(e){
+    if(e.target.id==="periodTog"){state.periodMode=state.periodMode==="week"?"month":"week";save().then(renderDateAnalytics);}
+  });
 
   // attempt history
   document.getElementById("atNew").addEventListener("click",function(){
