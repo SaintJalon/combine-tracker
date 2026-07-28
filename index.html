@@ -23,6 +23,7 @@
     --purple:#b09bf0;--purple-soft:rgba(176,155,240,0.13);
     --surface:#0f0f12;--surface2:#2a2a30;--track:#26262b;--panel2:#15151a;
     --msg-ok:#9be9c8;--msg-warn:#f3cd8e;--msg-bad:#f3a9a6;--heading-accent:#aab4f7;
+    --accent:#34d399;--accent-soft:rgba(52,211,153,.08);--accent-border:rgba(52,211,153,.35);
   }
   :root[data-theme="light"]{
     --bg:#f4f5f7;--card:#ffffff;--card2:#eef0f3;--line:rgba(20,20,30,0.09);
@@ -46,11 +47,15 @@
   .wrap{max-width:1080px;margin:0 auto}
   h2.section{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:34px 2px 14px;}
   .apptitle{font-size:clamp(28px,7vw,40px);font-weight:800;letter-spacing:-1.2px;margin:0;line-height:1.05;
-    background:linear-gradient(95deg,var(--green),var(--blue) 65%,var(--purple));-webkit-background-clip:text;background-clip:text;
+    background:linear-gradient(95deg,var(--accent),var(--blue) 65%,var(--purple));-webkit-background-clip:text;background-clip:text;
     -webkit-text-fill-color:transparent;text-shadow:0 0 34px rgba(52,211,153,.18);}
   .titlebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}
   .themebtn{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:12px;width:42px;height:42px;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:inherit}
   .themebtn:hover{border-color:var(--line2)}
+  .swatches{display:flex;flex-wrap:wrap;gap:10px}
+  .swatch{width:34px;height:34px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;position:relative}
+  .swatch.on{border-color:var(--text)}
+  .swatch.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#06281b;font-size:14px;font-weight:700}
 
   /* account manager */
   .accts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
@@ -58,9 +63,9 @@
   .acch:hover{border-color:var(--line2)}
   .acch .nm{display:block;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:-.2px}
   .acch .sb{display:block;font-size:10px;color:var(--muted2);margin-top:1px}
-  .acch.active{border-color:rgba(52,211,153,.35);background:linear-gradient(180deg,rgba(52,211,153,.08),var(--card2))}
+  .acch.active{border-color:var(--accent-border);background:linear-gradient(180deg,var(--accent-soft),var(--card2))}
   .acch.active .nm{color:var(--text)}
-  .acch.active .sb{color:var(--green)}
+  .acch.active .sb{color:var(--accent)}
   .acch .x{border:none;background:transparent;color:var(--muted2);font-size:15px;cursor:pointer;padding:2px 5px;line-height:1;font-family:inherit;border-radius:6px}
   .acch .x:hover{color:var(--red);background:var(--red-soft)}
   .achbtns{display:flex;align-items:center;gap:2px;flex-shrink:0}
@@ -271,7 +276,7 @@
   .acctsel{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}
   .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:16px 8px;cursor:pointer;font-family:inherit;font-size:16px;font-weight:700;letter-spacing:-.3px;transition:.15s}
   .acctsel button:hover{color:var(--text);border-color:var(--line2)}
-  .acctsel button.active{background:linear-gradient(180deg,rgba(52,211,153,.08),var(--card2));color:var(--text);border-color:rgba(52,211,153,.35)}
+  .acctsel button.active{background:linear-gradient(180deg,var(--accent-soft),var(--card2));color:var(--text);border-color:var(--accent-border)}
 
   /* plan + size selectors (secondary) */
   .sel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px;margin-bottom:6px}
@@ -280,7 +285,7 @@
   .sel button .f{display:block;font-size:10px;color:var(--muted2);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-bottom:2px}
   .sel button:hover{color:var(--text);border-color:var(--line2)}
   .sel button.active{background:var(--card2);color:var(--text);border-color:var(--line2)}
-  .sel button.active .f{color:var(--green)}
+  .sel button.active .f{color:var(--accent)}
 
   /* KPIs */
   .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:10px}
@@ -644,6 +649,12 @@
   <h2 class="section withbtn">Expectations &amp; Discipline <button type="button" class="secbtn" id="discEdit">Edit</button></h2>
   <div class="rules"><div class="rulebox" id="ruleDisc"></div></div>
 
+  <h2 class="section">Appearance</h2>
+  <div class="rules">
+    <div class="k" style="text-transform:uppercase;font-size:11px;color:var(--muted2);letter-spacing:.05em;margin-bottom:9px">Accent color</div>
+    <div class="swatches" id="accentSwatches"></div>
+  </div>
+
   <h2 class="section">Backup &amp; Export</h2>
   <div class="rules">
     <div class="edbar">
@@ -764,7 +775,7 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,leaderId:null,theme:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,leaderId:null,theme:null,accent:null};
   var INSTR=[
     {k:"NQ",n:"NQ · E-mini Nasdaq",pp:20,t:0.25},{k:"MNQ",n:"MNQ · Micro Nasdaq",pp:2,t:0.25},
     {k:"ES",n:"ES · E-mini S&P",pp:50,t:0.25},{k:"MES",n:"MES · Micro S&P",pp:5,t:0.25},
@@ -2293,7 +2304,28 @@
     applyTheme();save();
   });
 
-  load().then(function(){renderAll();renderChecklist();renderSched();applyTheme();});
+  // custom accent color (#33) — navigation/selection highlight only; P&L green/red stay fixed
+  var ACCENT_PRESETS=[
+    {k:"mint",solid:"#34d399",soft:"rgba(52,211,153,.08)",border:"rgba(52,211,153,.35)"},
+    {k:"blue",solid:"#8e9cf5",soft:"rgba(142,156,245,.08)",border:"rgba(142,156,245,.35)"},
+    {k:"purple",solid:"#b09bf0",soft:"rgba(176,155,240,.08)",border:"rgba(176,155,240,.35)"},
+    {k:"amber",solid:"#f5b340",soft:"rgba(245,179,64,.08)",border:"rgba(245,179,64,.35)"},
+    {k:"pink",solid:"#f472b6",soft:"rgba(244,114,182,.08)",border:"rgba(244,114,182,.35)"},
+    {k:"teal",solid:"#2dd4bf",soft:"rgba(45,212,191,.08)",border:"rgba(45,212,191,.35)"}
+  ];
+  function applyAccent(){
+    var k=state.accent||"mint",p=ACCENT_PRESETS.filter(function(x){return x.k===k;})[0]||ACCENT_PRESETS[0];
+    var r=document.documentElement.style;
+    r.setProperty("--accent",p.solid);r.setProperty("--accent-soft",p.soft);r.setProperty("--accent-border",p.border);
+    var host=document.getElementById("accentSwatches");
+    host.innerHTML=ACCENT_PRESETS.map(function(x){return '<button type="button" class="swatch'+(x.k===k?" on":"")+'" data-accent="'+x.k+'" style="background:'+x.solid+'" title="'+x.k+'"></button>';}).join("");
+  }
+  document.getElementById("accentSwatches").addEventListener("click",function(e){
+    var b=e.target.closest(".swatch");if(!b)return;
+    state.accent=b.dataset.accent;applyAccent();save();
+  });
+
+  load().then(function(){renderAll();renderChecklist();renderSched();applyTheme();applyAccent();});
 })();
 </script>
 <script>
