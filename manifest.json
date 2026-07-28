@@ -1,7 +1,7 @@
 {
-  "name": "Combine Tracker",
-  "short_name": "Combine",
-  "description": "TopStep / Lucid / MyFundedFutures combine pass tracker with daily targets, logging and consistency checks.",
+  "name": "Trading Tracker",
+  "short_name": "Trading Tracker",
+  "description": "TopStep / Lucid / MyFundedFutures / Tradeify combine pass tracker with daily targets, logging and consistency checks.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

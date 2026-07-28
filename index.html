@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Combine Tracker</title>
+<title>Trading Tracker</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#0e0e10">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Combine">
+<meta name="apple-mobile-web-app-title" content="Trading Tracker">
 <style>
   :root{
     --bg:#0e0e10;--card:#1b1b1f;--card2:#202025;--line:rgba(255,255,255,0.06);
@@ -49,15 +49,18 @@
   h2.section.withbtn>button{margin-left:auto}
   h2.section .chev{font-size:11px;margin-left:6px;display:inline-block;transition:transform .15s;color:var(--muted2)}
   h2.section.collapsed .chev{transform:rotate(-90deg)}
-  .apptitle{font-size:clamp(28px,7vw,40px);font-weight:800;letter-spacing:-1.2px;margin:0;line-height:1.05;
+  .apptitle{font-size:clamp(19px,6.2vw,40px);font-weight:800;letter-spacing:-1.2px;margin:0;line-height:1.05;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;
     background:linear-gradient(95deg,var(--accent),var(--blue) 65%,var(--purple));-webkit-background-clip:text;background-clip:text;
     -webkit-text-fill-color:transparent;text-shadow:0 0 34px rgba(52,211,153,.18);}
   .titlebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}
-  .themebtn{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:12px;width:42px;height:42px;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:inherit}
+  .brand{display:flex;align-items:center;gap:9px;min-width:0;flex:1 1 auto}
+  .logomark{width:clamp(24px,7vw,38px);height:clamp(24px,7vw,38px);flex-shrink:0;display:block}
+  .themebtn{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:12px;width:40px;height:40px;font-size:17px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:inherit}
   .themebtn:hover{border-color:var(--line2)}
   .themebtn:disabled{opacity:.35;cursor:default}
   .themebtn:disabled:hover{border-color:var(--line)}
-  .titlebtns{display:flex;gap:8px;flex-shrink:0}
+  .titlebtns{display:flex;gap:7px;flex-shrink:0}
   .swatches{display:flex;flex-wrap:wrap;gap:10px}
   .swatch{width:34px;height:34px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;position:relative}
   .swatch.on{border-color:var(--text)}
@@ -468,7 +471,18 @@
 <div class="wrap">
 
   <div class="titlebar">
-    <h1 class="apptitle">Trading Tracker</h1>
+    <div class="brand">
+      <svg class="logomark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="14" y="61.5" width="12.6" height="24.5" rx="3.8" fill="#21694f"/>
+        <rect x="33.8" y="48.6" width="12.6" height="37.4" rx="3.8" fill="#289674"/>
+        <rect x="53.6" y="34.2" width="12.6" height="51.8" rx="3.8" fill="#34be8f"/>
+        <rect x="73.4" y="18.3" width="12.6" height="67.7" rx="3.8" fill="#34d399"/>
+        <path d="M20.3 54.3 L40.1 42.1 L59.9 28.4 L81 15.5" stroke="#f5b340" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="20.3" cy="54.3" r="3.3" fill="#f5b340"/>
+        <path d="M76.5 12.5 L86 15 L81.5 23.5 Z" fill="#f5b340"/>
+      </svg>
+      <h1 class="apptitle">Trading Tracker</h1>
+    </div>
     <div class="titlebtns">
       <button type="button" id="btnUndo" class="themebtn" aria-label="Undo last change" title="Undo last change" disabled>↩</button>
       <button type="button" id="themeToggle" class="themebtn" aria-label="Toggle light/dark theme">🌙</button>
