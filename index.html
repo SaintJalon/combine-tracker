@@ -330,6 +330,11 @@
   .consistency.warn{display:block;background:var(--amber-soft);border-color:rgba(245,179,64,.3);color:var(--msg-warn)}
   .consistency.bad{display:block;background:var(--red-soft);border-color:rgba(243,115,111,.32);color:var(--msg-bad)}
   .consistency.none{display:block;background:var(--card2);border-color:var(--line);color:var(--muted)}
+  .convertbar{display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--green-soft);border:1px solid rgba(52,211,153,.35)}
+  .convertbar.show{display:flex}
+  .convertbar span{font-size:12.5px;color:var(--msg-ok)}
+  .convertbar span b{color:var(--text)}
+  .convertbar button{background:var(--green);color:#06281b;border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0}
 
   /* days */
   .days{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
@@ -405,6 +410,8 @@
   h2.section.withbtn{display:flex;justify-content:space-between;align-items:center;gap:10px}
   .secbtn{background:var(--surface2);color:var(--muted);border:none;border-radius:8px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;flex-shrink:0}
   .secbtn:hover{color:var(--text)}
+  .secbtn:disabled{opacity:.55;cursor:default}
+  .secbtn:disabled:hover{color:var(--muted)}
   .edrow{display:flex;gap:7px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line)}
   .edrow input,.edrow select{background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:7px 9px;font-size:13px;font-family:inherit;outline:none;min-width:0}
   .edrow input:focus,.edrow select:focus{border-color:var(--green)}
@@ -533,6 +540,7 @@
       <div>~<b id="pPace">$600</b>/day over <b id="pDaysLeft">10</b> days left</div>
     </div>
     <div class="consistency" id="pConsist"></div>
+    <div class="convertbar" id="pConvert"></div>
   </div>
 
   <div class="bufcard" id="bufCard"></div>
@@ -1179,8 +1187,9 @@
     document.getElementById("pDaysLeft").textContent=daysLeft;
     document.getElementById("pPace").textContent=daysLeft>0?fmt(Math.max(0,pace)):"—";
     var el=document.getElementById("pConsist"),consPct=c.consPct;el.className="consistency";
-    if(daysLogged===0||total<=0){el.style.display="none";return;}
-    var share=best/total,cap=consPct/100;
+    var cv=document.getElementById("pConvert");
+    if(daysLogged===0||total<=0){el.style.display="none";cv.className="convertbar";cv.innerHTML="";return;}
+    var share=best/total,cap=consPct/100,consOK=(consPct===0)||(share<=cap),passed=(total>=T)&&consOK;
     if(consPct===0){el.classList.add("none");el.innerHTML="No consistency rule on this plan — your best day can be any size. Still keep losers small; the Max Loss is the only thing that ends the run.";}
     else if(total>=T){
       if(share>cap){el.classList.add("bad");el.innerHTML="🎯 Target hit — but best day ("+fmt(best)+") is "+Math.round(share*100)+"% of total, over the "+consPct+"% cap. Add green days to dilute it before you pass.";}
@@ -1189,6 +1198,10 @@
       if(share>cap){el.classList.add("warn");el.innerHTML="Consistency watch: best day "+fmt(best)+" = "+Math.round(share*100)+"% of total so far (cap "+consPct+"%). Keep stacking days so no single day finishes above "+fmt(cap*T)+".";}
       else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total. Cap is "+consPct+"% — keep any one day under "+fmt(cap*T)+".";}
     }
+    if(passed&&stageOf()!=="funded"){
+      cv.className="convertbar show";
+      cv.innerHTML="<span>🎉 <b>Target hit</b> — you've cleared "+fmt(T)+(consPct>0?" with consistency intact":"")+". Ready to convert to a funded account.</span><button type=\"button\" id=\"btnConvertFunded\">Convert to Funded →</button>";
+    }else{cv.className="convertbar";cv.innerHTML="";}
   }
 
   function equitySVG(c,log,base){
@@ -1375,10 +1388,30 @@
   // ---- funded / payout stage ----
   function stageOf(){if(!state.stage)state.stage={};return state.stage[state.activeId]||"eval";}
   function payoutCfg(){if(!state.payout)state.payout={};var id=state.activeId;if(!state.payout[id])state.payout[id]={thresh:null,cons:null,minDays:null};return state.payout[id];}
+  // Archives the eval run as a passed attempt, starts a fresh log for funded
+  // trading, and seeds the funded target to the payout threshold. This is the
+  // ONLY path into Funded — keeps eval P&L from leaking into funded profit.
+  function convertToFunded(){
+    var c=cfg(),log=curLog(),total=0,days=0,d;
+    for(d=1;d<=c.days;d++){if(d in log){total+=log[d];days++;}}
+    if(!confirm("Convert this account to Funded?\n\nThis archives your eval run (net "+fmt(total)+" · "+days+" days · passed) and starts a fresh, empty log for funded trading. The eval run stays saved under Attempt."))return;
+    var m=attemptMeta();
+    attemptsList().push({no:m.no,result:"passed",net:total,days:days,ended:isoDate()});
+    state.logs["acct:"+state.activeId]={};
+    if(state.journal)state.journal["acct:"+state.activeId]={};
+    m.no=m.no+1;m.start=isoDate();m.evalDays=null;
+    if(!state.stage)state.stage={};
+    state.stage[state.activeId]="funded";
+    var P=payoutCfg();if(P.thresh==null)P.thresh=Math.round(c.maxloss);
+    if(!state.targets)state.targets={};
+    state.targets["acct:"+state.activeId]=P.thresh;
+    save().then(renderAll);
+  }
   function renderPayout(){
-    var c=cfg(),stage=stageOf(),host=document.getElementById("payoutPanel");
-    document.getElementById("stageTog").textContent="Stage: "+(stage==="funded"?"Funded":"Eval");
-    if(stage!=="funded"){host.innerHTML='<div class="rout" style="padding:2px">This account is in the <b>evaluation</b> stage. Once you pass, tap <b>Stage: Eval</b> above to switch to Funded and track your payout progress.</div>';return;}
+    var c=cfg(),stage=stageOf(),host=document.getElementById("payoutPanel"),tog=document.getElementById("stageTog");
+    if(stage==="funded"){tog.textContent="↩ Revert to Eval";tog.disabled=false;}
+    else{tog.textContent="Eval stage";tog.disabled=true;}
+    if(stage!=="funded"){host.innerHTML='<div class="rout" style="padding:2px">This account is in the <b>evaluation</b> stage. Once your logged days clear the profit target (and consistency, if the plan has one), a <b>Convert to Funded</b> button appears above the progress bar — that\'s the way in, so your eval days don\'t get counted twice.</div>';return;}
     var P=payoutCfg(),thresh=P.thresh!=null?P.thresh:Math.round(c.maxloss),cons=P.cons!=null?P.cons:20,minDays=P.minDays!=null?P.minDays:5;
     var log=curLog(),profit=0,days=0,best=-Infinity,d;
     for(d=1;d<=c.days;d++){if(d in log){profit+=log[d];days++;if(log[d]>best)best=log[d];}}
@@ -2233,9 +2266,18 @@
     save().then(renderAll);
   });
 
-  // funded / payout
+  // funded / payout — the ONLY way into Funded is convertToFunded() (via the
+  // "Convert to Funded" CTA that appears once the eval target is cleared);
+  // this button only handles reverting a mistaken conversion back to Eval.
   document.getElementById("stageTog").addEventListener("click",function(){
-    if(!state.stage)state.stage={};state.stage[state.activeId]=stageOf()==="funded"?"eval":"funded";save().then(renderAll);
+    if(stageOf()!=="funded")return;
+    if(!confirm("Revert this account to Eval stage? Your funded log stays on this account — the app will just treat it as eval progress again until you convert once more."))return;
+    if(!state.stage)state.stage={};
+    state.stage[state.activeId]="eval";
+    save().then(renderAll);
+  });
+  document.getElementById("pConvert").addEventListener("click",function(e){
+    if(e.target.id==="btnConvertFunded")convertToFunded();
   });
   document.getElementById("payoutPanel").addEventListener("click",function(e){
     var el=e.target;if(!el.classList.contains("edit")||el.querySelector("input"))return;
