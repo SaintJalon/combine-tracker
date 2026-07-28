@@ -63,6 +63,9 @@
   .acch.active .sb{color:var(--green)}
   .acch .x{border:none;background:transparent;color:var(--muted2);font-size:15px;cursor:pointer;padding:2px 5px;line-height:1;font-family:inherit;border-radius:6px}
   .acch .x:hover{color:var(--red);background:var(--red-soft)}
+  .achbtns{display:flex;align-items:center;gap:2px;flex-shrink:0}
+  .achbtns .amv,.achbtns .adup{border:none;background:transparent;color:var(--muted2);font-size:12px;cursor:pointer;padding:3px 5px;line-height:1;font-family:inherit;border-radius:6px}
+  .achbtns .amv:hover,.achbtns .adup:hover{color:var(--text);background:var(--card2)}
   .acch .badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 6px;border-radius:6px;margin-top:3px}
   .acch .badge.lead{background:var(--amber-soft);color:var(--amber)}
   .acch .badge.foll{background:var(--blue-soft);color:var(--blue)}
@@ -777,6 +780,27 @@
     ensureSize();
     a.firm=state.firm;a.plan=state.plan;a.size=state.size;
     return a;
+  }
+  function moveAccount(id,dir){
+    var idx=state.accounts.findIndex(function(a){return a.id===id;});
+    if(idx<0)return;
+    var to=idx+dir;if(to<0||to>=state.accounts.length)return;
+    var tmp=state.accounts[idx];state.accounts[idx]=state.accounts[to];state.accounts[to]=tmp;
+  }
+  // Clone an account's config + logged history under a new id. Copy trading
+  // (leaderId/follow) is intentionally NOT carried over — the duplicate starts independent.
+  function duplicateAccount(id){
+    var a=acctById(id);if(!a)return null;
+    var newId=genId(),oldK="acct:"+id,newK="acct:"+newId;
+    state.accounts.push({id:newId,name:(a.name+" copy").slice(0,24),firm:a.firm,plan:a.plan,size:a.size});
+    ["logs","targets","maxloss","stops","days","journal","balance","mm"].forEach(function(m){
+      if(state[m]&&state[m][oldK]!==undefined)state[m][newK]=JSON.parse(JSON.stringify(state[m][oldK]));
+    });
+    ["maxTrades","stage","payout","attempts","attemptMeta","planning","payoutGoal","payouts"].forEach(function(m){
+      if(state[m]&&state[m][id]!==undefined)state[m][newId]=JSON.parse(JSON.stringify(state[m][id]));
+    });
+    state.activeId=newId;
+    return newId;
   }
   function syncAcct(){var a=activeAcct();if(a){a.firm=state.firm;a.plan=state.plan;a.size=state.size;}}
   function modeKey(){return "acct:"+state.activeId;}
@@ -1594,15 +1618,20 @@
   }
 
   function renderAcctBar(){
-    var host=document.getElementById("acctBar"),html="";
-    state.accounts.forEach(function(a){
+    var host=document.getElementById("acctBar"),html="",n=state.accounts.length;
+    state.accounts.forEach(function(a,idx){
       var f=FIRMS[a.firm]||FIRMS.topstep;
       var pl=f.plans[a.plan]||f.plans[f.planOrder[0]];
       var sub=f.name+" · "+pl.name+" · "+a.size.toUpperCase();
       var badge=(a.id===state.leaderId)?'<span class="badge lead">★ Leader</span>':(a.follow&&leaderAcct()&&a.id!==state.leaderId?'<span class="badge foll">⇄ Follows</span>':"");
       html+='<div class="acch'+(a.id===state.activeId?" active":"")+'" data-id="'+a.id+'" title="'+(a.id===state.activeId?"Tap to rename":"Switch to this account")+'">'+
         '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span>'+badge+'</div>'+
-        (state.accounts.length>1?'<button type="button" class="x" data-del="'+a.id+'" title="Delete account">×</button>':'')+
+        '<div class="achbtns">'+
+          (idx>0?'<button type="button" class="amv" data-mv="'+a.id+'" data-dir="-1" title="Move left">◀</button>':'')+
+          (idx<n-1?'<button type="button" class="amv" data-mv="'+a.id+'" data-dir="1" title="Move right">▶</button>':'')+
+          '<button type="button" class="adup" data-dup="'+a.id+'" title="Duplicate account">⧉</button>'+
+          (n>1?'<button type="button" class="x" data-del="'+a.id+'" title="Delete account">×</button>':'')+
+        '</div>'+
         '</div>';
     });
     html+='<div class="acch add" id="acctAdd">＋ Add account</div>';
@@ -1768,6 +1797,10 @@
   });
 
   document.getElementById("acctBar").addEventListener("click",function(e){
+    var mv=e.target.closest(".amv");
+    if(mv){e.stopPropagation();moveAccount(mv.dataset.mv,parseInt(mv.dataset.dir,10));save().then(renderAll);return;}
+    var dup=e.target.closest(".adup");
+    if(dup){e.stopPropagation();duplicateAccount(dup.dataset.dup);ensureAccounts();save().then(renderAll);return;}
     var del=e.target.getAttribute("data-del");
     if(del){
       var victim=null;for(var i=0;i<state.accounts.length;i++){if(state.accounts[i].id===del)victim=state.accounts[i];}
