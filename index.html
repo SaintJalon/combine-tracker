@@ -97,6 +97,23 @@
   .trow input:focus{border-color:var(--green)}
   .trow .trm{background:#2a2a30;color:var(--muted);border:none;border-radius:8px;padding:0 9px;cursor:pointer;font-family:inherit;font-size:12px;flex:none}
   .trow .trm:hover{color:var(--red)}
+  .trow .tdet{background:#2a2a30;color:var(--muted);border:none;border-radius:8px;padding:0 9px;cursor:pointer;font-family:inherit;font-size:11px;flex:none}
+  .trow .tdet:hover{color:var(--text)}
+  .trsum{font-size:10.5px;color:var(--muted2);margin:-2px 0 2px 2px}
+  .trsum .tsum{background:var(--card2);padding:1px 6px;border-radius:5px;margin-right:4px}
+  .trdet{background:#15151a;border:1px solid var(--line);border-radius:9px;padding:9px;margin:2px 0 4px;display:flex;flex-direction:column;gap:7px}
+  .trow2{display:flex;gap:7px}
+  .trow2 select,.trow2 input{flex:1;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit;outline:none;min-width:0}
+  .trow2 select:focus,.trow2 input:focus{border-color:var(--green)}
+  .confwrap{flex:1;display:flex;align-items:center;gap:7px}
+  .confwrap .hint{flex:none}
+  .cbtns{display:flex;gap:4px}
+  .cbtn{width:22px;height:22px;border-radius:6px;border:1px solid var(--line2);background:#0f0f12;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit}
+  .cbtn.on{background:var(--green);color:#06281b;border-color:var(--green)}
+  .mchips{display:flex;flex-wrap:wrap;gap:5px}
+  .mchip{font-size:10.5px;padding:3px 8px;border-radius:7px;background:#0f0f12;border:1px solid var(--line2);color:var(--muted);cursor:pointer;user-select:none}
+  .mchip.on{background:var(--red-soft);border-color:rgba(243,115,111,.35);color:var(--red)}
+  .tuse{background:#2a2a30;color:var(--green);border:none;border-radius:6px;padding:1px 8px;font-size:11px;cursor:pointer;font-family:inherit;margin-left:4px}
   .addtrade{align-self:flex-start;background:#2a2a30;color:var(--muted);border:none;border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
   .addtrade:hover{color:var(--text)}
   .jdrow{display:flex;align-items:center;gap:9px;margin-top:8px}
@@ -132,6 +149,19 @@
   .setuptbl td:first-child{text-align:left;color:var(--text);font-weight:600}
   .setuptbl tr:last-child td{border-bottom:none}
   .setuptbl .g{color:var(--green)}.setuptbl .r{color:var(--red)}.setuptbl .m{color:var(--muted)}
+  .tlog-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .tlog-input{flex:1 1 200px;background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;outline:none;min-width:0}
+  .tlog-input:focus{border-color:var(--green)}
+  .tlog-select{background:#0f0f12;border:1px solid var(--line2);color:var(--text);border-radius:8px;padding:8px 9px;font-size:12px;font-family:inherit;outline:none;flex:1 1 110px;min-width:0}
+  .tlogrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .tlogrow:last-child{border-bottom:none}
+  .tlogrow .tld{width:64px;flex:none;color:var(--muted2);font-size:11px}
+  .tlogrow .tlmeta{flex:1;min-width:0;color:var(--muted)}
+  .tlogrow .tlmeta b{color:var(--text)}
+  .tlogrow .tlp{width:70px;flex:none;text-align:right;font-weight:700}
+  .tlogrow .tlchips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+  .tlogrow .tlchips span{font-size:9.5px;background:var(--red-soft);color:var(--red);padding:1px 6px;border-radius:5px}
+  @media(max-width:760px){.tlog-controls{flex-direction:column}.tlog-select{flex:none}}
   .rdist{display:flex;flex-direction:column;gap:5px;margin-top:4px}
   .rbar{display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--muted)}
   .rbar .rl{width:34px;flex:none;text-align:right;font-weight:600;color:var(--muted2)}
@@ -453,6 +483,18 @@
   <div class="statgrid" id="statGrid"></div>
   <div class="eqcard" id="eqCard"></div>
   <div class="eqcard" id="setupCard" style="margin-top:12px"></div>
+
+  <h2 class="section">Trade Log</h2>
+  <div class="eqcard" id="tlogCard">
+    <div class="tlog-controls">
+      <input type="text" id="tlogQ" placeholder="Search setup, mistakes, instrument, note…" class="tlog-input">
+      <select id="tlogSetup" class="tlog-select"></select>
+      <select id="tlogMistake" class="tlog-select"></select>
+      <select id="tlogSession" class="tlog-select"></select>
+      <select id="tlogSide" class="tlog-select"><option value="">Side: any</option><option value="long">Long</option><option value="short">Short</option></select>
+    </div>
+    <div id="tlogList"></div>
+  </div>
   <div class="statgrid" id="anaGrid" style="margin-top:12px"></div>
   <div class="eqcard" id="rdistCard" style="margin-top:12px"></div>
   <div class="eqcard" id="calCard" style="margin-top:12px"></div>
@@ -717,6 +759,16 @@
   function dayJ(d){var j=curJournal();if(!j[d])j[d]={note:"",trades:[]};if(!Array.isArray(j[d].trades))j[d].trades=[];return j[d];}
   function sumTrades(tr){var s=0;for(var i=0;i<tr.length;i++){var p=parseFloat(tr[i].p);if(!isNaN(p))s+=p;}return Math.round(s);}
   function maxTradesOf(){if(!state.maxTrades)state.maxTrades={};var v=state.maxTrades[state.activeId];return(v==null||isNaN(v))?4:v;}
+  var MISTAKES=["Chased","Moved stop","Oversized","No setup","Revenge","FOMO","Early exit","Late entry"];
+  var SESSIONS=["Asia","London","NY AM","NY PM","Other"];
+  var openTradeDetail={};
+  function calcTradePL(t){
+    var inst=INSTR.filter(function(x){return x.k===t.instr;})[0];
+    var entry=parseFloat(t.entry),exit=parseFloat(t.exit),qty=parseFloat(t.qty);
+    if(!inst||isNaN(entry)||isNaN(exit)||isNaN(qty)||qty<=0)return null;
+    var pts=t.side==="short"?(entry-exit):(exit-entry);
+    return Math.round(pts*inst.pp*qty);
+  }
   var WKD=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   function weekdayLbl(iso){var dt=new Date(iso+"T00:00:00");if(isNaN(dt))return"";var p=iso.split("-");return WKD[dt.getDay()]+" "+parseInt(p[1],10)+"/"+parseInt(p[2],10);}
   // Write a day's net into the log (and mirror into a follower's own-days record).
@@ -883,10 +935,35 @@
       var cap=maxTradesOf(),tradeSum=hasTr?sumTrades(trs):null,locked=(tradeSum!=null&&tradeSum<=-c.stop),overCap=trs.length>cap,followed=!!(jj&&jj.followed);
       var jbadge=(hasTr||jnote||followed||overCap)?'<div class="jbadge">'+(hasTr?'<span>🧾 '+trs.length+' trade'+(trs.length>1?"s":"")+'</span>':'')+(overCap?'<span style="background:var(--red-soft);color:var(--red)">⚠ over cap</span>':'')+(followed?'<span style="background:var(--green-soft);color:var(--green)">✓ plan</span>':'')+(jnote?'<span>📝 note</span>':'')+'</div>':'';
       var trowsHtml=trs.map(function(t,ti){
-        return '<div class="trow"><input class="tp" data-ti="'+ti+'" type="number" inputmode="numeric" placeholder="P&L" value="'+(t.p!==""&&t.p!=null?esc(String(t.p)):"")+'">'+
+        var dk=d+":"+ti,open=!!openTradeDetail[dk];
+        var sumTags=(t.mistakes&&t.mistakes.length)?(' <span class="tsum">'+t.mistakes.length+' tag'+(t.mistakes.length>1?"s":"")+'</span>'):"";
+        var sumMeta=(t.side||t.instr)?(' <span class="tsum">'+(t.side?t.side[0].toUpperCase():"")+(t.instr?" "+esc(t.instr):"")+'</span>'):"";
+        var row='<div class="trow"><input class="tp" data-ti="'+ti+'" type="number" inputmode="numeric" placeholder="P&L" value="'+(t.p!==""&&t.p!=null?esc(String(t.p)):"")+'">'+
           '<input class="trr" data-ti="'+ti+'" type="text" placeholder="R:R" value="'+esc(t.rr!=null?String(t.rr):"")+'">'+
           '<input class="ts" data-ti="'+ti+'" type="text" placeholder="Setup" value="'+esc(t.s||"")+'">'+
-          '<button type="button" class="trm" data-ti="'+ti+'">✕</button></div>';
+          '<button type="button" class="tdet" data-ti="'+ti+'">'+(open?"▴":"▾")+'</button>'+
+          '<button type="button" class="trm" data-ti="'+ti+'">✕</button></div>'+
+          (!open&&(sumTags||sumMeta)?'<div class="trsum">'+sumMeta+sumTags+'</div>':"");
+        if(!open)return row;
+        var confBtns=[1,2,3,4,5].map(function(n){return '<button type="button" class="cbtn'+(t.conf===n?" on":"")+'" data-ti="'+ti+'" data-c="'+n+'">'+n+'</button>';}).join("");
+        var chips=MISTAKES.map(function(m){var on=(t.mistakes||[]).indexOf(m)>=0;return '<span class="mchip'+(on?" on":"")+'" data-ti="'+ti+'" data-m="'+esc(m)+'">'+esc(m)+'</span>';}).join("");
+        var instrOpts='<option value="">Instrument</option>'+INSTR.map(function(x){return '<option value="'+x.k+'"'+(t.instr===x.k?" selected":"")+'>'+x.k+'</option>';}).join("");
+        var sessOpts='<option value="">Session</option>'+SESSIONS.map(function(s){return '<option value="'+esc(s)+'"'+(t.session===s?" selected":"")+'>'+esc(s)+'</option>';}).join("");
+        var calc=calcTradePL(t);
+        return row+'<div class="trdet">'+
+          '<div class="trow2">'+
+            '<select class="tside" data-ti="'+ti+'"><option value="">Side</option><option value="long"'+(t.side==="long"?" selected":"")+'>Long</option><option value="short"'+(t.side==="short"?" selected":"")+'>Short</option></select>'+
+            '<select class="tinstr" data-ti="'+ti+'">'+instrOpts+'</select>'+
+          '</div>'+
+          '<div class="trow2">'+
+            '<input class="tentry" data-ti="'+ti+'" type="number" step="any" placeholder="Entry" value="'+(t.entry!=null?esc(String(t.entry)):"")+'">'+
+            '<input class="texit" data-ti="'+ti+'" type="number" step="any" placeholder="Exit" value="'+(t.exit!=null?esc(String(t.exit)):"")+'">'+
+            '<input class="tqty" data-ti="'+ti+'" type="number" step="1" min="1" placeholder="Qty" value="'+(t.qty!=null?esc(String(t.qty)):"")+'">'+
+          '</div>'+
+          (calc!=null?'<div class="hint">Entry/exit → <b>'+fmt(calc)+'</b> · tap to use as P&L <button type="button" class="tuse" data-ti="'+ti+'">Use</button></div>':"")+
+          '<div class="trow2"><select class="tsess" data-ti="'+ti+'">'+sessOpts+'</select><div class="confwrap"><span class="hint">Confidence</span><div class="cbtns">'+confBtns+'</div></div></div>'+
+          '<div class="mchips">'+chips+'</div>'+
+          '</div>';
       }).join("");
       var netHint=hasTr?("Net = sum of "+trs.length+" trade"+(trs.length>1?"s":"")+" ("+fmt(sumTrades(trs))+")"):(isCopied?"Copied from "+esc(followL.name)+" — save to override":"Net P&L for the day (e.g. 240 or -120)");
       div.innerHTML=
@@ -925,7 +1002,15 @@
         ed.addEventListener("click",function(e){
           var t=e.target;
           if(t.classList.contains("addtrade")){e.stopPropagation();dayJ(d).trades.push({p:"",rr:"",s:""});openDay=d;save().then(renderDays);return;}
-          if(t.classList.contains("trm")){e.stopPropagation();var tr=dayJ(d).trades;tr.splice(+t.dataset.ti,1);if(tr.length)setDayNet(d,sumTrades(tr));openDay=d;persist();return;}
+          if(t.classList.contains("trm")){e.stopPropagation();var tr=dayJ(d).trades;var ti0=+t.dataset.ti;delete openTradeDetail[d+":"+ti0];tr.splice(ti0,1);if(tr.length)setDayNet(d,sumTrades(tr));openDay=d;persist();return;}
+          if(t.classList.contains("tdet")){e.stopPropagation();var dk=d+":"+t.dataset.ti;openTradeDetail[dk]=!openTradeDetail[dk];openDay=d;renderDays();return;}
+          if(t.classList.contains("tuse")){e.stopPropagation();var tr2=dayJ(d).trades,ti2=+t.dataset.ti,calc=calcTradePL(tr2[ti2]);if(calc!=null)tr2[ti2].p=calc;setDayNet(d,sumTrades(tr2));openDay=d;persist();return;}
+          if(t.classList.contains("mchip")){e.stopPropagation();var tr3=dayJ(d).trades,ti3=+t.dataset.ti,m=t.dataset.m;if(!tr3[ti3])return;
+            if(!tr3[ti3].mistakes)tr3[ti3].mistakes=[];var idx=tr3[ti3].mistakes.indexOf(m);
+            if(idx>=0)tr3[ti3].mistakes.splice(idx,1);else tr3[ti3].mistakes.push(m);
+            openDay=d;save().then(function(){renderDays();renderTradeLog();});return;}
+          if(t.classList.contains("cbtn")){e.stopPropagation();var tr4=dayJ(d).trades,ti4=+t.dataset.ti,c=+t.dataset.c;if(!tr4[ti4])return;
+            tr4[ti4].conf=(tr4[ti4].conf===c)?null:c;openDay=d;save().then(function(){renderDays();renderTradeLog();});return;}
         });
         ed.addEventListener("change",function(e){
           var t=e.target;
@@ -938,7 +1023,17 @@
             else if(t.classList.contains("trr"))tr[ti].rr=t.value;
             else tr[ti].s=t.value;
             if(tr.length)setDayNet(d,sumTrades(tr));
-            openDay=d;persist();
+            openDay=d;persist();return;
+          }
+          if(t.classList.contains("tside")||t.classList.contains("tinstr")||t.classList.contains("tentry")||t.classList.contains("texit")||t.classList.contains("tqty")||t.classList.contains("tsess")){
+            var tr5=dayJ(d).trades,ti5=+t.dataset.ti;if(!tr5[ti5])return;
+            if(t.classList.contains("tside"))tr5[ti5].side=t.value||"";
+            else if(t.classList.contains("tinstr"))tr5[ti5].instr=t.value||"";
+            else if(t.classList.contains("tentry"))tr5[ti5].entry=t.value===""?null:t.value;
+            else if(t.classList.contains("texit"))tr5[ti5].exit=t.value===""?null:t.value;
+            else if(t.classList.contains("tqty"))tr5[ti5].qty=t.value===""?null:t.value;
+            else if(t.classList.contains("tsess"))tr5[ti5].session=t.value||"";
+            openDay=d;save().then(function(){renderDays();renderTradeLog();});return;
           }
         });
       })(div,d);
@@ -995,7 +1090,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
-    renderBuffer();renderSetups();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();renderDiscipline();
+    renderBuffer();renderSetups();renderTradeLog();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();renderDiscipline();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -1234,6 +1329,46 @@
     if(!logs.length){logEl.innerHTML='<div class="eqh"><span class="eqt">Violation log</span></div><div class="empty">Clean record — no rule breaks logged. Keep it up.</div>';}
     else{var rows=logs.map(function(x){return '<div class="atrow"><span class="an">Day '+x.d+'</span><span class="am">'+(x.date?weekdayLbl(x.date)+' · ':'')+x.flags.join(" · ")+'</span></div>';}).reverse().join("");
       logEl.innerHTML='<div class="eqh"><span class="eqt">Violation log</span><span class="eqleg">'+logs.length+' flagged</span></div>'+rows;}
+  }
+  // ---- trade log: search & filter across all logged trades ----
+  var tlogFilter={q:"",setup:"",mistake:"",session:"",side:""};
+  function uniqueSorted(arr){var seen={},out=[];arr.forEach(function(x){if(x&&!seen[x]){seen[x]=1;out.push(x);}});return out.sort();}
+  function fillSelect(id,opts,placeholder,cur){
+    var el=document.getElementById(id);
+    el.innerHTML='<option value="">'+placeholder+'</option>'+opts.map(function(o){return '<option value="'+esc(o)+'"'+(o===cur?" selected":"")+'>'+esc(o)+'</option>';}).join("");
+  }
+  function renderTradeLog(){
+    var c=cfg(),j=state.journal[modeKey()]||{},all=[],d;
+    for(d=1;d<=c.days;d++){
+      var jd=j[d];if(!jd||!jd.trades)continue;
+      jd.trades.forEach(function(t){
+        var p=parseFloat(t.p);if(isNaN(p))return;
+        all.push({d:d,date:jd.date||"",p:p,rr:t.rr||"",s:t.s||"",side:t.side||"",instr:t.instr||"",mistakes:t.mistakes||[],session:t.session||"",conf:t.conf||null});
+      });
+    }
+    fillSelect("tlogSetup",uniqueSorted(all.map(function(x){return x.s;})),"Setup: any",tlogFilter.setup);
+    fillSelect("tlogMistake",uniqueSorted([].concat.apply([],all.map(function(x){return x.mistakes;}))),"Mistake: any",tlogFilter.mistake);
+    fillSelect("tlogSession",uniqueSorted(all.map(function(x){return x.session;})),"Session: any",tlogFilter.session);
+    document.getElementById("tlogSide").value=tlogFilter.side;
+    var q=tlogFilter.q.toLowerCase();
+    var filtered=all.filter(function(x){
+      if(tlogFilter.setup&&x.s!==tlogFilter.setup)return false;
+      if(tlogFilter.mistake&&x.mistakes.indexOf(tlogFilter.mistake)<0)return false;
+      if(tlogFilter.session&&x.session!==tlogFilter.session)return false;
+      if(tlogFilter.side&&x.side!==tlogFilter.side)return false;
+      if(q&&(x.s+" "+x.instr+" "+x.mistakes.join(" ")+" "+x.session).toLowerCase().indexOf(q)<0)return false;
+      return true;
+    });
+    filtered.sort(function(a,b){return b.d-a.d;});
+    var host=document.getElementById("tlogList");
+    if(!all.length){host.innerHTML='<div class="empty">Log trades — tap ▾ on a trade to add setup, side, instrument or mistakes — to search and filter them here.</div>';return;}
+    if(!filtered.length){host.innerHTML='<div class="empty">No trades match these filters.</div>';return;}
+    var rows=filtered.map(function(x){
+      var meta="<b>Day "+x.d+"</b>"+(x.date?" · "+weekdayLbl(x.date):"")+(x.side?" · "+esc(x.side):"")+(x.instr?" "+esc(x.instr):"")+(x.s?" · "+esc(x.s):"")+(x.rr?" · "+esc(x.rr):"")+(x.session?" · "+esc(x.session):"")+(x.conf?" · conf "+x.conf+"/5":"");
+      var chips=x.mistakes.length?'<div class="tlchips">'+x.mistakes.map(function(m){return "<span>"+esc(m)+"</span>";}).join("")+"</div>":"";
+      return '<div class="tlogrow"><div class="tlmeta">'+meta+chips+'</div><div class="tlp" style="color:'+(x.p>=0?"var(--green)":"var(--red)")+'">'+fmt(x.p)+"</div></div>";
+    }).join("");
+    host.innerHTML='<div class="eqh" style="margin-bottom:6px"><span class="eqleg">'+filtered.length+" of "+all.length+" trades</span></div>"+rows;
   }
   function renderAnalytics(){
     var c=cfg(),log=curLog(),j=state.journal[modeKey()]||{},d,i,tr,p;
@@ -1892,6 +2027,15 @@
     el.innerHTML='<input type="number" min="0" value="'+cur+'">';var inp=el.querySelector("input");inp.focus();inp.select();
     function commit(){var v=parseFloat(inp.value);P[field]=(isNaN(v)||v<0)?null:Math.round(v);save().then(renderPayout);}
     inp.addEventListener("blur",commit);inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+  });
+
+  // trade log search & filters
+  document.getElementById("tlogQ").addEventListener("input",function(e){tlogFilter.q=e.target.value;renderTradeLog();});
+  ["tlogSetup","tlogMistake","tlogSession","tlogSide"].forEach(function(id){
+    document.getElementById(id).addEventListener("change",function(e){
+      var key=id.replace("tlog","");key=key.charAt(0).toLowerCase()+key.slice(1);
+      tlogFilter[key]=e.target.value;renderTradeLog();
+    });
   });
 
   // weekly/monthly toggle
