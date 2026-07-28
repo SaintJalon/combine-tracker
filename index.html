@@ -145,6 +145,9 @@
   .atrow .ar.g{background:var(--green-soft);color:var(--green)}.atrow .ar.r{background:var(--red-soft);color:var(--red)}.atrow .ar.m{background:var(--card2);color:var(--muted)}
   .atrow .am{color:var(--muted);flex:1}
   .plan .v input{background:#0f0f12;border:1px solid var(--green);color:var(--text);border-radius:6px;padding:2px 5px;font-size:13px;font-family:inherit;outline:none;width:120px}
+  .pomsg{margin-top:12px;font-size:12.5px;padding:9px 12px;border-radius:10px;border:1px solid var(--line)}
+  .pomsg.ok{background:var(--green-soft);border-color:rgba(52,211,153,.25);color:#9be9c8}
+  .pomsg.warn{background:var(--amber-soft);border-color:rgba(245,179,64,.3);color:#f3cd8e}
   @media(max-width:760px){.statgrid{grid-template-columns:repeat(2,1fr)}}
   .copybar{background:var(--blue-soft);border:1px solid rgba(142,156,245,.3);color:#aab4f7;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;display:none}
   .copybar.on{display:block}
@@ -438,6 +441,9 @@
     </div>
     <div id="atList" style="margin-top:6px"></div>
   </div>
+
+  <h2 class="section withbtn">Funded / Payout <button type="button" class="secbtn" id="stageTog">Stage: Eval</button></h2>
+  <div class="plan" id="payoutPanel"></div>
 
   <h2 class="section">Stats</h2>
   <div class="statgrid" id="statGrid"></div>
@@ -975,7 +981,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
-    renderBuffer();renderSetups();renderRiskLab();renderAnalytics();renderAttempt();
+    renderBuffer();renderSetups();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -1135,6 +1141,31 @@
     var fv=cStart*Math.pow(1+cRate/100,cMonths),gain=fv-cStart,ce=document.getElementById("rlCompOut");
     if(!(cStart>0)||isNaN(fv))ce.innerHTML='Enter a starting balance.';
     else ce.innerHTML=fmt(cStart)+' → <b class="g">'+fmt(Math.round(fv))+'</b> in '+cMonths+' mo at '+cRate+'%/mo (<b>'+fmt(Math.round(gain))+'</b> gain).';
+  }
+  // ---- funded / payout stage ----
+  function stageOf(){if(!state.stage)state.stage={};return state.stage[state.activeId]||"eval";}
+  function payoutCfg(){if(!state.payout)state.payout={};var id=state.activeId;if(!state.payout[id])state.payout[id]={thresh:null,cons:null,minDays:null};return state.payout[id];}
+  function renderPayout(){
+    var c=cfg(),stage=stageOf(),host=document.getElementById("payoutPanel");
+    document.getElementById("stageTog").textContent="Stage: "+(stage==="funded"?"Funded":"Eval");
+    if(stage!=="funded"){host.innerHTML='<div class="rout" style="padding:2px">This account is in the <b>evaluation</b> stage. Once you pass, tap <b>Stage: Eval</b> above to switch to Funded and track your payout progress.</div>';return;}
+    var P=payoutCfg(),thresh=P.thresh!=null?P.thresh:Math.round(c.maxloss),cons=P.cons!=null?P.cons:20,minDays=P.minDays!=null?P.minDays:5;
+    var log=curLog(),profit=0,days=0,best=-Infinity,d;
+    for(d=1;d<=c.days;d++){if(d in log){profit+=log[d];days++;if(log[d]>best)best=log[d];}}
+    var consOK=profit>0&&(best/profit<=cons/100),gates=[];
+    if(profit<thresh)gates.push("need "+fmt(thresh-profit)+" more profit");
+    if(days<minDays)gates.push((minDays-days)+" more day"+((minDays-days)===1?"":"s"));
+    if(profit>0&&!consOK)gates.push("best day "+fmt(best)+" over "+cons+"% cap");
+    var ready=gates.length===0&&profit>0;
+    host.innerHTML='<div class="grid">'+
+      '<div class="item"><div class="k">Funded profit</div><div class="v" style="color:'+(profit>=0?"var(--green)":"var(--red)")+'">'+fmt(profit)+'</div></div>'+
+      '<div class="item"><div class="k">Payout threshold</div><div class="v edit" id="poThresh">'+fmt(thresh)+'</div></div>'+
+      '<div class="item"><div class="k">Consistency cap</div><div class="v edit" id="poCons">'+cons+'%</div></div>'+
+      '<div class="item"><div class="k">Days traded</div><div class="v">'+days+'</div></div>'+
+      '<div class="item"><div class="k">Min payout days</div><div class="v edit" id="poMin">'+minDays+'</div></div>'+
+      '<div class="item"><div class="k">Best day</div><div class="v">'+(best>-Infinity?fmt(best):"—")+'</div></div>'+
+      '</div>'+
+      '<div class="pomsg '+(ready?"ok":"warn")+'">'+(ready?"✓ Ready — you can request a payout of up to <b>"+fmt(profit)+"</b>.":"Not yet · "+gates.join(" · ")+".")+'</div>';
   }
   // ---- attempt history + expiration ----
   function isoDate(dt){var d=dt||new Date(),p=function(n){return(n<10?"0":"")+n;};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
@@ -1791,6 +1822,19 @@
   document.getElementById("psRisk").addEventListener("input",function(e){psState().risk=e.target.value===""?null:parseFloat(e.target.value);save();renderPS();});
   document.getElementById("psUnit").addEventListener("change",function(e){psState().unit=e.target.value;save();renderPS();});
   document.getElementById("psRiskUnit").addEventListener("change",function(e){var p=psState();p.riskUnit=e.target.value;p.risk=null;save();renderPS();});
+
+  // funded / payout
+  document.getElementById("stageTog").addEventListener("click",function(){
+    if(!state.stage)state.stage={};state.stage[state.activeId]=stageOf()==="funded"?"eval":"funded";save().then(renderAll);
+  });
+  document.getElementById("payoutPanel").addEventListener("click",function(e){
+    var el=e.target;if(!el.classList.contains("edit")||el.querySelector("input"))return;
+    var field=el.id==="poThresh"?"thresh":(el.id==="poCons"?"cons":(el.id==="poMin"?"minDays":null));if(!field)return;
+    var P=payoutCfg(),cur=(field==="thresh"?(P.thresh!=null?P.thresh:Math.round(cfg().maxloss)):(field==="cons"?(P.cons!=null?P.cons:20):(P.minDays!=null?P.minDays:5)));
+    el.innerHTML='<input type="number" min="0" value="'+cur+'">';var inp=el.querySelector("input");inp.focus();inp.select();
+    function commit(){var v=parseFloat(inp.value);P[field]=(isNaN(v)||v<0)?null:Math.round(v);save().then(renderPayout);}
+    inp.addEventListener("blur",commit);inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+  });
 
   // weekly/monthly toggle
   document.getElementById("periodCard").addEventListener("click",function(e){
