@@ -573,6 +573,7 @@
       <div class="item"><div class="k">Started</div><div class="v edit" id="atStart">—</div></div>
       <div class="item"><div class="k">Expires in</div><div class="v edit" id="atExp">—</div></div>
     </div>
+    <label class="fchk" style="margin-top:11px"><input type="checkbox" id="atAutoFund"> Auto-convert to Funded the moment I clear the target and consistency — no tap needed</label>
     <div id="atList" style="margin-top:6px"></div>
   </div>
 
@@ -827,7 +828,7 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},consPct:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,leaderId:null,theme:null,accent:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},consPct:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,leaderId:null,theme:null,accent:null,autoFund:{}};
   var INSTR=[
     {k:"NQ",n:"NQ · E-mini Nasdaq",pp:20,t:0.25},{k:"MNQ",n:"MNQ · Micro Nasdaq",pp:2,t:0.25},
     {k:"ES",n:"ES · E-mini S&P",pp:50,t:0.25},{k:"MES",n:"MES · Micro S&P",pp:5,t:0.25},
@@ -1222,6 +1223,11 @@
       else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total. Cap is "+consPct+"% — keep any one day under "+fmt(cap*T)+".";}
     }
     if(passed&&stageOf()!=="funded"){
+      if(state.autoFund&&state.autoFund[state.activeId]){
+        cv.className="convertbar";cv.innerHTML="";
+        convertToFunded(true);
+        return;
+      }
       cv.className="convertbar show";
       cv.innerHTML="<span>🎉 <b>Target hit</b> — you've cleared "+fmt(T)+(consPct>0?" with consistency intact":"")+". Ready to convert to a funded account.</span><button type=\"button\" id=\"btnConvertFunded\">Convert to Funded →</button>";
     }else{cv.className="convertbar";cv.innerHTML="";}
@@ -1461,10 +1467,10 @@
   // Archives the eval run as a passed attempt, starts a fresh log for funded
   // trading, and seeds the funded target to the payout threshold. This is the
   // ONLY path into Funded — keeps eval P&L from leaking into funded profit.
-  function convertToFunded(){
+  function convertToFunded(auto){
     var c=cfg(),log=curLog(),total=0,days=0,d;
     for(d=1;d<=c.days;d++){if(d in log){total+=log[d];days++;}}
-    if(!confirm("Convert this account to Funded?\n\nThis archives your eval run (net "+fmt(total)+" · "+days+" days · passed) and starts a fresh, empty log for funded trading. The eval run stays saved under Attempt."))return;
+    if(!auto&&!confirm("Convert this account to Funded?\n\nThis archives your eval run (net "+fmt(total)+" · "+days+" days · passed) and starts a fresh, empty log for funded trading. The eval run stays saved under Attempt."))return;
     var m=attemptMeta();
     attemptsList().push({no:m.no,result:"passed",net:total,days:days,ended:isoDate()});
     state.logs["acct:"+state.activeId]={};
@@ -1476,6 +1482,7 @@
     if(!state.targets)state.targets={};
     state.targets["acct:"+state.activeId]=P.thresh;
     save().then(renderAll);
+    if(auto)alert("🎉 Auto-converted to Funded — the eval run (net "+fmt(total)+" · "+days+" days) is archived under Attempt, and a fresh log just started for funded trading.");
   }
   function renderPayout(){
     var c=cfg(),stage=stageOf(),host=document.getElementById("payoutPanel"),tog=document.getElementById("stageTog");
@@ -1514,6 +1521,7 @@
       if(m.evalDays){var left=m.evalDays-daysBetween(m.start);ee.textContent=(left>0?left+" day"+(left===1?"":"s"):"expired")+" · "+m.evalDays+"d eval";ee.style.color=left<=3?"var(--red)":(left<=7?"var(--amber)":"");}
       else{ee.textContent="no limit";ee.style.color="";}
     }
+    document.getElementById("atAutoFund").checked=!!(state.autoFund&&state.autoFund[state.activeId]);
     var host=document.getElementById("atList");
     if(!list.length){host.innerHTML="";return;}
     var rows=list.map(function(a){var col=a.result==="passed"?"g":(a.result==="failed"?"r":"m");
@@ -1974,6 +1982,7 @@
         if(state.attempts)delete state.attempts[del];if(state.attemptMeta)delete state.attemptMeta[del];
         if(state.maxTrades)delete state.maxTrades[del];if(state.stage)delete state.stage[del];if(state.payout)delete state.payout[del];
         if(state.planning)delete state.planning[del];if(state.payoutGoal)delete state.payoutGoal[del];if(state.payouts)delete state.payouts[del];
+        if(state.autoFund)delete state.autoFund[del];
         if(state.leaderId===del)state.leaderId=null;
         if(state.activeId===del)state.activeId=state.accounts[0].id;
         ensureAccounts();save().then(renderAll);
@@ -2455,6 +2464,11 @@
     el.innerHTML='<input type="number" min="0" placeholder="eval days" value="'+(m.evalDays||"")+'">';var inp=el.querySelector("input");inp.focus();inp.select();
     function commit(){var v=parseInt(inp.value,10);m.evalDays=(isNaN(v)||v<=0)?null:v;save().then(renderAttempt);}
     inp.addEventListener("blur",commit);inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+  });
+  document.getElementById("atAutoFund").addEventListener("change",function(e){
+    if(!state.autoFund)state.autoFund={};
+    state.autoFund[state.activeId]=e.target.checked;
+    save().then(renderAll);
   });
 
   // risk lab inputs
