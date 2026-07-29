@@ -324,6 +324,8 @@
   .plan .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 18px}
   .plan .item .k{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
   .plan .item .v{font-size:13px;font-weight:600;color:var(--text)}
+  .plan .item .v.edit{cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.18);display:inline-block;padding-bottom:1px}
+  .plan .item .v input{width:64px;background:var(--surface);border:1px solid var(--green);color:var(--text);border-radius:6px;padding:2px 5px;font-size:13px;font-weight:600;font-family:inherit;outline:none}
   @media(max-width:640px){.plan .grid{grid-template-columns:repeat(2,1fr)}}
 
   /* progress */
@@ -533,7 +535,7 @@
     <h3 id="planTitle">TopStep 100K</h3>
     <div class="grid">
       <div class="item"><div class="k">Drawdown</div><div class="v" id="pDD">EOD trailing</div></div>
-      <div class="item"><div class="k">Consistency</div><div class="v" id="pCons">50%</div></div>
+      <div class="item"><div class="k">Consistency</div><div class="v edit" id="pCons">50%</div></div>
       <div class="item"><div class="k">Daily loss limit</div><div class="v" id="pDLL">$2,000 soft</div></div>
       <div class="item"><div class="k">Starting floor</div><div class="v" id="pFloor">$97,000</div></div>
       <div class="item"><div class="k">Contracts</div><div class="v" id="pContracts">10 minis</div></div>
@@ -825,7 +827,7 @@
 
   var KEY="combine_all_state_v3";
   var mem={};
-  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,leaderId:null,theme:null,accent:null};
+  var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},consPct:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,leaderId:null,theme:null,accent:null};
   var INSTR=[
     {k:"NQ",n:"NQ · E-mini Nasdaq",pp:20,t:0.25},{k:"MNQ",n:"MNQ · Micro Nasdaq",pp:2,t:0.25},
     {k:"ES",n:"ES · E-mini S&P",pp:50,t:0.25},{k:"MES",n:"MES · Micro S&P",pp:5,t:0.25},
@@ -873,7 +875,7 @@
     var a=acctById(id);if(!a)return null;
     var newId=genId(),oldK="acct:"+id,newK="acct:"+newId;
     state.accounts.push({id:newId,name:(a.name+" copy").slice(0,24),firm:a.firm,plan:a.plan,size:a.size});
-    ["logs","targets","maxloss","stops","days","journal","balance","mm"].forEach(function(m){
+    ["logs","targets","maxloss","stops","consPct","days","journal","balance","mm"].forEach(function(m){
       if(state[m]&&state[m][oldK]!==undefined)state[m][newK]=JSON.parse(JSON.stringify(state[m][oldK]));
     });
     ["maxTrades","stage","payout","attempts","attemptMeta","planning","payoutGoal","payouts"].forEach(function(m){
@@ -890,6 +892,7 @@
     c.target=state.targets[k]||c.target;
     c.maxloss=state.maxloss[k]||c.maxloss;
     if(state.stops&&state.stops[k])c.stop=state.stops[k];
+    if(state.consPct&&state.consPct[k]!=null){c.consPct=state.consPct[k];c.cons=c.consPct>0?(c.consPct+"%"):"None";}
     c.autoDays=daysToTarget(c.size,c.target,c.minShort);
     c.daysManual=!!(state.days&&state.days[k]);
     c.days=c.daysManual?state.days[k]:c.autoDays;
@@ -1966,6 +1969,7 @@
       if(victim&&confirm('Delete "'+victim.name+'" and its P&L log?')){
         state.accounts=state.accounts.filter(function(x){return x.id!==del;});
         delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
+        if(state.stops)delete state.stops["acct:"+del];if(state.consPct)delete state.consPct["acct:"+del];
         if(state.follow)delete state.follow["acct:"+del];
         if(state.attempts)delete state.attempts[del];if(state.attemptMeta)delete state.attemptMeta[del];
         if(state.maxTrades)delete state.maxTrades[del];if(state.stage)delete state.stage[del];if(state.payout)delete state.payout[del];
@@ -2017,6 +2021,25 @@
   editKpi("kTarget",function(){return cfg().target;},function(v){state.targets[modeKey()]=v;});
   editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
   editKpi("kStop",function(){return cfg().stop;},function(v){state.stops[modeKey()]=v;});
+
+  // Consistency %: 0 is a valid value (no consistency rule), so this needs its
+  // own tiny editor rather than reusing editKpi() (which rejects zero/blank).
+  (function(){
+    var el=document.getElementById("pCons");
+    el.addEventListener("click",function(){
+      if(el.querySelector("input"))return;
+      el.innerHTML='<input type="number" inputmode="numeric" min="0" max="100" value="'+cfg().consPct+'">';
+      var inp=el.querySelector("input");inp.focus();inp.select();
+      function commit(){
+        var v=parseFloat(inp.value);
+        if(!isNaN(v)){if(!state.consPct)state.consPct={};state.consPct[modeKey()]=Math.max(0,Math.min(100,Math.round(v)));}
+        save().then(renderAll);
+      }
+      inp.addEventListener("blur",commit);
+      inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+      inp.addEventListener("click",function(ev){ev.stopPropagation();});
+    });
+  })();
 
   // Trading days: tap to set your own plan length (0 or blank = back to auto)
   (function(){
