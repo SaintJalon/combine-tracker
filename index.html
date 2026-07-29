@@ -573,7 +573,7 @@
       <div class="item"><div class="k">Started</div><div class="v edit" id="atStart">—</div></div>
       <div class="item"><div class="k">Expires in</div><div class="v edit" id="atExp">—</div></div>
     </div>
-    <label class="fchk" style="margin-top:11px"><input type="checkbox" id="atAutoFund"> Auto-convert to Funded the moment I clear the target and consistency — no tap needed</label>
+    <label class="fchk" style="margin-top:11px"><input type="checkbox" id="atAutoFund"> Auto-convert to Funded the moment I clear the target and consistency (on by default — uncheck for a manual tap instead)</label>
     <div id="atList" style="margin-top:6px"></div>
   </div>
 
@@ -1223,7 +1223,7 @@
       else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total. Cap is "+consPct+"% — keep any one day under "+fmt(cap*T)+".";}
     }
     if(passed&&stageOf()!=="funded"){
-      if(state.autoFund&&state.autoFund[state.activeId]){
+      if(!(state.autoFund&&state.autoFund[state.activeId]===false)){
         cv.className="convertbar";cv.innerHTML="";
         convertToFunded(true);
         return;
@@ -1521,7 +1521,7 @@
       if(m.evalDays){var left=m.evalDays-daysBetween(m.start);ee.textContent=(left>0?left+" day"+(left===1?"":"s"):"expired")+" · "+m.evalDays+"d eval";ee.style.color=left<=3?"var(--red)":(left<=7?"var(--amber)":"");}
       else{ee.textContent="no limit";ee.style.color="";}
     }
-    document.getElementById("atAutoFund").checked=!!(state.autoFund&&state.autoFund[state.activeId]);
+    document.getElementById("atAutoFund").checked=!(state.autoFund&&state.autoFund[state.activeId]===false);
     var host=document.getElementById("atList");
     if(!list.length){host.innerHTML="";return;}
     var rows=list.map(function(a){var col=a.result==="passed"?"g":(a.result==="failed"?"r":"m");
