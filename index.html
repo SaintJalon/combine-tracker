@@ -119,23 +119,58 @@
   .breachbar.on{display:block}
   .breachbar.warn{background:var(--amber-soft);border:1px solid rgba(245,179,64,.35);color:var(--msg-warn)}
   .breachbar.bad{background:var(--red-soft);border:1px solid rgba(243,115,111,.4);color:var(--msg-bad)}
-  /* Coach Co */
-  .coachcard{border-radius:16px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--line);background:var(--card)}
-  .coachcard.new{background:var(--card);border-color:var(--line)}
-  .coachcard.good{background:var(--green-soft);border-color:rgba(52,211,153,.3)}
-  .coachcard.okay{background:var(--amber-soft);border-color:rgba(245,179,64,.32)}
-  .coachcard.bad{background:var(--red-soft);border-color:rgba(243,115,111,.35)}
-  .coachhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
-  .coachname{font-size:13px;font-weight:700;color:var(--text)}
-  .coachtag{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:99px;background:var(--card2);color:var(--muted)}
-  .coachcard.good .coachtag{color:var(--msg-ok)}
-  .coachcard.okay .coachtag{color:var(--msg-warn)}
-  .coachcard.bad .coachtag{color:var(--msg-bad)}
-  .coachmsg{font-size:13.5px;line-height:1.45;color:var(--text)}
-  .coachpoints{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
-  .coachpoints span{font-size:10.5px;font-weight:600;color:var(--muted);background:var(--card2);padding:3px 8px;border-radius:99px}
-  .coachfocus{font-size:12.5px;line-height:1.4;color:var(--text);margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
-  .coachfocus b{font-weight:700}
+  /* Coach Co — performance desk */
+  .coachcard{position:relative;border-radius:18px;padding:16px 17px 14px;margin-bottom:14px;
+    border:1px solid var(--line);background:var(--card);overflow:hidden}
+  .coachcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--muted2)}
+  .coachcard.good::before{background:linear-gradient(180deg,var(--green),rgba(52,211,153,.25))}
+  .coachcard.okay::before{background:linear-gradient(180deg,var(--amber),rgba(245,179,64,.25))}
+  .coachcard.bad::before{background:linear-gradient(180deg,var(--red),rgba(243,115,111,.25))}
+  .coachcard.good{background:linear-gradient(180deg,var(--green-soft),transparent 62%),var(--card);border-color:rgba(52,211,153,.28)}
+  .coachcard.okay{background:linear-gradient(180deg,var(--amber-soft),transparent 62%),var(--card);border-color:rgba(245,179,64,.3)}
+  .coachcard.bad{background:linear-gradient(180deg,var(--red-soft),transparent 62%),var(--card);border-color:rgba(243,115,111,.32)}
+  .coachtop{display:flex;align-items:center;gap:11px;margin-bottom:11px}
+  .coachav{width:36px;height:36px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    font-size:12.5px;font-weight:800;letter-spacing:.02em;color:#0e0e10;background:var(--muted)}
+  .coachcard.good .coachav{background:var(--green)}
+  .coachcard.okay .coachav{background:var(--amber)}
+  .coachcard.bad .coachav{background:var(--red)}
+  .coachid{min-width:0;flex:1}
+  .coachname{font-size:14px;font-weight:700;color:var(--text);letter-spacing:-.01em}
+  .coachsub{font-size:10.5px;color:var(--muted2);margin-top:1px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+  .coachring{flex-shrink:0;display:flex;align-items:center;gap:9px}
+  .coachringtxt{text-align:right}
+  .coachgrade{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .coachcard.good .coachgrade{color:var(--msg-ok)}
+  .coachcard.okay .coachgrade{color:var(--msg-warn)}
+  .coachcard.bad .coachgrade{color:var(--msg-bad)}
+  .coachscoresub{font-size:9.5px;color:var(--muted2);letter-spacing:.04em;text-transform:uppercase;font-weight:600;margin-top:1px}
+  .coachdonut{width:44px;height:44px;transform:rotate(-90deg)}
+  .coachdonut circle{fill:none;stroke-width:5;stroke-linecap:round}
+  .coachdonut .cdtrack{stroke:var(--track)}
+  .coachcard.good .cdval{stroke:var(--green)}
+  .coachcard.okay .cdval{stroke:var(--amber)}
+  .coachcard.bad .cdval{stroke:var(--red)}
+  .coachcard.new .cdval{stroke:var(--muted2)}
+  .coachdnum{font-size:12.5px;font-weight:800;fill:var(--text);transform:rotate(90deg);transform-origin:22px 22px}
+  .coachmsg{font-size:13.5px;line-height:1.5;color:var(--text)}
+  .coachpoints{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+  .coachpoints span{font-size:10.5px;font-weight:600;color:var(--muted);background:var(--card2);padding:3px 8px;border-radius:99px;
+    border:1px solid var(--line)}
+  .coachsec{margin-top:11px;padding-top:11px;border-top:1px solid var(--line)}
+  .coachsec+.coachsec{margin-top:9px;padding-top:9px}
+  .csechead{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted2);margin-bottom:4px}
+  .csecbody{font-size:12.5px;line-height:1.45;color:var(--text)}
+  .csecbody b{font-weight:700}
+  .csecbody .cnum{font-weight:700;font-variant-numeric:tabular-nums}
+  .csecbody .cnum.g{color:var(--green)}.csecbody .cnum.r{color:var(--red)}.csecbody .cnum.a{color:var(--amber)}
+  .coachmore{margin-top:11px;width:100%;background:var(--card2);color:var(--muted);border:1px solid var(--line);
+    border-radius:9px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em}
+  .coachmore:hover{color:var(--text)}
+  .coachextra .coachsec:first-child{border-top:1px solid var(--line)}
+  .coachprin{margin-top:11px;padding:9px 11px;border-radius:10px;background:var(--card2);border:1px solid var(--line);
+    font-size:11.5px;line-height:1.45;color:var(--muted);font-style:italic}
+  .coachprin b{color:var(--text);font-style:normal;font-weight:700}
   .day .flag{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;vertical-align:middle}
   .day .flag.stop{background:var(--amber-soft);color:var(--amber)}
   .day .flag.max{background:var(--red-soft);color:var(--red)}
@@ -1772,7 +1807,7 @@
     }
     var adh=tradingDays?Math.round(adhered/tradingDays*100):0;
     var adhAvg=adhN?Math.round(adhSum/adhN):null,notAvg=notN?Math.round(notSum/notN):null;
-    return{tradingDays:tradingDays,adhered:adhered,adh:adh,adhAvg:adhAvg,notAvg:notAvg,
+    return{tradingDays:tradingDays,adhered:adhered,adh:adh,adhAvg:adhAvg,notAvg:notAvg,adhN:adhN,notN:notN,
       vOverCap:vOverCap,vStop:vStop,vMax:vMax,vTilt:vTilt,totV:vOverCap+vStop+vMax+vTilt,logs:logs,cap:cap};
   }
   function renderDiscipline(){
@@ -1795,150 +1830,230 @@
       logEl.innerHTML='<div class="eqh"><span class="eqt">Violation log</span><span class="eqleg">'+s.logs.length+' flagged</span></div>'+rows;}
   }
 
-  // ---- Coach Co: reads the same signals Discipline/Consistency/Entry Guard already
-  // compute and turns them into a tiered, honest check-in instead of raw stats ----
+  // ---- Coach Co: a performance desk, not a fortune cookie. Three layers:
+  // (1) THE READ  — tiered assessment from discipline/consistency/Entry Guard signals
+  // (2) THE EDGE  — insights mined from the trade log itself, gated on sample size
+  // (3) THE FOCUS — one concrete, numbers-driven action for today
   var COACH_MSG={
     new:[
-      "Coach Co here. Log a few days — followed-plan checkbox included — and I'll start reading your patterns instead of guessing.",
-      "No record yet. Trade the plan, log it honestly, and I'll tell you exactly what I see — good or bad, no sugarcoating.",
-      "Fresh start. My only ask: log every day and check \"followed my plan\" honestly. Everything else I can work with.",
-      "Nothing to grade yet. Get a few sessions in — I read the record, I don't guess at it."
+      "Coach Co here. I read the record — I don't guess at it. Log a few sessions with the followed-plan box ticked honestly and I'll start showing you what your own numbers say.",
+      "No sample yet, so no verdict yet. Trade the plan, log every trade, and within a week I can tell you which setups pay you and which ones are charging rent.",
+      "Fresh book. My only ask is honest inputs — the analysis is only as good as what you log, and flattering data helps nobody.",
+      "Nothing to grade. Get sessions on the board and I'll start separating what's edge from what's variance wearing a costume.",
+      "Blank slate. Log the wins and the ugly ones equally — the ugly ones are where the information density is highest.",
+      "Give me data. Until then the only advice that's honest is: trade small, follow the checklist, and let the record build."
     ],
     good:{
       general:[
-        "This is what disciplined looks like. Keep doing exactly what you're doing — don't get creative from here.",
-        "Adherence is high and it's showing up in the numbers. Boring and repeatable beats exciting, every time.",
-        "You're proving the plan works when you actually run it. Don't let a green stretch talk you into skipping steps.",
-        "Clean record right now. The system is doing the work — stay out of its way.",
-        "This is the version of you that clears evals and keeps funded accounts. Protect it.",
-        "Nothing to fix here. The only real risk is boredom talking you into a size-up you haven't earned yet.",
-        "You're trading like the rules matter, and the account is rewarding it. Same size, same process, tomorrow.",
-        "Good process, good results — that's not luck, that's the checklist and the schedule doing their job.",
-        "You've built real evidence that patience pays on this account. Keep feeding it more days like this.",
-        "Not much to say — just keep showing up like this. Consistency is the whole game, and you're playing it.",
-        "You're ahead of your own plan. Resist the urge to press it — banking clean green days is the actual win.",
-        "This is a track record you could hand someone else and say \"copy this.\" Keep it that way."
+        "This is what a repeatable process looks like from the outside. Nothing here needs fixing — the risk now is you getting bored and inventing a problem to solve.",
+        "High adherence and it's showing in the P&L. That's not luck; that's a system being executed. Protect the execution, not the outcome.",
+        "You're doing the hard part — running the plan when it's boring. Keep the size, keep the checklist, and let compounding be unremarkable.",
+        "Clean record. The gap between traders at this stage is almost never analysis — it's who keeps doing the boring thing longest.",
+        "Your process is producing. Don't reverse-engineer new rules from a good stretch; that's how disciplined books turn loose.",
+        "This is the version of you that clears evals and holds funded accounts. Study what you're doing right now so you can rebuild it after a drawdown.",
+        "You're trading like the rules are real, and the account is paying you for it. Same size, same criteria, tomorrow.",
+        "Good process, good result — and importantly, in that order. Outcome-first traders can't repeat their good months. You can.",
+        "Nothing in the data says change anything. The highest-EV decision available to you today is to do it again.",
+        "You've built genuine evidence that patience pays on this account. Every clean day makes the sample stronger and the next drawdown less scary.",
+        "You're ahead of your own plan. Banking clean days beats chasing a hero trade — the target doesn't care how you got there.",
+        "This is a track record you could hand to someone else and say \"run this.\" That's the actual asset you're building, not the balance.",
+        "Discipline is holding under profit, which is harder than holding under loss. Most traders break on green, not red.",
+        "The numbers say keep going. The only real threat on the board right now is overconfidence dressed as opportunity.",
+        "You've earned the right to be boring. Stay there — boring is what the equity curve is made of.",
+        "Execution is clean and the edge is showing up. Do not let a good week talk you into a bigger size than the plan says you've earned."
       ],
       hotstreak:[
-        "You're stacking green days. Good — just don't let the streak convince you the rules are optional now.",
-        "Hot streak noted. The trades that end streaks are always the ones taken because \"it's been working.\" Stay disciplined.",
-        "Multiple clean days in a row. Size stays the same until the plan itself says otherwise — don't let the streak upsize you.",
-        "Nice run. The best operators treat a hot streak exactly like a cold one: same rules, same size, same checklist."
+        "You're stacking green days. Enjoy it — but streaks end on the trade you took because the streak existed, not because the setup did.",
+        "Hot hand noted. Fair warning from every trading record ever kept: size creep after a run is the single most common way good months become flat ones.",
+        "Multiple clean days running. Size stays put until the plan says otherwise — a streak is not a promotion.",
+        "Nice run. Elite operators treat a hot streak exactly like a cold one: same rules, same size, same criteria. The market has no memory of your last five days.",
+        "Streaks feel like skill compounding. Statistically, most of it is variance clustering. Bank it and keep the size honest.",
+        "You're in rhythm. The discipline test isn't the drawdown — it's right now, when breaking a rule would probably still have worked.",
+        "Green on green. Write down what you're doing today, because this is the playbook you'll want during the next red stretch.",
+        "Run's going well. Keep your risk-per-trade fixed in dollars, not in confidence."
       ],
       nearTarget:[
-        "You're close to target. This is exactly when people get sloppy trying to force the finish — don't. Let it come to you.",
-        "Almost there. One or two more clean days closes this out — no need to swing for it.",
-        "Target's in range. The fastest way to blow this now is trying to close it in one big trade. Stay the size."
+        "You're close. This is exactly the zone where traders get impatient and force the finish — don't hand it back at the one-yard line.",
+        "Almost there. One or two clean days closes it. There is no bonus for finishing fast, and a real penalty for finishing reckless.",
+        "Target's in range. The fastest way to lose this now is trying to close it in a single trade. Same size, same criteria.",
+        "You can see the finish. Keep executing like you can't — the last stretch of an eval breaks more accounts than the first.",
+        "Near the line. Your job is to not become a different trader in the final days than the one who got you here.",
+        "Close enough to smell it. Let it come to you — pressing here has negative expectancy no matter how good it feels."
       ]
     },
     okay:{
       general:[
-        "You're not off track, but you're not locked in either. A few loose days are creeping into the record — tighten up.",
-        "Middle of the road. That's fine for now, but \"fine\" doesn't clear evals — go back to the checklist before every entry.",
-        "You're following the plan sometimes, not consistently. Pick one thing to fix this week: checklist, cap, or schedule.",
-        "Nothing's broken, but nothing's sharp either. The gap between okay and good is usually just finishing the checklist.",
-        "You're hovering. That's usually a sign of half-following the plan — either commit to it or change it, don't drift.",
-        "Some good days, some sloppy ones — and the sloppy ones are costing more than the good ones earn. Look at the mix.",
-        "You're inconsistent, which is different from bad. Consistency is the fix, not a bigger stop or a bigger size.",
-        "Average stretch. If you want it to turn into a good one, it starts with checking the boxes before the trade, not after.",
-        "You're doing enough to survive the eval, not enough to make it easy on yourself. Tighten the process.",
-        "This is the tier where habits get decided — either you drift down into off track, or you clean it up. Your move."
+        "You're not off track, but you're not sharp either. Loose days are creeping into the record, and loose days are what separate a passed eval from a reset.",
+        "Middle of the distribution. Fine for now, but \"fine\" doesn't clear targets — the fix is almost always finishing the checklist, not finding a new setup.",
+        "You're following the plan sometimes, which statistically is close to not having one. Pick one rule to keep perfectly this week.",
+        "Nothing is broken, nothing is dialed. The gap between okay and good here is executional, not analytical — you already know what to do.",
+        "You're drifting. Either commit to the plan as written or change the plan deliberately, but stop half-running it — that's the worst of both.",
+        "Mixed record: the good days are good, the sloppy days are expensive, and right now they're roughly canceling. Fix the sloppy tail, not the good days.",
+        "Inconsistent isn't the same as bad — it's a variance problem, and variance is fixed with rules, not with effort.",
+        "You're doing enough to survive, not enough to make this comfortable. Tighten the process before the market tightens it for you.",
+        "This is the tier where habits actually get decided. Traders drift down from here far more often than they climb — that's the honest base rate.",
+        "Average stretch. If you want it to become a good one, it starts before the entry: criteria met, size fixed, exit predefined.",
+        "You're leaving money on the table through execution, not through analysis. That's good news — execution is the cheaper thing to fix.",
+        "Your process is roughly 70% installed. The last 30% is where nearly all of the remaining edge lives.",
+        "Solid enough to keep going, loose enough to worry me. Choose one leak this week and close it completely.",
+        "The record says you're capable and inconsistent. Consistency is a rule problem, not a talent problem — build the rule.",
+        "You're hovering around breakeven behavior. Small, unglamorous corrections compound fastest from exactly here.",
+        "Nothing alarming, nothing impressive. The next ten days decide which direction this becomes."
       ],
       consistency:[
-        "Your best day is carrying too much of the total — that's a real consistency risk on this plan, not just a stat.",
-        "One big day is doing most of the work here. Add more green days instead of chasing another big one.",
-        "Watch the consistency rule — one more oversized day right now could undo weeks of otherwise clean trading."
+        "Your best day is carrying too much of the total. On this plan that's a live rule risk, not just an aesthetic problem.",
+        "One outsized day is doing most of the work. The fix is never to trim the good day — it's to add more ordinary green ones.",
+        "Consistency exposure is real right now. One more oversized session could put the rule out of reach and cost you weeks.",
+        "Concentration risk in your own P&L: remove your best day and the picture changes a lot. Broaden the base.",
+        "The distribution is lumpy. Graders don't reward lumpy — stack medium days until the best one looks unremarkable."
       ],
       capWarning:[
-        "You're brushing up against your trade cap on some days. More trades isn't more edge — it's usually less.",
-        "A few over-cap days in the record. If the setup wasn't there in the first four trades, it wasn't there in the eighth either."
+        "You're pressing against your trade cap on some days. More trades is not more edge — for almost every trader it's measurably less.",
+        "Over-cap days are showing up. If the setup wasn't there in the first few trades, it wasn't there in the eighth either.",
+        "Trade count is creeping. Volume feels like effort, but effort isn't a variable in expectancy — quality is.",
+        "You're adding trades, not adding edge. Each marginal trade past your cap has historically been your worst-performing one.",
+        "The cap exists because your own numbers said it should. Respect it before it has to be re-learned expensively."
+      ],
+      variance:[
+        "Results are swinging more than your process is. That's usually a sizing problem, not a strategy problem.",
+        "Your day-to-day spread is wide. Tighten risk per trade and the equity curve calms down without touching your edge."
       ]
     },
     bad:{
       mild:[
-        "This isn't a disaster, but the pattern is real: you're breaking your own rules more than you're keeping them. Fix that first.",
-        "The plan only works if you run it. Right now you're not — that's the actual problem, not the P&L.",
-        "You know what the checklist and schedule are for. Use them next session, no exceptions, and this turns around fast.",
-        "This is fixable in a day or two if you're honest about what's happening: rules getting skipped under pressure.",
-        "Not a blowup, just drift. Go back to basics — checklist before every trade, cap respected, schedule respected.",
-        "The numbers are telling on you. More violations than clean days means the process isn't being followed, it's being referenced.",
-        "Nothing here is unrecoverable. But \"unrecoverable\" is exactly where this goes if the pattern keeps repeating."
+        "Not a disaster, but the pattern is real: you're breaking your own rules more often than keeping them. That's the problem to solve — the P&L is just the symptom.",
+        "The plan only produces if it's run. Right now it isn't being run, it's being consulted. That distinction is the whole gap.",
+        "You know what the checklist and schedule are for. Use them next session without exception and most of this corrects inside a week.",
+        "This is fixable fast if you're honest about the mechanism: rules getting skipped under pressure, then justified afterward.",
+        "Not a blowup — drift. But drift is how blowups get built, one reasonable-sounding exception at a time.",
+        "The record is telling on you. More violations than clean days means the process is decorative right now.",
+        "Nothing here is unrecoverable. It becomes unrecoverable if the same pattern repeats for another week unexamined.",
+        "You're trading your opinion instead of your criteria. The criteria have a track record. The opinion doesn't.",
+        "The losses aren't the issue — losses are inventory in this business. The issue is that they're arriving through broken rules rather than through normal variance.",
+        "You're paying tuition for a lesson you've already been taught. Re-read your own violation log before the next session."
       ],
       severe:[
-        "Be honest with yourself: this is tilt, not bad luck. Max-loss breaches and back-to-back losers don't happen to disciplined traders by accident.",
-        "This is the pattern that ends accounts. Close the platform and don't touch it again today.",
-        "You are not trading a plan right now — you're trading emotions. That's the entire problem, and it's the only one that matters.",
-        "This is what revenge trading looks like from the outside. The market didn't take the money — the extra trades did.",
-        "Hard truth: nothing about this stretch was disciplined. Not the entries, not the size, not the stop. Reset tomorrow, not today.",
-        "This is exactly the kind of stretch that ends evals and funded accounts. The fix isn't a better trade — it's fewer trades.",
-        "You're past the point where \"one more trade\" is a good idea right now. Walk away — the account is still there tomorrow."
+        "Be honest with yourself: this is tilt, not bad luck. Max-loss breaches and back-to-back losers don't cluster like this by chance.",
+        "This is the pattern that ends accounts. Close the platform. There is no setup good enough to justify trading through this state.",
+        "You're not trading a plan right now, you're trading emotion. Nothing else on this card matters until that stops.",
+        "This is what revenge trading looks like from the outside. The market didn't take this money — the extra trades did.",
+        "Hard truth: nothing in this stretch was disciplined. Not the entries, not the size, not the exits. Reset tomorrow, not today.",
+        "Exactly the sequence that ends evals and funded accounts. The fix is not a better trade — it's dramatically fewer trades.",
+        "You're past the point where \"one more\" is a good idea. Walk away; the account is still there tomorrow, and it won't be if this continues.",
+        "Stop. Everything after a breach is decision-making under duress, which is reliably the worst decision-making you will ever do.",
+        "The damage here is behavioral, not statistical. No edge survives this execution, so protecting capital is the only move on the board.",
+        "This is an emergency brake moment. Flat, closed, done — then review the log cold tomorrow when the money isn't moving."
       ],
       tilt:[
-        "Multiple losers back to back and it kept going — that's tilt, by definition. The rule is to stop, not average it out.",
-        "The tilt pattern is showing up again. The fix has never been a better setup — it's stopping after the second loss."
+        "Multiple losers back to back and it kept going. That's the textbook definition of tilt, and the rule for it has always been to stop, not to solve it with another entry.",
+        "The tilt pattern is repeating. The fix has never been a sharper setup — it's a hard stop after the second loss, decided in advance.",
+        "You're trying to trade your way out of a hole made by trading. The exit from that loop is the door, not the next entry.",
+        "Consecutive losses are compounding into worse decisions. Cut the session — the P&L damage is recoverable, the habit is what compounds."
       ],
       overcap:[
-        "You're blowing through your own trade cap on the worst days. That's not more opportunity, that's chasing.",
-        "Over-cap days and losing days are the same days here. That's not a coincidence — it's cause and effect."
+        "You're blowing through your own trade cap on the worst days. That's not opportunity, that's chasing with extra steps.",
+        "Over-cap days and losing days are the same days in your record. That's not coincidence, it's causation with a paper trail.",
+        "Trade count spikes exactly when quality drops. Your own data has been saying this for a while.",
+        "The cap keeps getting overridden on the days it matters most. A rule you break under pressure isn't a rule yet."
       ],
       earlyEntry:[
-        "You keep overriding the Entry Guard. It's not there to annoy you — it's there because you asked for it after this exact pattern.",
-        "Early entries are showing up again. The guard flagged it, and it got clicked through anyway — that's the habit to break."
+        "You keep overriding the Entry Guard. It isn't there to annoy you — you built it after this exact pattern showed up in this exact log.",
+        "Early entries are stacking up again. The guard flagged them and got clicked through anyway; that click is the habit to break.",
+        "Anticipating the setup instead of waiting for it. Anticipation has no backtest — confirmation does.",
+        "You're entering before your own criteria are met, which means you're trading a guess and calling it a plan."
       ]
     }
   };
-  // one concrete, forward-looking action for today — refreshes daily and whenever
-  // the underlying numbers change, so it's always pushing toward the actual target
+  // rotating operating principles — the frame, not the instruction
+  var COACH_PRINCIPLES=[
+    "<b>Process over outcome.</b> A good trade can lose and a bad trade can win. Grade the decision, not the result.",
+    "<b>Expectancy is the only score.</b> Win rate without payoff ratio is a vanity metric.",
+    "<b>Risk is chosen, return is not.</b> The only variable you fully control is how much you can lose.",
+    "<b>Variance is not feedback.</b> Ten trades tell you almost nothing. A hundred start to talk.",
+    "<b>Rules break under pressure or they aren't rules.</b> If it bends when it costs you, it's a preference.",
+    "<b>The cost of a missed trade is zero.</b> The cost of a forced one is real and recurring.",
+    "<b>Survive first.</b> You cannot compound an edge from an account that no longer exists.",
+    "<b>Position size is your real strategy.</b> Everything else is entry decoration.",
+    "<b>Trade the setup, not the P&L.</b> The moment the number drives the decision, the edge is gone.",
+    "<b>Small consistent > large erratic.</b> Prop firms are designed to reward exactly this and punish the reverse.",
+    "<b>Your worst day defines your ceiling.</b> Cap the left tail and the right tail takes care of itself.",
+    "<b>Boredom is the price of discipline.</b> If trading feels exciting, you're probably oversized.",
+    "<b>Sample size before conviction.</b> Change the plan on evidence, not on the last three sessions.",
+    "<b>Every rule you have was bought with money.</b> Breaking one is asking for the same receipt twice.",
+    "<b>The market is not the opponent.</b> Your own impulses are, and they show up in your log.",
+    "<b>Clarity beats speed.</b> If you can't articulate the setup in one sentence, it isn't one.",
+    "<b>Flat is a position.</b> Sitting out is an active, often optimal, decision.",
+    "<b>Edges decay, discipline doesn't.</b> The habit outlives any single strategy.",
+    "<b>Loss is inventory.</b> Budget for it in advance and it stops being an emotional event.",
+    "<b>You are paid for what you don't take.</b> Filtering is the job; entering is the easy part.",
+    "<b>Don't confuse activity with progress.</b> More screens, more trades, more indicators — none of it is edge.",
+    "<b>Review cold.</b> Decisions made while money is moving are worth less than decisions made the next morning."
+  ];
   var FOCUS_MSG={
     new:[
       "Log every trade honestly, win or lose — that's the whole job today.",
-      "Trade the plan, then log it — good or bad, all of it.",
-      "One clean, honestly-logged day. Everything else builds from there."
+      "Trade the plan, then log it, all of it. The record is the asset.",
+      "One clean, honestly-logged session. Everything I can tell you later depends on it.",
+      "Fixed risk per trade today, and write down why you entered before you enter."
     ],
     severeRecent:[
       "Sit on your hands. One clean day beats forcing size back after a bad one.",
-      "No revenge today. The only goal is a boring, rule-following session.",
-      "Today's job is defense — protect the account, don't try to win it back in one sitting."
+      "No revenge today. The only objective is a boring, rule-following session.",
+      "Defense only — protect the account, don't try to win it back in one sitting.",
+      "Half size, one setup, hard stop. Rebuild the habit before rebuilding the P&L.",
+      "Your only KPI today is zero rule violations. P&L is not on the scorecard."
     ],
     tilt:[
       "Hard stop after 2 losers. No exceptions, no averaging in.",
-      "Two losers means you're done for the day — decide that now, not in the moment.",
-      "Cut it off after loss #2. Write it down before your first trade."
+      "Two losers means you're done — decide that now, not in the moment.",
+      "Cut it off after loss #2. Write the number on something you can see.",
+      "Pre-commit: second loss closes the platform. Set it before the first entry."
     ],
     overcap:[
       "Cap it at {cap} trades. Decide that now, before the first one.",
-      "Hard number today: {cap} trades max. If the setup wasn't there by then, it wasn't there.",
-      "Fewer, better trades — {cap} and done."
+      "Hard number today: {cap} max. If the setup wasn't there by then, it wasn't there.",
+      "Fewer, better trades — {cap} and done.",
+      "Count out loud. Trade {cap} is your last one regardless of what price does after."
     ],
     consistency:[
-      "Keep any single trade or day under {consCap} — protect the consistency rule.",
-      "If it gets hot today, take some off rather than let one day run past {consCap}.",
-      "Spread it out — no day above {consCap}, even a good one."
+      "Keep any single day under {consCap} — protect the consistency rule.",
+      "If it runs hot today, take some off rather than let one day pass {consCap}.",
+      "Spread it out: no day above {consCap}, even a great one.",
+      "Bank partials past {consCap}. The rule doesn't care that the trade was good."
     ],
     earlyEntry:[
-      "No trade before your Trade window opens. Check the schedule before you click.",
-      "Let the checklist and schedule make the call, not the clock ticking down.",
-      "Run the checklist before the first trade. That's the whole focus."
+      "No trade before your window opens. Check the schedule before you click.",
+      "Let the checklist make the call, not the clock or the candle.",
+      "Run every checklist item before trade one. That's the entire focus.",
+      "Wait for confirmation, not anticipation. If you're guessing, you're early."
     ],
     reset:[
-      "Reset. Smaller size, tighter checklist adherence, stop the moment the plan says stop.",
+      "Reset: smaller size, tighter checklist, stop the moment the plan says stop.",
       "Discipline first today, not profit. Follow the rules and let the numbers follow.",
-      "Reduce the noise — fewer trades, better ones, all checklist-approved."
+      "Reduce the noise — fewer trades, better ones, all checklist-approved.",
+      "One setup only today. Your best one. Nothing else qualifies."
     ],
     nearTarget:[
       "One more day like your recent ones closes this out. Don't force size to finish early.",
       "You're close — patience is the focus, not a bigger swing.",
-      "Let the target come to you today. Same size, same rules."
+      "Let the target come to you. Same size, same rules, same criteria.",
+      "Finish the way you started. No new behavior in the last stretch."
     ],
     pace:[
       "{pace} today keeps you on pace with {daysLeft} left.",
-      "Number to beat: {pace}. Hit that and the target stays on schedule.",
-      "Stay mechanical — {pace} today and the math keeps working for you."
+      "Number to beat: {pace}. Hit it and the schedule stays intact.",
+      "Stay mechanical — {pace} today and the math keeps working for you.",
+      "{pace} is the bar, {daysLeft} to go. Take the setups that get you there, skip the rest."
     ],
     holdCourse:[
       "Repeat yesterday. Same size, same checklist, same schedule.",
-      "Nothing to change today — just run the process again.",
-      "Be boring today. The process is already working."
+      "Nothing to change — run the process again and let it compound.",
+      "Be boring today. The process is already working.",
+      "No adjustments needed. Execute, log, review, repeat."
+    ],
+    payout:[
+      "You're funded — protect the floor first. Payout math only works from an account that's still alive.",
+      "Funded stage: consistency and survival beat aggression. Trade to keep the seat."
     ]
   };
   function coachPick(arr,seed){
@@ -1949,6 +2064,9 @@
   function fillTemplate(s,vars){
     return s.replace(/\{(\w+)\}/g,function(_,k){return vars[k]!=null?vars[k]:"";});
   }
+  function cnum(v,cls){return '<span class="cnum '+(cls||(v>=0?"g":"r"))+'">'+fmt(v)+'</span>';}
+  function cpct(v){return '<span class="cnum">'+Math.round(v)+'%</span>';}
+  function pl(n,s,p){return n+" "+(n===1?s:(p||s+"s"));}
   function paceInfo(){
     var c=cfg(),log=curLog(),total=0,daysLogged=0;
     for(var d=1;d<=c.days;d++){if(d in log){total+=log[d];daysLogged++;}}
@@ -1977,9 +2095,142 @@
     entries.sort(function(a,b){if(a.date&&b.date&&a.date!==b.date)return a.date<b.date?-1:1;return a.d-b.d;});
     return entries;
   }
+  // ---- trade-level analytics: everything below is gated on sample size before it's spoken ----
+  function tradeAnalytics(){
+    var entries=orderedLoggedDays(),all=[],i,k;
+    entries.forEach(function(e){
+      e.trades.forEach(function(t,idx){
+        var p=parseFloat(t.p);if(isNaN(p))return;
+        all.push({p:p,idx:idx,setup:(t.s||"").trim(),session:t.session||"",conf:t.conf||null,
+          mistakes:t.mistakes||[],date:e.date,day:e.d});
+      });
+    });
+    var n=all.length,wins=0,sum=0,winSum=0,lossSum=0,lossN=0;
+    all.forEach(function(t){sum+=t.p;if(t.p>0){wins++;winSum+=t.p;}else if(t.p<0){lossN++;lossSum+=t.p;}});
+    var avgWin=wins?winSum/wins:0,avgLoss=lossN?Math.abs(lossSum/lossN):0;
+    function group(keyFn){
+      var m={};all.forEach(function(t){var k=keyFn(t);if(!k)return;if(!m[k])m[k]={k:k,n:0,sum:0,wins:0};m[k].n++;m[k].sum+=t.p;if(t.p>0)m[k].wins++;});
+      return Object.keys(m).map(function(k){var g=m[k];g.avg=g.sum/g.n;return g;});
+    }
+    // trade-order buckets: first two of the day vs everything after
+    var early={n:0,sum:0},late={n:0,sum:0};
+    all.forEach(function(t){var b=t.idx<2?early:late;b.n++;b.sum+=t.p;});
+    early.avg=early.n?early.sum/early.n:0;late.avg=late.n?late.sum/late.n:0;
+    // conviction buckets
+    var hi={n:0,sum:0},lo={n:0,sum:0};
+    all.forEach(function(t){if(t.conf>=4){hi.n++;hi.sum+=t.p;}else if(t.conf>=1&&t.conf<=2){lo.n++;lo.sum+=t.p;}});
+    hi.avg=hi.n?hi.sum/hi.n:0;lo.avg=lo.n?lo.sum/lo.n:0;
+    // mistake tags: tagged vs everything untagged by that tag
+    var tags={};
+    all.forEach(function(t){t.mistakes.forEach(function(m){if(!tags[m])tags[m]={k:m,n:0,sum:0};tags[m].n++;tags[m].sum+=t.p;});});
+    var byMistake=Object.keys(tags).map(function(m){
+      var g=tags[m],restN=n-g.n,restSum=sum-g.sum;
+      return{k:m,n:g.n,avg:g.sum/g.n,restN:restN,restAvg:restN?restSum/restN:0,
+        delta:(g.sum/g.n)-(restN?restSum/restN:0)};
+    });
+    // longest losing run across the whole book, in order
+    var run=0,maxRun=0;
+    all.forEach(function(t){if(t.p<0){run++;if(run>maxRun)maxRun=run;}else run=0;});
+    // day-to-day: behaviour after a red day vs after a green one
+    var afterRed={n:0,sum:0},afterGreen={n:0,sum:0};
+    for(i=1;i<entries.length;i++){
+      var prev=entries[i-1].net,cur=entries[i].net;
+      if(prev<0){afterRed.n++;afterRed.sum+=cur;}else if(prev>0){afterGreen.n++;afterGreen.sum+=cur;}
+    }
+    afterRed.avg=afterRed.n?afterRed.sum/afterRed.n:0;afterGreen.avg=afterGreen.n?afterGreen.sum/afterGreen.n:0;
+    return{n:n,wins:wins,sum:sum,avg:n?sum/n:0,winRate:n?wins/n*100:0,
+      avgWin:avgWin,avgLoss:avgLoss,payoff:avgLoss?avgWin/avgLoss:0,
+      bySetup:group(function(t){return t.setup;}),bySession:group(function(t){return t.session;}),
+      early:early,late:late,hi:hi,lo:lo,byMistake:byMistake,maxLossRun:maxRun,
+      afterRed:afterRed,afterGreen:afterGreen,days:entries.length};
+  }
+  // Each insight is {head, body, impact}. impact ≈ dollars on the table, so the
+  // most financially consequential observation is the one that gets spoken first.
+  function coachInsights(s){
+    var t=tradeAnalytics(),out=[],i;
+    if(t.n<6)return out;
+    // 1. conviction calibration — does his own confidence rating predict anything?
+    if(t.hi.n>=4&&t.lo.n>=4){
+      var cd=t.hi.avg-t.lo.avg;
+      out.push({head:"Conviction calibration",impact:Math.abs(cd)*(t.hi.n+t.lo.n),
+        body:cd>0
+          ? "Your high-conviction trades (4–5) average "+cnum(Math.round(t.hi.avg))+" over "+pl(t.hi.n,"trade")+", versus "+cnum(Math.round(t.lo.avg))+" on your 1–2s. Your read is calibrated — which means the low-conviction trades are the ones to cut, not the size on the good ones."
+          : "Your high-conviction trades average "+cnum(Math.round(t.hi.avg))+" while your low-conviction ones average "+cnum(Math.round(t.lo.avg))+". Confidence isn't predicting outcome yet, so right now that rating is measuring mood, not edge. Score setups on criteria met, not on how they feel."});
+    }
+    // 2. does edge survive past the first couple of trades each day?
+    if(t.early.n>=5&&t.late.n>=5){
+      var od=t.early.avg-t.late.avg;
+      out.push({head:"Trade-order decay",impact:Math.abs(od)*t.late.n,
+        body:od>0
+          ? "Your first two trades of the day average "+cnum(Math.round(t.early.avg))+". Everything after averages "+cnum(Math.round(t.late.avg))+" across "+pl(t.late.n,"trade")+". Your edge is front-loaded — that's the argument for the cap, written in your own numbers."
+          : "Your later trades ("+cnum(Math.round(t.late.avg))+" avg) are outperforming your first two ("+cnum(Math.round(t.early.avg))+"). Unusual — it usually means you're starting before your setup actually forms. Consider a later start, not more trades."});
+    }
+    // 3/4. best and worst setup, once each has a real sample
+    var setups=t.bySetup.filter(function(g){return g.n>=5;}).sort(function(a,b){return b.sum-a.sum;});
+    if(setups.length){
+      var bst=setups[0];
+      if(bst.sum>0)out.push({head:"Your engine",impact:Math.abs(bst.sum),
+        body:"<b>"+esc(bst.k)+"</b> is carrying this account: "+pl(bst.n,"trade")+", "+cnum(Math.round(bst.sum))+" total, "+cpct(bst.wins/bst.n*100)+" win rate, "+cnum(Math.round(bst.avg))+" per trade. Concentrate here — most traders diversify away from their best setup for no reason other than boredom."});
+      var wst=setups[setups.length-1];
+      if(setups.length>1&&wst.sum<0)out.push({head:"The leak",impact:Math.abs(wst.sum),
+        body:"<b>"+esc(wst.k)+"</b> has cost you "+cnum(Math.abs(Math.round(wst.sum)),"r")+" across "+pl(wst.n,"trade")+" at "+cpct(wst.wins/wst.n*100)+". At this sample that's not variance being unkind — it's a setup that doesn't fit you. Retire it or take it to sim until it proves otherwise."});
+    }
+    // 5. which tagged mistake is actually costing money
+    var mis=t.byMistake.filter(function(m){return m.n>=3&&m.restN>=3&&m.delta<0;}).sort(function(a,b){return a.delta*a.n-b.delta*b.n;});
+    if(mis.length){
+      var m0=mis[0];
+      out.push({head:"Habit cost",impact:Math.abs(m0.delta)*m0.n,
+        body:"Trades you tagged <b>"+esc(m0.k)+"</b> average "+cnum(Math.round(m0.avg))+" against "+cnum(Math.round(m0.restAvg))+" everywhere else — a "+cnum(Math.round(Math.abs(m0.delta)),"r")+" per-trade swing across "+pl(m0.n,"trade")+". That single habit is the most expensive line item in your log."});
+    }
+    // 6. session edge
+    var sess=t.bySession.filter(function(g){return g.n>=5;}).sort(function(a,b){return b.avg-a.avg;});
+    if(sess.length>=2){
+      var sb=sess[0],sw=sess[sess.length-1];
+      if(sb.avg-sw.avg>0)out.push({head:"Edge has a timestamp",impact:Math.abs(sb.avg-sw.avg)*sw.n,
+        body:"<b>"+esc(sb.k)+"</b> averages "+cnum(Math.round(sb.avg))+" over "+pl(sb.n,"trade")+". <b>"+esc(sw.k)+"</b> averages "+cnum(Math.round(sw.avg))+" over "+pl(sw.n,"trade")+". Same trader, different clock. Trade the window that pays you and stop donating in the other one."});
+    }
+    // 7. the plan itself, priced
+    if(s&&s.adhN>=3&&s.notN>=3&&s.adhAvg!=null&&s.notAvg!=null){
+      var pd=s.adhAvg-s.notAvg;
+      if(pd>0)out.push({head:"The plan, priced",impact:Math.abs(pd)*s.notN,
+        body:"Days you followed the plan average "+cnum(s.adhAvg)+". Days you didn't average "+cnum(s.notAvg)+" across "+pl(s.notN,"day")+". The plan isn't the constraint on your returns — it <i>is</i> the returns."});
+    }
+    // 8. expectancy vs what the target actually requires
+    var pi=paceInfo(),cap=maxTradesOf();
+    if(t.n>=12&&pi.daysLeft>0&&cap>0){
+      var perDay=t.avg*cap,gap=perDay-pi.pace;
+      out.push({head:"Expectancy vs target",impact:Math.abs(gap)*pi.daysLeft,
+        body:"You're running "+cnum(Math.round(t.avg))+" per trade over "+pl(t.n,"trade")+". At your "+cap+"-trade cap that's about "+cnum(Math.round(perDay))+" a day, and the target needs "+cnum(Math.round(pi.pace))+" over "+pl(pi.daysLeft,"day")+". "+
+          (gap>=0
+            ? "The math already works without doing anything differently — add days, not trades."
+            : "Volume can't close that gap at this expectancy. The lever is quality: raise the average win or cut the average loss. More trades makes it worse, not better.")});
+    }
+    // 9. breakeven win rate given his actual payoff ratio
+    if(t.n>=15&&t.payoff>0&&t.avgLoss>0){
+      var be=100/(1+t.payoff),edge=t.winRate-be;
+      out.push({head:"The break-even line",impact:Math.abs(edge)*t.n*Math.max(1,t.avgLoss/50),
+        body:"You win "+cpct(t.winRate)+" with a payoff of "+t.payoff.toFixed(2)+":1 ("+cnum(Math.round(t.avgWin))+" avg win vs "+cnum(-Math.round(t.avgLoss))+" avg loss). Break-even at that payoff is "+cpct(be)+", so you're "+cpct(Math.abs(edge))+" "+(edge>=0?"above":"below")+" the line. "+
+          (edge>=0?"That's a real edge — protect it with size discipline, not with more setups.":"Either the win rate comes up or the payoff does. Widening targets is usually the easier of the two.")});
+    }
+    // 10. what he does the day after losing
+    if(t.afterRed.n>=3&&t.afterGreen.n>=3){
+      var rd=t.afterRed.avg-t.afterGreen.avg;
+      out.push({head:"The day after",impact:Math.abs(rd)*t.afterRed.n,
+        body:rd<0
+          ? "After a red day you average "+cnum(Math.round(t.afterRed.avg))+"; after a green one, "+cnum(Math.round(t.afterGreen.avg))+". You're carrying losses into the next session. The recovery day needs to be your smallest, not your biggest."
+          : "After a red day you average "+cnum(Math.round(t.afterRed.avg))+" versus "+cnum(Math.round(t.afterGreen.avg))+" after green. You reset well — that's rarer than it sounds, and it's worth more than any setup."});
+    }
+    // 11. plan for the drawdown that's already in your data
+    if(t.maxLossRun>=3&&t.avgLoss>0){
+      out.push({head:"Plan for the run",impact:t.maxLossRun*t.avgLoss,
+        body:"Your longest losing streak on record is "+pl(t.maxLossRun,"trade")+" — roughly "+cnum(-Math.round(t.maxLossRun*t.avgLoss))+" at your average loss. It will happen again. Size so that sequence is survivable and boring rather than account-ending."});
+    }
+    out.sort(function(a,b){return b.impact-a.impact;});
+    return out;
+  }
   function coachAssessment(){
     var s=disciplineStats();
-    if(!s.tradingDays)return{tier:"new"};
+    if(!s.tradingDays)return{tier:"new",score:null};
     var c=cfg(),entries=orderedLoggedDays(),last=entries[entries.length-1],cap=maxTradesOf();
     var run=0,maxRun=0,i;
     if(last)for(i=0;i<last.trades.length;i++){var p=parseFloat(last.trades[i].p);if(!isNaN(p)&&p<0){run++;if(run>maxRun)maxRun=run;}else run=0;}
@@ -1995,21 +2246,18 @@
       else if(recent.followed&&recent.win)score+=10;
       else if(!recent.followed)score-=10;
     }
+    score=Math.max(0,Math.min(100,Math.round(score)));
     var tier=score>=75?"good":(score>=45?"okay":"bad");
     var severe=s.vMax>0||s.vTilt>=3||(recent&&recent.net<=-c.maxloss);
-    return{tier:tier,severe:severe,stats:s,consistency:cr,recent:recent,early:early,streak:streak};
+    return{tier:tier,severe:severe,stats:s,consistency:cr,recent:recent,early:early,streak:streak,score:score};
   }
   function coachFocus(a){
     var seed=today()+":"+state.activeId+":focus:";
     if(a.tier==="new")return coachPick(FOCUS_MSG.new,seed+"new");
     var pi=paceInfo(),c=cfg(),s=a.stats;
     var severeRecent=!!(a.recent&&(a.recent.net<=-c.maxloss||a.recent.tilt));
-    var vars={
-      cap:maxTradesOf(),
-      consCap:fmt((c.consPct/100)*c.target),
-      pace:fmt(Math.max(0,pi.pace)),
-      daysLeft:pi.daysLeft+" day"+(pi.daysLeft===1?"":"s")
-    };
+    var vars={cap:maxTradesOf(),consCap:fmt((c.consPct/100)*c.target),
+      pace:fmt(Math.max(0,pi.pace)),daysLeft:pl(pi.daysLeft,"day")};
     var tpl;
     if(severeRecent)tpl=coachPick(FOCUS_MSG.severeRecent,seed+"severe");
     else if(s.vTilt>=2)tpl=coachPick(FOCUS_MSG.tilt,seed+"tilt");
@@ -2018,56 +2266,88 @@
     else if(a.early>=1)tpl=coachPick(FOCUS_MSG.earlyEntry,seed+"early");
     else if(a.tier==="bad")tpl=coachPick(FOCUS_MSG.reset,seed+"reset");
     else if(a.tier==="good"&&pi.total>0&&pi.total>=pi.target*0.85&&pi.total<pi.target)tpl=coachPick(FOCUS_MSG.nearTarget,seed+"near");
+    else if(stageOf()==="funded"&&pi.daysLeft<=0)tpl=coachPick(FOCUS_MSG.payout,seed+"payout");
     else if(pi.daysLeft>0)tpl=coachPick(FOCUS_MSG.pace,seed+"pace");
     else tpl=coachPick(FOCUS_MSG.holdCourse,seed+"hold");
     return fillTemplate(tpl,vars);
   }
+  var coachExpanded=false;
+  function coachDonut(score){
+    var C=119.4,off=score==null?C:C*(1-Math.max(0,Math.min(100,score))/100);
+    return '<svg class="coachdonut" viewBox="0 0 44 44" aria-hidden="true">'+
+      '<circle class="cdtrack" cx="22" cy="22" r="19"></circle>'+
+      '<circle class="cdval" cx="22" cy="22" r="19" stroke-dasharray="'+C+'" stroke-dashoffset="'+off.toFixed(1)+'"></circle>'+
+      '<text class="coachdnum" x="22" y="22" text-anchor="middle" dominant-baseline="central">'+(score==null?"–":score)+'</text></svg>';
+  }
+  function coachSection(head,body){
+    return '<div class="coachsec"><div class="csechead">'+head+'</div><div class="csecbody">'+body+'</div></div>';
+  }
   function renderCoach(){
     var host=document.getElementById("coachCard");if(!host)return;
     var a=coachAssessment(),seed=today()+":"+state.activeId+":";
+    var principle='<div class="coachprin">'+coachPick(COACH_PRINCIPLES,seed+"prin")+'</div>';
+    function head(sub,label){
+      return '<div class="coachtop">'+
+        '<div class="coachav">CO</div>'+
+        '<div class="coachid"><div class="coachname">Coach Co</div><div class="coachsub">'+sub+'</div></div>'+
+        '<div class="coachring">'+
+          '<div class="coachringtxt"><div class="coachgrade">'+label+'</div><div class="coachscoresub">discipline</div></div>'+
+          coachDonut(a.score)+
+        '</div></div>';
+    }
     if(a.tier==="new"){
       host.className="coachcard new";
-      host.innerHTML='<div class="coachhead"><span class="coachname">🧢 Coach Co</span><span class="coachtag">Getting to know you</span></div>'+
-        '<div class="coachmsg">'+coachPick(COACH_MSG.new,seed+"new")+'</div>'+
-        '<div class="coachfocus">🎯 <b>Today\'s focus</b> — '+esc(coachFocus(a))+'</div>';
+      host.innerHTML=head("No sample yet","Standing by")+
+        '<div class="coachmsg">'+esc(coachPick(COACH_MSG.new,seed+"new"))+'</div>'+
+        coachSection("Today's focus",esc(coachFocus(a)))+
+        principle;
       return;
     }
-    var s=a.stats,pts=[],tierLabel,cls,msg,c=cfg(),log=curLog(),total=0;
-    for(var d=1;d<=c.days;d++){if(d in log)total+=log[d];}
+    var s=a.stats,pts=[],tierLabel,cls,msg,c=cfg(),pi=paceInfo();
     if(a.tier==="good"){
-      cls="good";tierLabel="Locked In";
+      cls="good";tierLabel="Locked in";
       if(a.streak>=3)msg=coachPick(COACH_MSG.good.hotstreak,seed+"good-streak");
-      else if(total>0&&total>=c.target*0.85&&total<c.target)msg=coachPick(COACH_MSG.good.nearTarget,seed+"good-near");
+      else if(pi.total>0&&pi.total>=c.target*0.85&&pi.total<c.target)msg=coachPick(COACH_MSG.good.nearTarget,seed+"good-near");
       else msg=coachPick(COACH_MSG.good.general,seed+"good-gen");
-      pts.push(s.adh+"% plan adherence over "+s.tradingDays+" day"+(s.tradingDays>1?"s":""));
-      if(c.consPct>0&&!a.consistency.risk&&a.consistency.share!=null)pts.push("consistency clean — best day is "+Math.round(a.consistency.share*100)+"% of total");
+      pts.push(s.adh+"% plan adherence · "+pl(s.tradingDays,"session"));
+      if(c.consPct>0&&!a.consistency.risk&&a.consistency.share!=null)pts.push("consistency clean · best day "+Math.round(a.consistency.share*100)+"% of total");
       if(a.streak>=2)pts.push(a.streak+"-day green streak");
     } else if(a.tier==="okay"){
-      cls="okay";tierLabel="Holding Steady";
+      cls="okay";tierLabel="Holding steady";
       if(a.consistency.risk)msg=coachPick(COACH_MSG.okay.consistency,seed+"okay-cons");
       else if(s.vOverCap>0)msg=coachPick(COACH_MSG.okay.capWarning,seed+"okay-cap");
       else msg=coachPick(COACH_MSG.okay.general,seed+"okay-gen");
       pts.push(s.adh+"% plan adherence");
-      if(s.totV)pts.push(s.totV+" flagged violation"+(s.totV>1?"s":"")+" logged");
+      if(s.totV)pts.push(pl(s.totV,"violation")+" flagged");
     } else {
-      cls="bad";tierLabel="Off Track";
+      cls="bad";tierLabel="Off track";
       if(a.severe)msg=coachPick(COACH_MSG.bad.severe,seed+"bad-sev");
       else if(s.vTilt>0)msg=coachPick(COACH_MSG.bad.tilt,seed+"bad-tilt");
       else if(s.vOverCap>0)msg=coachPick(COACH_MSG.bad.overcap,seed+"bad-cap");
       else if(a.early>0)msg=coachPick(COACH_MSG.bad.earlyEntry,seed+"bad-early");
       else msg=coachPick(COACH_MSG.bad.mild,seed+"bad-mild");
-      pts.push(s.adh+"% plan adherence — "+s.totV+" violation"+(s.totV!==1?"s":"")+" across "+s.tradingDays+" days");
+      pts.push(s.adh+"% adherence · "+pl(s.totV,"violation")+" over "+pl(s.tradingDays,"session"));
       if(s.vMax)pts.push(s.vMax+" max-loss breach"+(s.vMax>1?"es":""));
-      if(s.vTilt)pts.push(s.vTilt+" tilt day"+(s.vTilt>1?"s":""));
+      if(s.vTilt)pts.push(pl(s.vTilt,"tilt day"));
     }
-    if(a.early>0)pts.push(a.early+" Entry Guard override"+(a.early>1?"s":""));
+    if(a.early>0)pts.push(pl(a.early,"Entry Guard override"));
+    var ins=coachInsights(s),html="";
+    html+=head(pl(s.tradingDays,"session")+" reviewed",tierLabel);
+    html+='<div class="coachmsg">'+esc(msg)+'</div>';
+    if(pts.length)html+='<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>';
+    if(ins.length)html+=coachSection("The edge · from your own log",ins[0].body);
+    html+=coachSection("Today's focus",esc(coachFocus(a)));
+    var extra=ins.slice(1,5);
+    if(extra.length){
+      html+='<button type="button" class="coachmore">'+(coachExpanded?"▴ Less":"▾ "+extra.length+" more "+(extra.length===1?"read":"reads")+" from Coach Co")+'</button>';
+      if(coachExpanded)html+='<div class="coachextra">'+extra.map(function(x){return coachSection(esc(x.head),x.body);}).join("")+'</div>';
+    }
+    html+=principle;
     host.className="coachcard "+cls;
-    host.innerHTML='<div class="coachhead"><span class="coachname">🧢 Coach Co</span><span class="coachtag">'+tierLabel+'</span></div>'+
-      '<div class="coachmsg">'+esc(msg)+'</div>'+
-      (pts.length?'<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>':'')+
-      '<div class="coachfocus">🎯 <b>Today\'s focus</b> — '+esc(coachFocus(a))+'</div>';
+    host.innerHTML=html;
+    var mb=host.querySelector(".coachmore");
+    if(mb)mb.addEventListener("click",function(){coachExpanded=!coachExpanded;renderCoach();});
   }
-
   // ---- trade log: search & filter across all logged trades ----
   var tlogFilter={q:"",setup:"",mistake:"",session:"",side:""};
   function uniqueSorted(arr){var seen={},out=[];arr.forEach(function(x){if(x&&!seen[x]){seen[x]=1;out.push(x);}});return out.sort();}
