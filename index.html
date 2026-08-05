@@ -134,6 +134,8 @@
   .coachmsg{font-size:13.5px;line-height:1.45;color:var(--text)}
   .coachpoints{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
   .coachpoints span{font-size:10.5px;font-weight:600;color:var(--muted);background:var(--card2);padding:3px 8px;border-radius:99px}
+  .coachfocus{font-size:12.5px;line-height:1.4;color:var(--text);margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .coachfocus b{font-weight:700}
   .day .flag{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;vertical-align:middle}
   .day .flag.stop{background:var(--amber-soft);color:var(--amber)}
   .day .flag.max{background:var(--red-soft);color:var(--red)}
@@ -1885,10 +1887,73 @@
       ]
     }
   };
+  // one concrete, forward-looking action for today — refreshes daily and whenever
+  // the underlying numbers change, so it's always pushing toward the actual target
+  var FOCUS_MSG={
+    new:[
+      "Log every trade honestly, win or lose — that's the whole job today.",
+      "Trade the plan, then log it — good or bad, all of it.",
+      "One clean, honestly-logged day. Everything else builds from there."
+    ],
+    severeRecent:[
+      "Sit on your hands. One clean day beats forcing size back after a bad one.",
+      "No revenge today. The only goal is a boring, rule-following session.",
+      "Today's job is defense — protect the account, don't try to win it back in one sitting."
+    ],
+    tilt:[
+      "Hard stop after 2 losers. No exceptions, no averaging in.",
+      "Two losers means you're done for the day — decide that now, not in the moment.",
+      "Cut it off after loss #2. Write it down before your first trade."
+    ],
+    overcap:[
+      "Cap it at {cap} trades. Decide that now, before the first one.",
+      "Hard number today: {cap} trades max. If the setup wasn't there by then, it wasn't there.",
+      "Fewer, better trades — {cap} and done."
+    ],
+    consistency:[
+      "Keep any single trade or day under {consCap} — protect the consistency rule.",
+      "If it gets hot today, take some off rather than let one day run past {consCap}.",
+      "Spread it out — no day above {consCap}, even a good one."
+    ],
+    earlyEntry:[
+      "No trade before your Trade window opens. Check the schedule before you click.",
+      "Let the checklist and schedule make the call, not the clock ticking down.",
+      "Run the checklist before the first trade. That's the whole focus."
+    ],
+    reset:[
+      "Reset. Smaller size, tighter checklist adherence, stop the moment the plan says stop.",
+      "Discipline first today, not profit. Follow the rules and let the numbers follow.",
+      "Reduce the noise — fewer trades, better ones, all checklist-approved."
+    ],
+    nearTarget:[
+      "One more day like your recent ones closes this out. Don't force size to finish early.",
+      "You're close — patience is the focus, not a bigger swing.",
+      "Let the target come to you today. Same size, same rules."
+    ],
+    pace:[
+      "{pace} today keeps you on pace with {daysLeft} left.",
+      "Number to beat: {pace}. Hit that and the target stays on schedule.",
+      "Stay mechanical — {pace} today and the math keeps working for you."
+    ],
+    holdCourse:[
+      "Repeat yesterday. Same size, same checklist, same schedule.",
+      "Nothing to change today — just run the process again.",
+      "Be boring today. The process is already working."
+    ]
+  };
   function coachPick(arr,seed){
     if(!arr||!arr.length)return"";
     var h=0;for(var i=0;i<seed.length;i++)h=(h*31+seed.charCodeAt(i))|0;
     return arr[Math.abs(h)%arr.length];
+  }
+  function fillTemplate(s,vars){
+    return s.replace(/\{(\w+)\}/g,function(_,k){return vars[k]!=null?vars[k]:"";});
+  }
+  function paceInfo(){
+    var c=cfg(),log=curLog(),total=0,daysLogged=0;
+    for(var d=1;d<=c.days;d++){if(d in log){total+=log[d];daysLogged++;}}
+    var remaining=Math.max(0,c.target-total),daysLeft=c.days-daysLogged;
+    return{total:total,remaining:remaining,daysLeft:daysLeft,pace:daysLeft>0?remaining/daysLeft:0,target:c.target};
   }
   function consistencyRisk(){
     var c=cfg(),log=curLog(),total=0,best=-Infinity,daysLogged=0;
@@ -1934,13 +1999,37 @@
     var severe=s.vMax>0||s.vTilt>=3||(recent&&recent.net<=-c.maxloss);
     return{tier:tier,severe:severe,stats:s,consistency:cr,recent:recent,early:early,streak:streak};
   }
+  function coachFocus(a){
+    var seed=today()+":"+state.activeId+":focus:";
+    if(a.tier==="new")return coachPick(FOCUS_MSG.new,seed+"new");
+    var pi=paceInfo(),c=cfg(),s=a.stats;
+    var severeRecent=!!(a.recent&&(a.recent.net<=-c.maxloss||a.recent.tilt));
+    var vars={
+      cap:maxTradesOf(),
+      consCap:fmt((c.consPct/100)*c.target),
+      pace:fmt(Math.max(0,pi.pace)),
+      daysLeft:pi.daysLeft+" day"+(pi.daysLeft===1?"":"s")
+    };
+    var tpl;
+    if(severeRecent)tpl=coachPick(FOCUS_MSG.severeRecent,seed+"severe");
+    else if(s.vTilt>=2)tpl=coachPick(FOCUS_MSG.tilt,seed+"tilt");
+    else if(s.vOverCap>=2)tpl=coachPick(FOCUS_MSG.overcap,seed+"overcap");
+    else if(a.consistency.risk)tpl=coachPick(FOCUS_MSG.consistency,seed+"cons");
+    else if(a.early>=1)tpl=coachPick(FOCUS_MSG.earlyEntry,seed+"early");
+    else if(a.tier==="bad")tpl=coachPick(FOCUS_MSG.reset,seed+"reset");
+    else if(a.tier==="good"&&pi.total>0&&pi.total>=pi.target*0.85&&pi.total<pi.target)tpl=coachPick(FOCUS_MSG.nearTarget,seed+"near");
+    else if(pi.daysLeft>0)tpl=coachPick(FOCUS_MSG.pace,seed+"pace");
+    else tpl=coachPick(FOCUS_MSG.holdCourse,seed+"hold");
+    return fillTemplate(tpl,vars);
+  }
   function renderCoach(){
     var host=document.getElementById("coachCard");if(!host)return;
     var a=coachAssessment(),seed=today()+":"+state.activeId+":";
     if(a.tier==="new"){
       host.className="coachcard new";
       host.innerHTML='<div class="coachhead"><span class="coachname">🧢 Coach Co</span><span class="coachtag">Getting to know you</span></div>'+
-        '<div class="coachmsg">'+coachPick(COACH_MSG.new,seed+"new")+'</div>';
+        '<div class="coachmsg">'+coachPick(COACH_MSG.new,seed+"new")+'</div>'+
+        '<div class="coachfocus">🎯 <b>Today\'s focus</b> — '+esc(coachFocus(a))+'</div>';
       return;
     }
     var s=a.stats,pts=[],tierLabel,cls,msg,c=cfg(),log=curLog(),total=0;
@@ -1975,7 +2064,8 @@
     host.className="coachcard "+cls;
     host.innerHTML='<div class="coachhead"><span class="coachname">🧢 Coach Co</span><span class="coachtag">'+tierLabel+'</span></div>'+
       '<div class="coachmsg">'+esc(msg)+'</div>'+
-      (pts.length?'<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>':'');
+      (pts.length?'<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>':'')+
+      '<div class="coachfocus">🎯 <b>Today\'s focus</b> — '+esc(coachFocus(a))+'</div>';
   }
 
   // ---- trade log: search & filter across all logged trades ----
