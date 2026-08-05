@@ -1,4 +1,7 @@
-const CACHE = 'combine-tracker-v46';
+// Bump CACHE on every deploy. Changing this file is what makes the browser
+// re-install the worker at all — if it stays byte-identical, `install` never
+// re-runs and old caches are never purged.
+const CACHE = 'combine-tracker-v47';
 const ASSETS = [
   './',
   './index.html',
@@ -8,10 +11,23 @@ const ASSETS = [
   './apple-touch-icon.png'
 ];
 
+// Fetch with the HTTP cache bypassed. GitHub Pages serves `cache-control:
+// max-age=600`, so a plain fetch() can hand back a stale index.html for ten
+// minutes even though this worker is "network-first" — which is exactly how a
+// deploy appears not to land.
+function fetchFresh(url) {
+  return fetch(url, { cache: 'no-store' });
+}
+
 self.addEventListener('install', function (e) {
   e.waitUntil(
-    caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); })
-      .then(function () { return self.skipWaiting(); })
+    caches.open(CACHE).then(function (c) {
+      return Promise.all(ASSETS.map(function (u) {
+        return fetchFresh(u).then(function (r) {
+          if (r && r.ok) return c.put(u, r);
+        }).catch(function () { /* a missing optional asset must not fail install */ });
+      }));
+    }).then(function () { return self.skipWaiting(); })
   );
 });
 
@@ -24,15 +40,20 @@ self.addEventListener('activate', function (e) {
   );
 });
 
+self.addEventListener('message', function (e) {
+  if (e.data === 'skipWaiting') self.skipWaiting();
+});
+
 self.addEventListener('fetch', function (e) {
   const req = e.request;
   if (req.method !== 'GET') return;
 
-  // Page loads: network-first (latest version when online), cache fallback offline.
+  // Page loads: always go to the network, bypassing the HTTP cache, and fall
+  // back to the cached copy only when genuinely offline.
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req).then(function (resp) {
-        if (resp.ok) {
+      fetchFresh(req.url).then(function (resp) {
+        if (resp && resp.ok) {
           const copy = resp.clone();
           caches.open(CACHE).then(function (c) { c.put('./index.html', copy); });
         }
@@ -42,8 +63,17 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  // Everything else: cache-first.
+  // Everything else: cache-first, then refresh the entry in the background.
   e.respondWith(
-    caches.match(req).then(function (r) { return r || fetch(req); })
+    caches.match(req).then(function (r) {
+      const net = fetch(req).then(function (resp) {
+        if (resp && resp.ok) {
+          const copy = resp.clone();
+          caches.open(CACHE).then(function (c) { c.put(req, copy); });
+        }
+        return resp;
+      }).catch(function () { return r; });
+      return r || net;
+    })
   );
 });

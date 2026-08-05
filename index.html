@@ -3395,8 +3395,19 @@
 </script>
 <script>
 if('serviceWorker' in navigator){
+  // If a new worker takes over an already-controlled page, the HTML on screen is
+  // the old build — reload once so a deploy actually shows up. Guarded so the
+  // very first install (no previous controller) doesn't trigger a pointless reload.
+  var swHadController=!!navigator.serviceWorker.controller,swReloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',function(){
+    if(!swHadController||swReloaded)return;
+    swReloaded=true;location.reload();
+  });
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('./service-worker.js').catch(function(){});
+    navigator.serviceWorker.register('./service-worker.js').then(function(reg){
+      reg.update();
+      setInterval(function(){reg.update();},60*60*1000);
+    }).catch(function(){});
   });
 }
 </script>
