@@ -2236,9 +2236,11 @@
   }
   // what's missing from the log, and what filling it in would unlock. Keeps the
   // sample-size gates honest instead of silently showing nothing.
-  function coachDataGaps(){
+  function coachDataGaps(a){
     var t=tradeAnalytics(),gaps=[];
-    if(!t.n)return gaps;
+    if(a&&!a.usesAdherence&&a.stats&&a.stats.tradingDays>=2)
+      gaps.push("Tick <b>“Followed my plan today”</b> when you close a day to unlock <b>plan adherence</b> — until then I'm grading on rule violations alone.");
+    if(!t.n)return gaps.slice(0,2);
     if(t.hi.n<4||t.lo.n<4)
       gaps.push("Rate conviction <b>1–5</b> on each trade to unlock <b>conviction calibration</b> — needs 4 rated 4–5 and 4 rated 1–2 (you have "+t.hi.n+" and "+t.lo.n+").");
     var namedSetups=t.bySetup.filter(function(g){return g.n>=5;});
@@ -2258,19 +2260,24 @@
     var recent=last?{d:last.d,net:last.net,followed:last.followed,tilt:maxRun>=2,overCap:last.trades.length>cap,win:last.net>0}:null;
     var streak=0;for(i=entries.length-1;i>=0;i--){if(entries[i].net>0)streak++;else break;}
     var cr=consistencyRisk(),early=earlyEntryCount();
-    var score=s.adh;
+    // The "followed my plan" box is opt-in and starts unticked, so an unticked day
+    // means "no self-report", not "broke the plan". Only let adherence drive the
+    // score once it's actually being used — otherwise judge on violations alone.
+    var usesAdherence=s.adhered>0;
+    var score=usesAdherence?s.adh:80;
     score-=s.vMax*40;score-=s.vTilt*15;score-=s.vStop*8;score-=s.vOverCap*8;score-=early*6;
     if(cr.risk)score-=15;
     if(recent){
       if(recent.net<=-c.maxloss)score-=25;
       else if(recent.tilt)score-=15;
-      else if(recent.followed&&recent.win)score+=10;
-      else if(!recent.followed)score-=10;
+      else if(usesAdherence&&recent.followed&&recent.win)score+=10;
+      else if(usesAdherence&&!recent.followed)score-=10;
+      else if(!usesAdherence&&recent.win)score+=5;
     }
     score=Math.max(0,Math.min(100,Math.round(score)));
     var tier=score>=75?"good":(score>=45?"okay":"bad");
     var severe=s.vMax>0||s.vTilt>=3||(recent&&recent.net<=-c.maxloss);
-    return{tier:tier,severe:severe,stats:s,consistency:cr,recent:recent,early:early,streak:streak,score:score};
+    return{tier:tier,severe:severe,stats:s,consistency:cr,recent:recent,early:early,streak:streak,score:score,usesAdherence:usesAdherence};
   }
   function coachFocus(a){
     var seed=today()+":"+state.activeId+":focus:";
@@ -2330,7 +2337,7 @@
       if(a.streak>=3)msg=coachPick(COACH_MSG.good.hotstreak,seed+"good-streak");
       else if(pi.total>0&&pi.total>=c.target*0.85&&pi.total<c.target)msg=coachPick(COACH_MSG.good.nearTarget,seed+"good-near");
       else msg=coachPick(COACH_MSG.good.general,seed+"good-gen");
-      pts.push(s.adh+"% plan adherence · "+pl(s.tradingDays,"session"));
+      pts.push(a.usesAdherence?(s.adh+"% plan adherence · "+pl(s.tradingDays,"session")):pl(s.tradingDays,"clean session"));
       if(c.consPct>0&&!a.consistency.risk&&a.consistency.share!=null)pts.push("consistency clean · best day "+Math.round(a.consistency.share*100)+"% of total");
       if(a.streak>=2)pts.push(a.streak+"-day green streak");
     } else if(a.tier==="okay"){
@@ -2338,7 +2345,7 @@
       if(a.consistency.risk)msg=coachPick(COACH_MSG.okay.consistency,seed+"okay-cons");
       else if(s.vOverCap>0)msg=coachPick(COACH_MSG.okay.capWarning,seed+"okay-cap");
       else msg=coachPick(COACH_MSG.okay.general,seed+"okay-gen");
-      pts.push(s.adh+"% plan adherence");
+      pts.push(a.usesAdherence?(s.adh+"% plan adherence"):pl(s.tradingDays,"session")+" logged");
       if(s.totV)pts.push(pl(s.totV,"violation")+" flagged");
     } else {
       cls="bad";tierLabel="Off track";
@@ -2347,7 +2354,7 @@
       else if(s.vOverCap>0)msg=coachPick(COACH_MSG.bad.overcap,seed+"bad-cap");
       else if(a.early>0)msg=coachPick(COACH_MSG.bad.earlyEntry,seed+"bad-early");
       else msg=coachPick(COACH_MSG.bad.mild,seed+"bad-mild");
-      pts.push(s.adh+"% adherence · "+pl(s.totV,"violation")+" over "+pl(s.tradingDays,"session"));
+      pts.push((a.usesAdherence?s.adh+"% adherence · ":"")+pl(s.totV,"violation")+" over "+pl(s.tradingDays,"session"));
       if(s.vMax)pts.push(s.vMax+" max-loss breach"+(s.vMax>1?"es":""));
       if(s.vTilt)pts.push(pl(s.vTilt,"tilt day"));
     }
@@ -2358,7 +2365,7 @@
     if(pts.length)html+='<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>';
     if(ins.length)html+=coachSection("The edge · from your own log",ins[0].body);
     html+=coachSection("Today's focus",esc(coachFocus(a)));
-    var gaps=coachDataGaps();
+    var gaps=coachDataGaps(a);
     if(gaps.length)html+=coachSection("Unlock more reads",'<ul class="coachgaps"><li>'+gaps.join("</li><li>")+"</li></ul>");
     var extra=ins.slice(1,5);
     if(extra.length){
