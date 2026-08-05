@@ -171,6 +171,10 @@
   .coachprin{margin-top:11px;padding:9px 11px;border-radius:10px;background:var(--card2);border:1px solid var(--line);
     font-size:11.5px;line-height:1.45;color:var(--muted);font-style:italic}
   .coachprin b{color:var(--text);font-style:normal;font-weight:700}
+  .coachgaps{margin:0;padding-left:16px}
+  .coachgaps li{margin-bottom:4px;color:var(--muted)}
+  .coachgaps li:last-child{margin-bottom:0}
+  .coachgaps b{color:var(--text)}
   .day .flag{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;vertical-align:middle}
   .day .flag.stop{background:var(--amber-soft);color:var(--amber)}
   .day .flag.max{background:var(--red-soft);color:var(--red)}
@@ -1358,8 +1362,10 @@
           if(t.classList.contains("addtrade")){e.stopPropagation();
             var gr=entryGuardCheck();
             if(gr.length&&!confirm("Entry Guard flagged this trade:\n\n- "+gr.join("\n- ")+"\n\nLog it anyway?"))return;
-            var newTr={p:"",rr:"",s:""};if(gr.length)newTr.mistakes=["Early entry"];
-            dayJ(d).trades.push(newTr);markTradeNow();openDay=d;save().then(renderDays);return;}
+            var newTr={p:"",rr:"",s:"",session:currentSession()};if(gr.length)newTr.mistakes=["Early entry"];
+            var trs0=dayJ(d).trades;trs0.push(newTr);
+            openTradeDetail[d+":"+(trs0.length-1)]=true; // show conviction/session fields up front
+            markTradeNow();openDay=d;save().then(renderDays);return;}
           if(t.classList.contains("trm")){e.stopPropagation();var tr=dayJ(d).trades;var ti0=+t.dataset.ti;delete openTradeDetail[d+":"+ti0];tr.splice(ti0,1);if(tr.length)setDayNet(d,sumTrades(tr));openDay=d;persist();return;}
           if(t.classList.contains("tdet")){e.stopPropagation();var dk=d+":"+t.dataset.ti;openTradeDetail[dk]=!openTradeDetail[dk];openDay=d;renderDays();return;}
           if(t.classList.contains("tuse")){e.stopPropagation();var tr2=dayJ(d).trades,ti2=+t.dataset.ti,calc=calcTradePL(tr2[ti2]);if(calc!=null)tr2[ti2].p=calc;setDayNet(d,sumTrades(tr2));openDay=d;persist();return;}
@@ -2228,6 +2234,21 @@
     out.sort(function(a,b){return b.impact-a.impact;});
     return out;
   }
+  // what's missing from the log, and what filling it in would unlock. Keeps the
+  // sample-size gates honest instead of silently showing nothing.
+  function coachDataGaps(){
+    var t=tradeAnalytics(),gaps=[];
+    if(!t.n)return gaps;
+    if(t.hi.n<4||t.lo.n<4)
+      gaps.push("Rate conviction <b>1–5</b> on each trade to unlock <b>conviction calibration</b> — needs 4 rated 4–5 and 4 rated 1–2 (you have "+t.hi.n+" and "+t.lo.n+").");
+    var namedSetups=t.bySetup.filter(function(g){return g.n>=5;});
+    if(!namedSetups.length){
+      var best=t.bySetup.sort(function(a,b){return b.n-a.n;})[0];
+      gaps.push("Name the <b>setup</b> on every trade to unlock <b>setup ranking</b> — needs 5 trades sharing a name"+(best?" (best so far: "+esc(best.k)+" at "+best.n+")":"")+".");
+    }
+    if(t.n<12)gaps.push("<b>"+(12-t.n)+" more logged trades</b> unlocks the expectancy-vs-target read.");
+    return gaps.slice(0,2);
+  }
   function coachAssessment(){
     var s=disciplineStats();
     if(!s.tradingDays)return{tier:"new",score:null};
@@ -2337,6 +2358,8 @@
     if(pts.length)html+='<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>';
     if(ins.length)html+=coachSection("The edge · from your own log",ins[0].body);
     html+=coachSection("Today's focus",esc(coachFocus(a)));
+    var gaps=coachDataGaps();
+    if(gaps.length)html+=coachSection("Unlock more reads",'<ul class="coachgaps"><li>'+gaps.join("</li><li>")+"</li></ul>");
     var extra=ins.slice(1,5);
     if(extra.length){
       html+='<button type="button" class="coachmore">'+(coachExpanded?"▴ Less":"▾ "+extra.length+" more "+(extra.length===1?"read":"reads")+" from Coach Co")+'</button>';
@@ -2887,6 +2910,16 @@
     if(h===24)h=0;
     return h*60+m;
   }
+  // stamp the session automatically from the clock so the session insight has data
+  // to work with without needing a dropdown touched on every trade (CST windows)
+  function currentSession(){
+    var m=nowCSTMinutes();
+    if(m>=480&&m<720)return "NY AM";    // 08:00–12:00
+    if(m>=720&&m<960)return "NY PM";    // 12:00–16:00
+    if(m>=120&&m<480)return "London";   // 02:00–08:00
+    if(m>=1080||m<120)return "Asia";    // 18:00–02:00
+    return "Other";
+  }
   function scheduleStatus(){
     var rows=schRows(),parsed=[],i,tm;
     for(i=0;i<rows.length;i++){tm=parseSchedTime(rows[i].t);if(tm)parsed.push({r:rows[i],start:tm.start,end:tm.end});}
@@ -3168,10 +3201,11 @@
     var gr=entryGuardCheck();
     if(gr.length&&!confirm("Entry Guard flagged this trade:\n\n- "+gr.join("\n- ")+"\n\nLog it anyway?"))return;
     var ps=psState();
-    var trade={p:"",rr:(r.rr!=null?"1:"+r.rr:""),s:"",side:ps.side,instr:r.inst.k,qty:String(r.contracts)};
+    var trade={p:"",rr:(r.rr!=null?"1:"+r.rr:""),s:"",side:ps.side,instr:r.inst.k,qty:String(r.contracts),session:currentSession()};
     if(r.entry!=null)trade.entry=String(r.entry);
     if(gr.length)trade.mistakes=["Early entry"];
-    dayJ(openDay).trades.push(trade);
+    var trsPS=dayJ(openDay).trades;trsPS.push(trade);
+    openTradeDetail[openDay+":"+(trsPS.length-1)]=true;
     markTradeNow();
     syncFollowers();
     save().then(function(){renderDays();refreshProgress();renderStats();});
