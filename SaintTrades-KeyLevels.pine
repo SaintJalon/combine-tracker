@@ -98,9 +98,14 @@ SessionTextType = input.bool(defval=false, title='ShortHand', group='FX Sessions
 
 
 
-Londont = input.session("0800-1600", "London Session")
-USt = input.session("1400-2100", "New York Session")
-Asiat = input.session("0000-0900", "Tokyo Session")
+// input.session is evaluated in the EXCHANGE timezone, which is America/New_York
+// for COMEX and CME - so these are ET, and they match the MD Model Scanner windows
+// so both indicators mean the same thing by "Asia", "London" and "New York".
+// They were previously UTC values (0000-0900 / 0800-1600 / 1400-2100) being read as
+// ET, which put "Tokyo" on London hours and "New York" after the cash close.
+Londont = input.session("0300-0900", "London Session")
+USt = input.session("0800-1600", "New York Session")
+Asiat = input.session("2000-0400", "Asia Session")
 
 DailyColor = input.color(title='', defval=#08bcd4, group='Daily', inline='Dailysh')
 MondayColor = input.color(title='', defval=color.white, group='Monday Range', inline='Mondaysh')
