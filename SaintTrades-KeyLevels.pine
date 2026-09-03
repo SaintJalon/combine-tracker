@@ -93,7 +93,7 @@ YearlyTextType = input.bool(defval=false, title='ShortHand', group='Yearly', inl
 
 var is_londonrange_enabled = input.bool(defval=false, title='London Range', group='FX Sessions', inline='FX')
 var is_usrange_enabled = input.bool(defval=false, title='New York Range', group='FX Sessions', inline='FX')
-var is_asiarange_enabled = input.bool(defval=false, title='Asia Range', group='FX Sessions', inline='FX')
+var is_asiarange_enabled = input.bool(defval=true,  title='Asia Range', group='FX Sessions', inline='FX')
 SessionTextType = input.bool(defval=false, title='ShortHand', group='FX Sessions', inline='FXColor')
 
 
