@@ -8,12 +8,15 @@
 //
 //   The profile is built from a COMPLETED period only. Levels for today come
 //   from yesterday's bars and never change during the session, so no order is
-//   ever placed using information the bar had not produced yet.
+//   ever placed using information the bar had not produced yet. It is
+//   accumulated as the period runs rather than read back from its last bar, so
+//   nothing looks further back than one bar and the chart timeframe stops
+//   deciding whether a session can be profiled at all.
 //
 //   Commission and slippage are on by default. A twenty tick stop looks superb
 //   with neither and is usually a loser with both. Adjust them in Properties to
 //   match your broker before you believe any number this prints.
-strategy('SaintTrades Volume Profile Strategy', shorttitle='ST VP Strat', overlay=true, max_bars_back=1000, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=2.5, slippage=1, pyramiding=0)
+strategy('SaintTrades Volume Profile Strategy', shorttitle='ST VP Strat', overlay=true, max_bars_back=5000, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=2.5, slippage=1, pyramiding=0)
 
 // ----------------------------------------------------------------------------
 // Inputs
@@ -31,10 +34,10 @@ weightBy = input.string('Volume', title='Weight By', options=['Volume', 'Bar Cou
 grpPlan = 'Trade Plan'
 planMode = input.string('Auto', title='Setup Type', options=['Auto', 'Rotation (fade to POC)', 'Breakout (continuation)'], group=grpPlan)
 dirFilter = input.string('Both', title='Direction Filter', options=['Both', 'Long Only', 'Short Only'], group=grpPlan)
-dirBandPct = input.float(10, title='Direction Deadband (% of VA)', minval=0, maxval=50, step=1, group=grpPlan)
+dirBandPct = input.float(5, title='Direction Deadband (% of VA)', minval=0, maxval=50, step=1, group=grpPlan)
 stopMode = input.string('Value Edge', title='Stop Anchor', options=['Profile Extreme', 'Value Edge', 'ATR'], group=grpPlan)
 atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
-slBufATR = input.float(0, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan)
+slBufATR = input.float(0.25, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan)
 slATRMult = input.float(1.5, title='ATR Stop Multiple  (ATR anchor only)', minval=0.1, step=0.1, group=grpPlan)
 tpMode = input.string('R Multiple', title='Targets', options=['R Multiple', 'Profile Structure'], group=grpPlan)
 rr1 = input.float(1.5, title='TP1 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
@@ -61,27 +64,26 @@ chD = timeframe.change('D')
 chW = timeframe.change('W')
 newPeriod = rangeMode == 'Prior Week' ? chW : chD
 
-var int barsInPeriod = 0
-var int barsPrevPeriod = 0
-if newPeriod
-    barsPrevPeriod := barsInPeriod
-    barsInPeriod := 1
-else
-    barsInPeriod += 1
-
 atr = ta.atr(atrLen)
 hasVolume = ta.cum(nz(volume)) > 0
 useTpo = weightBy == 'Bar Count (TPO)' or not hasVolume
 
 rt(float p) => na(p) ? na : math.round(p / syminfo.mintick) * syminfo.mintick
 
+rowStep(float h, float l) =>
+    float s = rowTicks * syminfo.mintick
+    if rowMode == 'Auto (N Rows)' and not na(h) and not na(l) and h > l
+        s := math.max(syminfo.mintick, math.round((h - l) / rows / syminfo.mintick) * syminfo.mintick)
+    s <= 0 ? syminfo.mintick : s
+
 // ----------------------------------------------------------------------------
 // Profile of the completed period
 //
-// Built once, on the first bar of each new period, from the bars of the period
-// that just closed. Held fixed until the next roll, which is both faithful to
-// how the levels are traded and the only way a full profile is affordable to
-// compute inside a strategy.
+// Each bar files itself into the period it belongs to as it closes, into a map
+// keyed by absolute price grid row. A period roll freezes the finished map into
+// the levels and starts an empty one. Reading backwards from the final bar, as
+// this used to, could not reach a session more than a thousand bars long, which
+// on a one minute chart is every session.
 // ----------------------------------------------------------------------------
 var float pPoc = na
 var float pVah = na
@@ -90,96 +92,134 @@ var float pHi = na
 var float pLo = na
 var float pStep = na
 
-if newPeriod and barsPrevPeriod >= 10
-    int off = 1
-    // Pine addresses a bounded slice of history, so a period longer than this is
-    // built from its most recent 980 bars only. On Prior Week at a fine
-    // timeframe that is the tail of the week, not the week.
-    int len = math.min(barsPrevPeriod, 980)
+var map<int, float> curVol = map.new<int, float>()
+var float curHi = na
+var float curLo = na
+var int curBars = 0
+var float gStep = na
 
-    float hi = high[off]
-    float lo = low[off]
-    for i = off to off + len - 1
-        float h = high[i]
-        float l = low[i]
-        if not na(h) and not na(l)
-            hi := math.max(nz(hi, h), h)
-            lo := math.min(nz(lo, l), l)
+// A history bar is finished by definition; isconfirmed only has to settle the
+// live one. Map mutations are not rolled back between ticks, so an ungated roll
+// would freeze the finished period on the first tick of a new one and then
+// overwrite it with the empty map on every tick after.
+bool closedBar = barstate.ishistory or barstate.isconfirmed
 
-    float step = (hi - lo) / rows
-    float gridLo = lo
-    int nRows = rows
-    if rowMode == 'Fixed Ticks'
-        step := rowTicks * syminfo.mintick
-        for _k = 0 to 12
-            gridLo := math.floor(lo / step) * step
-            nRows := int(math.ceil((hi - gridLo) / step)) + 1
-            if nRows <= 200
+if newPeriod and closedBar
+    if curBars >= 10 and map.size(curVol) > 0 and not na(curHi) and not na(curLo) and not na(gStep) and gStep > 0
+        array<int> keys = map.keys(curVol)
+        int minK = array.min(keys)
+        int maxK = array.max(keys)
+        int raw = maxK - minK + 1
+        int grp = math.max(1, int(math.ceil(raw / 200.0)))
+        int nRows = math.max(2, int(math.ceil(raw / float(grp))))
+        float step = gStep * grp
+        float gridLo = minK * gStep
+
+        array<float> totVol = array.new<float>(nRows, 0.0)
+        float grandTotal = 0.0
+        for i = 0 to array.size(keys) - 1
+            int k = array.get(keys, i)
+            int ix = math.max(0, math.min(nRows - 1, int(math.floor((k - minK) / float(grp)))))
+            float v = nz(map.get(curVol, k))
+            array.set(totVol, ix, array.get(totVol, ix) + v)
+            grandTotal += v
+
+        float maxRow = 0.0
+        for r = 0 to nRows - 1
+            maxRow := math.max(maxRow, array.get(totVol, r))
+
+        // Keeping the first row to hit the maximum pins the POC to the lowest
+        // tied price. Ties are the rule in TPO mode, where every bar weighs one.
+        int pocIdx = 0
+        float pocMid = (nRows - 1) / 2.0
+        float pocBest = nRows + 1.0
+        for r = 0 to nRows - 1
+            if array.get(totVol, r) >= maxRow
+                float dist = math.abs(r - pocMid)
+                if dist < pocBest
+                    pocBest := dist
+                    pocIdx := r
+
+        int vaUp = pocIdx
+        int vaDn = pocIdx
+        float acc = array.get(totVol, pocIdx)
+        float vaTarget = grandTotal * vaPct / 100.0
+        // The conventional Market Profile walk weighs the next TWO rows on each
+        // side and takes the heavier pair whole. Bounds are checked before any
+        // row is read, never inside a ternary, so no out of range index forms.
+        for _i = 0 to nRows - 1
+            if acc >= vaTarget
                 break
-            step *= 2
-        nRows := math.max(2, math.min(nRows, 200))
-    step := step <= 0 ? syminfo.mintick : step
+            float sumUp = -1.0
+            int upRows = 0
+            if vaUp + 1 <= nRows - 1
+                sumUp := array.get(totVol, vaUp + 1)
+                upRows := 1
+                if vaUp + 2 <= nRows - 1
+                    sumUp += array.get(totVol, vaUp + 2)
+                    upRows := 2
+            float sumDn = -1.0
+            int dnRows = 0
+            if vaDn - 1 >= 0
+                sumDn := array.get(totVol, vaDn - 1)
+                dnRows := 1
+                if vaDn - 2 >= 0
+                    sumDn += array.get(totVol, vaDn - 2)
+                    dnRows := 2
+            if upRows == 0 and dnRows == 0
+                break
+            if sumUp >= sumDn
+                vaUp += upRows
+                acc += sumUp
+            else
+                vaDn -= dnRows
+                acc += sumDn
 
-    totVol = array.new_float(nRows, 0.0)
-    for i = off to off + len - 1
-        float bh = high[i]
-        float bl = low[i]
-        if not na(bh) and not na(bl)
-            float span = bh - bl
-            float v = useTpo ? 1.0 : nz(volume[i])
-            int r1 = math.max(0, math.min(nRows - 1, int(math.floor((bl - gridLo) / step))))
-            int r2 = math.max(0, math.min(nRows - 1, int(math.floor((bh - gridLo) / step))))
+        pPoc := rt(gridLo + (pocIdx + 0.5) * step)
+        pVah := math.min(rt(gridLo + (vaUp + 1) * step), curHi)
+        pVal := math.max(rt(gridLo + vaDn * step), curLo)
+        pHi := curHi
+        pLo := curLo
+        pStep := step
+    else
+        // A period too thin to profile must not leave the last one's levels
+        // standing. Stale levels keep placing orders against a range that is
+        // days old, and the fills look plausible enough to pass unnoticed.
+        pPoc := na
+        pVah := na
+        pVal := na
+        pHi := na
+        pLo := na
+        pStep := na
+
+    map.clear(curVol)
+    curHi := na
+    curLo := na
+    curBars := 0
+    // Auto rows have no range to slice until a period is over, so a new period
+    // borrows the row height the one before it settled on.
+    gStep := rowStep(pHi, pLo)
+
+if na(gStep)
+    gStep := math.max(syminfo.mintick, rowTicks * syminfo.mintick)
+
+if closedBar and gStep > 0
+    float bh = high
+    float bl = low
+    if not na(bh) and not na(bl)
+        curHi := na(curHi) ? bh : math.max(curHi, bh)
+        curLo := na(curLo) ? bl : math.min(curLo, bl)
+        curBars += 1
+        float span = bh - bl
+        float v = useTpo ? 1.0 : nz(volume)
+        int r1 = int(math.floor(bl / gStep))
+        int r2 = int(math.floor(bh / gStep))
+        if r2 >= r1 and r2 - r1 <= 400
             for r = r1 to r2
-                float rBot = gridLo + r * step
-                float overlap = math.min(bh, rBot + step) - math.max(bl, rBot)
+                float rBot = r * gStep
+                float overlap = math.min(bh, rBot + gStep) - math.max(bl, rBot)
                 float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
-                array.set(totVol, r, array.get(totVol, r) + v * share)
-
-    float grandTotal = 0.0
-    float maxRow = 0.0
-    int pocIdx = 0
-    for r = 0 to nRows - 1
-        float t = array.get(totVol, r)
-        grandTotal += t
-        if t > maxRow
-            maxRow := t
-            pocIdx := r
-
-    int vaUp = pocIdx
-    int vaDn = pocIdx
-    float acc = array.get(totVol, pocIdx)
-    float vaTarget = grandTotal * vaPct / 100.0
-    for _i = 0 to nRows - 1
-        if acc >= vaTarget
-            break
-        float nUp = vaUp < nRows - 1 ? array.get(totVol, vaUp + 1) : -1.0
-        float nDn = vaDn > 0 ? array.get(totVol, vaDn - 1) : -1.0
-        if nUp < 0 and nDn < 0
-            break
-        if nUp >= nDn
-            vaUp += 1
-            acc += nUp
-        else
-            vaDn -= 1
-            acc += nDn
-
-    pPoc := gridLo + (pocIdx + 0.5) * step
-    pVah := math.min(gridLo + (vaUp + 1) * step, hi)
-    pVal := math.max(gridLo + vaDn * step, lo)
-    pHi := hi
-    pLo := lo
-    pStep := step
-
-// A period too short to profile must not leave the last one's levels standing.
-// Stale levels keep placing orders against a range that is days old, and the
-// fills look plausible enough that the backtest never flags it.
-if newPeriod and barsPrevPeriod < 10
-    pPoc := na
-    pVah := na
-    pVal := na
-    pHi := na
-    pLo := na
-    pStep := na
+                map.put(curVol, r, nz(map.get(curVol, r)) + v * share)
 
 // ----------------------------------------------------------------------------
 // Plan for this bar, off the fixed levels
@@ -216,7 +256,11 @@ if ready
 
         if kind == 'Rotation'
             entry := isLong ? pVal : pVah
-            sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? entry - math.max(buf, pStep) : entry + math.max(buf, pStep)) : (isLong ? pLo - buf : pHi + buf)
+            // The buffer pads the row, the way it pads the structural level under
+            // every other anchor. Taking the larger of the two threw away any
+            // buffer narrower than one row without saying so.
+            float edgeStop = pStep + buf
+            sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? entry - edgeStop : entry + edgeStop) : (isLong ? pLo - buf : pHi + buf)
         else
             entry := isLong ? (px > pHi ? pHi : pVah) : (px < pLo ? pLo : pVal)
             sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? pVah - buf : pVal + buf) : (isLong ? pVal - buf : pVah + buf)
