@@ -428,26 +428,3 @@ if barstate.islast
             float perUnit = riskPts * syminfo.pointvalue
             float qty = perUnit > 0 ? riskDollars / perUnit : na
             cellKV(11, 'Size', not showSize ? 'off' : na(qty) ? 'n/a' : str.tostring(math.floor(qty), '#') + ' @ $' + str.tostring(perUnit, '#.##') + ' ea', color.white)
-
-// ----------------------------------------------------------------------------
-// Alerts, evaluated against the live profile
-// ----------------------------------------------------------------------------
-// A bar "touches" a level when the level falls inside its range. That stays
-// true for every bar sitting on the level, so each alert fires on the bar the
-// touch begins and not again until price has left and come back.
-bool entryTouch = not na(planEntry) and high >= planEntry and low <= planEntry
-bool stopTouch = not na(planStop) and high >= planStop and low <= planStop
-bool tp1Touch = not na(planTp1) and high >= planTp1 and low <= planTp1
-bool tp2Touch = not na(planTp2) and high >= planTp2 and low <= planTp2
-
-bool pocReady = not na(pocPrice) and not na(pocPrice[1])
-bool vahReady = not na(vahPrice) and not na(vahPrice[1])
-bool valReady = not na(valPrice) and not na(valPrice[1])
-
-alertcondition(pocReady and ta.cross(close, pocPrice), 'Price crossed POC', 'Price crossed the volume POC')
-alertcondition(vahReady and ta.crossover(close, vahPrice), 'Break above VAH', 'Price traded above the value area high')
-alertcondition(valReady and ta.crossunder(close, valPrice), 'Break below VAL', 'Price traded below the value area low')
-alertcondition(entryTouch and not entryTouch[1], 'Entry touched', 'Price tagged the volume profile entry level')
-alertcondition(stopTouch and not stopTouch[1], 'Stop touched', 'Price tagged the volume profile stop level')
-alertcondition(tp1Touch and not tp1Touch[1], 'TP1 touched', 'Price tagged the first volume profile target')
-alertcondition(tp2Touch and not tp2Touch[1], 'TP2 touched', 'Price tagged the second volume profile target')
