@@ -9,13 +9,13 @@ indicator('SaintTrades Volume Profile', shorttitle='ST VP', overlay=true, max_bo
 // ----------------------------------------------------------------------------
 grpRange = 'Range'
 rangeMode = input.string('Prior Session (Day)', title='Range', options=['Fixed Bars', 'Session (Day)', 'Week', 'Month', 'Prior Session (Day)', 'Prior Week', 'Visible Range'], group=grpRange, tooltip='Which block of bars the profile is built from. The Prior modes read the last completed period, so the levels are fixed for the whole of the current one.')
-lookback = input.int(200, title='Fixed Bars Lookback', minval=10, maxval=999, group=grpRange)
+lookback = input.int(200, title='Lookback Bars  (Fixed Bars only)', minval=10, maxval=999, group=grpRange)
 closedOnly = input.bool(true, title='Closed Bars Only', group=grpRange, tooltip='Leave the forming bar out of the profile, so the levels only move when a bar closes instead of on every tick.')
 
 grpProf = 'Profile'
 rowMode = input.string('Fixed Ticks', title='Row Size', options=['Auto (N Rows)', 'Fixed Ticks'], group=grpProf, tooltip='Auto slices the range into N rows, so every row boundary shifts when the range changes. Fixed Ticks pins the rows to an absolute price grid, which holds the POC and value area edges still.')
-rows = input.int(48, title='Rows', minval=10, maxval=150, group=grpProf, tooltip='Price buckets the range is sliced into. More rows means a finer POC and a slower calculation.')
-rowTicks = input.int(10, title='Ticks Per Row', minval=1, maxval=1000, group=grpProf, tooltip='Row height when Row Size is Fixed Ticks.')
+rows = input.int(48, title='Rows  (Auto only)', minval=10, maxval=150, group=grpProf, tooltip='Price buckets the range is sliced into. More rows means a finer POC and a slower calculation.')
+rowTicks = input.int(10, title='Ticks Per Row  (Fixed Ticks only)', minval=1, maxval=1000, group=grpProf, tooltip='Row height when Row Size is Fixed Ticks.')
 vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1, group=grpProf)
 weightBy = input.string('Volume', title='Weight By', options=['Volume', 'Bar Count (TPO)'], group=grpProf, tooltip='Bar Count builds a TPO style profile, and is used automatically on symbols with no volume data.')
 
@@ -42,10 +42,10 @@ dirBandPct = input.float(10, title='Direction Deadband (% of VA)', minval=0, max
 stopMode = input.string('Value Edge', title='Stop Anchor', options=['Profile Extreme', 'Value Edge', 'ATR'], group=grpPlan)
 atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
 slBufATR = input.float(0, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan, tooltip='Padding beyond the structural stop level.')
-slATRMult = input.float(1.5, title='ATR Stop Multiple', minval=0.1, step=0.1, group=grpPlan, tooltip='Only used when Stop Anchor is set to ATR.')
+slATRMult = input.float(1.5, title='ATR Stop Multiple  (ATR anchor only)', minval=0.1, step=0.1, group=grpPlan, tooltip='Only used when Stop Anchor is set to ATR.')
 tpMode = input.string('R Multiple', title='Targets', options=['R Multiple', 'Profile Structure'], group=grpPlan)
 rr1 = input.float(1.5, title='TP1 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
-rr2 = input.float(3.0, title='TP2 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
+rr2 = input.float(3.0, title='TP2 R', minval=0.1, step=0.1, inline='rr', group=grpPlan, tooltip='R multiples for the targets. Ignored when Targets is set to Profile Structure.')
 planExtend = input.int(40, title='Plan Line Length (bars)', minval=5, maxval=200, group=grpPlan)
 colEntry = input.color(#42a5f5, title='Entry', inline='plancol', group=grpPlan)
 colSl = input.color(#ef5350, title='Stop', inline='plancol', group=grpPlan)
@@ -113,6 +113,7 @@ var float planTp1 = na
 var float planTp2 = na
 var string planDir = 'None'
 var string planKind = 'None'
+var string planNote = ''
 var string dirLatch = 'None'
 
 var array<box> vpBoxes = array.new<box>()
@@ -246,8 +247,10 @@ if barstate.islast
             acc += nDn
 
     pocPrice := gridLo + (pocIdx + 0.5) * step
-    vahPrice := gridLo + (vaUp + 1) * step
-    valPrice := gridLo + vaDn * step
+    // The grid row holding an extreme extends past it, so an unclamped edge can
+    // print above the range high or below the range low.
+    vahPrice := math.min(gridLo + (vaUp + 1) * step, hi)
+    valPrice := math.max(gridLo + vaDn * step, lo)
 
     int lastIdx = bar_index
     int startIdx = lastIdx - rangeOffset - (rangeLen - 1)
@@ -293,6 +296,7 @@ if barstate.islast
     planTp1 := na
     planTp2 := na
     planDir := 'None'
+    planNote := ''
     planKind := showPlan ? 'None' : 'Off'
 
     if showPlan
@@ -359,21 +363,36 @@ if barstate.islast
 
             tp1 := rt(tp1)
             tp2 := rt(tp2)
-            planEntry := entry
-            planStop := sl
-            planTp1 := tp1
-            planTp2 := tp2
-            planDir := isLong ? 'Long' : 'Short'
-            planKind := kind
 
-            int px1 = lastIdx + 1
-            int px2 = lastIdx + planExtend
-            array.push(vpBoxes, box.new(px1, math.max(entry, sl), px2, math.min(entry, sl), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colSl, 92)))
-            array.push(vpBoxes, box.new(px1, math.max(tp2, entry), px2, math.min(tp2, entry), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colTp, 92)))
-            mkLevel(px1, px2, entry, colEntry, 2, 'ENTRY ' + fmt(entry), false)
-            mkLevel(px1, px2, sl, colSl, 2, 'SL ' + fmt(sl), false)
-            mkLevel(px1, px2, tp1, colTp, 1, 'TP1 ' + fmt(tp1), true)
-            mkLevel(px1, px2, tp2, colTp, 2, 'TP2 ' + fmt(tp2), false)
+            // Refuse to print a plan that price has already invalidated, rather
+            // than showing a stop that is behind the market or a target that has
+            // already been paid out.
+            if dirLatch == 'None'
+                planNote := 'price sitting on the POC'
+            else if (isLong and px <= sl) or (not isLong and px >= sl)
+                planNote := 'stop already breached'
+            else if (isLong and px >= tp2) or (not isLong and px <= tp2)
+                planNote := 'price already past TP2'
+
+            if planNote != ''
+                planKind := 'No setup'
+                planDir := 'None'
+            else
+                planEntry := entry
+                planStop := sl
+                planTp1 := tp1
+                planTp2 := tp2
+                planDir := isLong ? 'Long' : 'Short'
+                planKind := kind
+
+                int px1 = lastIdx + 1
+                int px2 = lastIdx + planExtend
+                array.push(vpBoxes, box.new(px1, math.max(entry, sl), px2, math.min(entry, sl), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colSl, 92)))
+                array.push(vpBoxes, box.new(px1, math.max(tp2, entry), px2, math.min(tp2, entry), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colTp, 92)))
+                mkLevel(px1, px2, entry, colEntry, 2, 'ENTRY ' + fmt(entry), false)
+                mkLevel(px1, px2, sl, colSl, 2, 'SL ' + fmt(sl), false)
+                mkLevel(px1, px2, tp1, colTp, 1, 'TP1 ' + fmt(tp1), true)
+                mkLevel(px1, px2, tp2, colTp, 2, 'TP2 ' + fmt(tp2), false)
 
     // ------------------------------------------------------------------------
     // Table
@@ -392,8 +411,9 @@ if barstate.islast
         cellKV(6, 'Price', loc, close > vahPrice ? colTp : close < valPrice ? colSl : color.white)
 
         if na(planEntry)
-            cellKV(7, 'Setup', planKind == 'Filtered' ? 'Filtered out' : 'Off', color.gray)
-            cellKV(8, '', '', color.gray)
+            string why = planKind == 'Filtered' ? 'Filtered out' : planKind == 'No setup' ? 'No setup' : 'Off'
+            cellKV(7, 'Setup', why, planKind == 'No setup' ? color.new(#ffb300, 0) : color.gray)
+            cellKV(8, planKind == 'No setup' ? 'Why' : '', planNote, color.gray)
             cellKV(9, '', '', color.gray)
             cellKV(10, '', '', color.gray)
             cellKV(11, '', '', color.gray)
@@ -412,10 +432,22 @@ if barstate.islast
 // ----------------------------------------------------------------------------
 // Alerts, evaluated against the live profile
 // ----------------------------------------------------------------------------
-alertcondition(ta.cross(close, pocPrice), 'Price crossed POC', 'Price crossed the volume POC')
-alertcondition(ta.crossover(close, vahPrice), 'Break above VAH', 'Price traded above the value area high')
-alertcondition(ta.crossunder(close, valPrice), 'Break below VAL', 'Price traded below the value area low')
-alertcondition(not na(planEntry) and high >= planEntry and low <= planEntry, 'Entry touched', 'Price tagged the volume profile entry level')
-alertcondition(not na(planStop) and high >= planStop and low <= planStop, 'Stop touched', 'Price tagged the volume profile stop level')
-alertcondition(not na(planTp1) and high >= planTp1 and low <= planTp1, 'TP1 touched', 'Price tagged the first volume profile target')
-alertcondition(not na(planTp2) and high >= planTp2 and low <= planTp2, 'TP2 touched', 'Price tagged the second volume profile target')
+// A bar "touches" a level when the level falls inside its range. That stays
+// true for every bar sitting on the level, so each alert fires on the bar the
+// touch begins and not again until price has left and come back.
+bool entryTouch = not na(planEntry) and high >= planEntry and low <= planEntry
+bool stopTouch = not na(planStop) and high >= planStop and low <= planStop
+bool tp1Touch = not na(planTp1) and high >= planTp1 and low <= planTp1
+bool tp2Touch = not na(planTp2) and high >= planTp2 and low <= planTp2
+
+bool pocReady = not na(pocPrice) and not na(pocPrice[1])
+bool vahReady = not na(vahPrice) and not na(vahPrice[1])
+bool valReady = not na(valPrice) and not na(valPrice[1])
+
+alertcondition(pocReady and ta.cross(close, pocPrice), 'Price crossed POC', 'Price crossed the volume POC')
+alertcondition(vahReady and ta.crossover(close, vahPrice), 'Break above VAH', 'Price traded above the value area high')
+alertcondition(valReady and ta.crossunder(close, valPrice), 'Break below VAL', 'Price traded below the value area low')
+alertcondition(entryTouch and not entryTouch[1], 'Entry touched', 'Price tagged the volume profile entry level')
+alertcondition(stopTouch and not stopTouch[1], 'Stop touched', 'Price tagged the volume profile stop level')
+alertcondition(tp1Touch and not tp1Touch[1], 'TP1 touched', 'Price tagged the first volume profile target')
+alertcondition(tp2Touch and not tp2Touch[1], 'TP2 touched', 'Price tagged the second volume profile target')
