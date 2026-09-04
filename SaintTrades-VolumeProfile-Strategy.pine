@@ -92,6 +92,9 @@ var float pStep = na
 
 if newPeriod and barsPrevPeriod >= 10
     int off = 1
+    // Pine addresses a bounded slice of history, so a period longer than this is
+    // built from its most recent 980 bars only. On Prior Week at a fine
+    // timeframe that is the tail of the week, not the week.
     int len = math.min(barsPrevPeriod, 980)
 
     float hi = high[off]
@@ -166,6 +169,17 @@ if newPeriod and barsPrevPeriod >= 10
     pHi := hi
     pLo := lo
     pStep := step
+
+// A period too short to profile must not leave the last one's levels standing.
+// Stale levels keep placing orders against a range that is days old, and the
+// fills look plausible enough that the backtest never flags it.
+if newPeriod and barsPrevPeriod < 10
+    pPoc := na
+    pVah := na
+    pVal := na
+    pHi := na
+    pLo := na
+    pStep := na
 
 // ----------------------------------------------------------------------------
 // Plan for this bar, off the fixed levels
@@ -286,20 +300,31 @@ var float actStop = na
 var float actTp1 = na
 var float actTp2 = na
 
+var bool tookTp1 = false
+
 bool justOpened = strategy.position_size != 0 and strategy.position_size[1] == 0
 if justOpened
     actStop := planStop
     actTp1 := planTp1
     actTp2 := planTp2
+    tookTp1 := false
     tradesThisPeriod += 1
 
+// strategy.exit does not remember that an id has already filled. Calling X1
+// again after the scale-out opens a second one against what is left, so the
+// runner is shaved at TP1 on every bar it survives. Reaching the price is the
+// fill. The entry bar is excluded because the bracket is only placed at the
+// close of it, so nothing can fill against TP1 until the bar after.
+bool tp1Reached = strategy.position_size > 0 ? high >= actTp1 : strategy.position_size < 0 ? low <= actTp1 : false
+if not justOpened and not na(actTp1) and tp1Reached
+    tookTp1 := true
+
 if strategy.position_size != 0 and not na(actStop)
-    if tp1Pct > 0 and tp1Pct < 100
-        strategy.exit('X1', qty_percent=tp1Pct, stop=actStop, limit=actTp1)
-        strategy.exit('X2', stop=actStop, limit=actTp2)
-    else if tp1Pct >= 100
+    if tp1Pct >= 100
         strategy.exit('X1', stop=actStop, limit=actTp1)
     else
+        if tp1Pct > 0 and not tookTp1
+            strategy.exit('X1', qty_percent=tp1Pct, stop=actStop, limit=actTp1)
         strategy.exit('X2', stop=actStop, limit=actTp2)
 
 if newPeriod and flatAtEnd and strategy.position_size != 0
