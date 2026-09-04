@@ -183,15 +183,25 @@ var int prvStart = 0
 var float prvStep = na
 
 var float gStep = na
+var int rollCount = 0
 
-if periodMode and newPeriod and barstate.isconfirmed
-    prvUp := map.copy(curUp)
-    prvDn := map.copy(curDn)
-    prvHi := curHi
-    prvLo := curLo
-    prvBars := curBars
-    prvStart := curStart
-    prvStep := gStep
+// A history bar is finished by definition. isconfirmed only has to decide the
+// live one, and leaning on it alone to mean 'closed' is what leaves the maps
+// empty if it does not read true while history is being walked.
+bool closedBar = barstate.ishistory or barstate.isconfirmed
+
+if periodMode and newPeriod and closedBar
+    // A period that filed nothing - a holiday, or the stub the chart's first
+    // loaded bar sits in - must not overwrite the last good profile.
+    if curBars > 0
+        prvUp := map.copy(curUp)
+        prvDn := map.copy(curDn)
+        prvHi := curHi
+        prvLo := curLo
+        prvBars := curBars
+        prvStart := curStart
+        prvStep := gStep
+        rollCount += 1
     map.clear(curUp)
     map.clear(curDn)
     curHi := na
@@ -207,7 +217,7 @@ if na(gStep)
 
 // Only closed bars are filed. Mutating a collection on the forming bar is not
 // reliably rolled back tick to tick, which would double count the live bar.
-if periodMode and barstate.isconfirmed and gStep > 0
+if periodMode and closedBar and gStep > 0
     float bh = high
     float bl = low
     if not na(bh) and not na(bl)
@@ -265,7 +275,7 @@ if barstate.islast
         float sStep = priorMode ? prvStep : gStep
 
         if map.size(sUp) + map.size(sDn) < 1 or na(sHi) or na(sLo) or na(sStep) or sStep <= 0
-            dNote := priorMode ? 'waiting for a completed period' : 'period has no closed bars yet'
+            dNote := str.tostring(rollCount) + ' periods filed, ' + str.tostring(curBars) + ' bars live'
         else
             array<int> ku = map.keys(sUp)
             array<int> kd = map.keys(sDn)
