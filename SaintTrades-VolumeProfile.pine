@@ -2,6 +2,13 @@
 // SaintTrades Fixed Range Volume Profile
 // Builds a volume profile over a fixed range of bars, marks the POC / VAH / VAL,
 // and lays out a mechanical trade plan (entry, stop, two targets) off those levels.
+//
+// Session profiles are accumulated as the session runs. Each bar adds itself to
+// the period it belongs to at the moment it closes, so building the profile
+// never looks further back than one bar. That is what lets a one minute chart
+// profile yesterday: its twelve hundred bars were counted as they happened
+// rather than hunted down afterwards from the right hand edge, which is what
+// used to run into the history limit and give up.
 indicator('SaintTrades Volume Profile', shorttitle='ST VP', overlay=true, max_boxes_count=500, max_lines_count=100, max_labels_count=100, max_bars_back=5000)
 
 // ----------------------------------------------------------------------------
@@ -60,25 +67,25 @@ showTable = input.bool(true, title='Show Table', group=grpTbl)
 tblPos = input.string('Bottom Right', title='Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpTbl)
 tblSize = input.string('Small', title='Text Size', options=['Tiny', 'Small', 'Normal'], group=grpTbl)
 
+
 // ----------------------------------------------------------------------------
-// Range length
+// Period tracking
 // ----------------------------------------------------------------------------
 chD = timeframe.change('D')
 chW = timeframe.change('W')
 chM = timeframe.change('M')
 newPeriod = (rangeMode == 'Session (Day)' or rangeMode == 'Prior Session (Day)') ? chD : (rangeMode == 'Week' or rangeMode == 'Prior Week') ? chW : rangeMode == 'Month' ? chM : false
 
-var int barsInPeriod = 0
-var int barsPrevPeriod = 0
-if newPeriod
-    barsPrevPeriod := barsInPeriod
-    barsInPeriod := 1
-else
-    barsInPeriod += 1
+bool priorMode = rangeMode == 'Prior Session (Day)' or rangeMode == 'Prior Week'
+bool periodMode = rangeMode != 'Fixed Bars' and rangeMode != 'Visible Range'
+
+atr = ta.atr(atrLen)
+hasVolume = ta.cum(nz(volume)) > 0
+useTpo = weightBy == 'Bar Count (TPO)' or not hasVolume
 
 visibleBars() =>
     int cnt = 0
-    if not na(chart.left_visible_bar_time)
+    if rangeMode == 'Visible Range' and not na(chart.left_visible_bar_time)
         for i = 0 to 4998
             if i > bar_index
                 break
@@ -88,29 +95,9 @@ visibleBars() =>
     cnt
 
 int visBars = visibleBars()
-bool priorMode = rangeMode == 'Prior Session (Day)' or rangeMode == 'Prior Week'
-
-// A prior-period profile starts behind every bar of the current period, so it
-// stops moving the moment that period opens.
-int rangeOffset = priorMode ? barsInPeriod : (closedOnly ? 1 : 0)
-// Dropping the forming bar shortens the window as well as shifting it. Counting
-// a whole period from one bar back would reach a bar into the period before it.
-int rangeWant = rangeMode == 'Fixed Bars' ? lookback : rangeMode == 'Visible Range' ? visBars - rangeOffset : priorMode ? barsPrevPeriod : barsInPeriod - rangeOffset
-
-// Pine can only address a bounded slice of history. Clamping the offset to fit
-// would slide the window forward into the current period and draw confident,
-// wrong levels, so an unreachable range is reported instead of drawn.
-int rangeRoom = math.min(bar_index, 4998) - rangeOffset + 1
-string rangeIssue = rangeRoom < 2 ? 'range starts ' + str.tostring(rangeOffset) + ' bars back' : rangeWant < 2 ? 'not enough bars in range' : ''
-int rangeLen = rangeIssue != '' ? 2 : math.min(rangeWant, rangeRoom)
-bool rangeCut = rangeIssue == '' and rangeWant > rangeLen
-
-atr = ta.atr(atrLen)
-hasVolume = ta.cum(nz(volume)) > 0
-useTpo = weightBy == 'Bar Count (TPO)' or not hasVolume
 
 // ----------------------------------------------------------------------------
-// State carried between bars, so the alerts can read the live profile
+// Levels and plan, carried between bars
 // ----------------------------------------------------------------------------
 var float pocPrice = na
 var float vahPrice = na
@@ -164,296 +151,455 @@ fmt(float p) => str.tostring(p, format.mintick)
 
 rt(float p) => na(p) ? na : math.round(p / syminfo.mintick) * syminfo.mintick
 
+// Row height. Auto slices a known range into N rows; Fixed Ticks pins the rows
+// to an absolute price grid so the POC and value edges hold still.
+rowStep(float h, float l) =>
+    float s = rowTicks * syminfo.mintick
+    if rowMode == 'Auto (N Rows)' and not na(h) and not na(l) and h > l
+        s := math.max(syminfo.mintick, math.round((h - l) / rows / syminfo.mintick) * syminfo.mintick)
+    s <= 0 ? syminfo.mintick : s
+
 // ----------------------------------------------------------------------------
-// Build and draw, on the last bar only
+// Running profile
+//
+// Rows are keyed by absolute price grid index, so a bar can be filed the moment
+// it closes without knowing anything about the range the period will end up
+// covering. On a period roll the finished maps are frozen and the live ones
+// start again empty.
 // ----------------------------------------------------------------------------
-if barstate.islast and rangeIssue != ''
+var map<int, float> curUp = map.new<int, float>()
+var map<int, float> curDn = map.new<int, float>()
+var float curHi = na
+var float curLo = na
+var int curBars = 0
+var int curStart = 0
+
+var map<int, float> prvUp = map.new<int, float>()
+var map<int, float> prvDn = map.new<int, float>()
+var float prvHi = na
+var float prvLo = na
+var int prvBars = 0
+var int prvStart = 0
+var float prvStep = na
+
+var float gStep = na
+
+if periodMode and newPeriod and barstate.isconfirmed
+    prvUp := map.copy(curUp)
+    prvDn := map.copy(curDn)
+    prvHi := curHi
+    prvLo := curLo
+    prvBars := curBars
+    prvStart := curStart
+    prvStep := gStep
+    map.clear(curUp)
+    map.clear(curDn)
+    curHi := na
+    curLo := na
+    curBars := 0
+    curStart := bar_index
+    // Auto rows have no range to slice until a period is over, so a new period
+    // borrows the row height the one before it settled on.
+    gStep := rowStep(prvHi, prvLo)
+
+if na(gStep)
+    gStep := math.max(syminfo.mintick, rowTicks * syminfo.mintick)
+
+// Only closed bars are filed. Mutating a collection on the forming bar is not
+// reliably rolled back tick to tick, which would double count the live bar.
+if periodMode and barstate.isconfirmed and gStep > 0
+    float bh = high
+    float bl = low
+    if not na(bh) and not na(bl)
+        curHi := na(curHi) ? bh : math.max(curHi, bh)
+        curLo := na(curLo) ? bl : math.min(curLo, bl)
+        curBars += 1
+        float span = bh - bl
+        float v = useTpo ? 1.0 : nz(volume)
+        bool isUp = close >= open
+        int r1 = int(math.floor(bl / gStep))
+        int r2 = int(math.floor(bh / gStep))
+        if r2 >= r1 and r2 - r1 <= 400
+            for r = r1 to r2
+                float rBot = r * gStep
+                float overlap = math.min(bh, rBot + gStep) - math.max(bl, rBot)
+                float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
+                float add = v * share
+                if isUp
+                    map.put(curUp, r, nz(map.get(curUp, r)) + add)
+                else
+                    map.put(curDn, r, nz(map.get(curDn, r)) + add)
+
+// ----------------------------------------------------------------------------
+// Display buffers, filled on the last bar from whichever source the mode wants
+// ----------------------------------------------------------------------------
+var array<float> dUp = array.new<float>(0)
+var array<float> dDn = array.new<float>(0)
+var float dHi = na
+var float dLo = na
+var float dGridLo = na
+var float dStep = na
+var int dRows = 0
+var int dBars = 0
+var int dStart = 0
+var bool dReady = false
+var string dNote = ''
+
+if barstate.islast
     clearDrawings()
+    array.clear(dUp)
+    array.clear(dDn)
+    dReady := false
+    dNote := ''
     pocPrice := na
     vahPrice := na
     valPrice := na
-    planEntry := na
-    planDir := 'None'
-    planKind := 'No setup'
-    if showTable
-        table.clear(tbl, 0, 0, 1, 11)
-        cellKV(0, 'Profile', 'unavailable', color.new(#ffb300, 0))
-        cellKV(1, 'Why', rangeIssue, color.gray)
-        cellKV(2, '', rangeRoom < 2 ? 'try a higher timeframe' : '', color.gray)
 
-if barstate.islast and rangeIssue == ''
-    clearDrawings()
+    if periodMode
+        map<int, float> sUp = priorMode ? prvUp : curUp
+        map<int, float> sDn = priorMode ? prvDn : curDn
+        float sHi = priorMode ? prvHi : curHi
+        float sLo = priorMode ? prvLo : curLo
+        int sBars = priorMode ? prvBars : curBars
+        int sStart = priorMode ? prvStart : curStart
+        float sStep = priorMode ? prvStep : gStep
 
-    // --- range extremes ---
-    float hi = high[rangeOffset]
-    float lo = low[rangeOffset]
-    for i = rangeOffset to rangeOffset + rangeLen - 1
-        float h = high[i]
-        float l = low[i]
-        if not na(h) and not na(l)
-            hi := math.max(nz(hi, h), h)
-            lo := math.min(nz(lo, l), l)
+        if map.size(sUp) + map.size(sDn) < 1 or na(sHi) or na(sLo) or na(sStep) or sStep <= 0
+            dNote := priorMode ? 'waiting for a completed period' : 'period has no closed bars yet'
+        else
+            array<int> ku = map.keys(sUp)
+            array<int> kd = map.keys(sDn)
+            int minK = 0
+            int maxK = 0
+            bool none = true
+            if array.size(ku) > 0
+                minK := array.min(ku)
+                maxK := array.max(ku)
+                none := false
+            if array.size(kd) > 0
+                int a = array.min(kd)
+                int b = array.max(kd)
+                minK := none ? a : math.min(minK, a)
+                maxK := none ? b : math.max(maxK, b)
+                none := false
+            if none
+                dNote := 'period has no closed bars yet'
+            else
+                // Keep the box count bounded by folding neighbouring rows
+                // together rather than by dropping any of the range.
+                int raw = maxK - minK + 1
+                int grp = math.max(1, int(math.ceil(raw / 200.0)))
+                dRows := math.max(2, int(math.ceil(raw / float(grp))))
+                dStep := sStep * grp
+                dGridLo := minK * sStep
+                for i = 0 to dRows - 1
+                    array.push(dUp, 0.0)
+                    array.push(dDn, 0.0)
+                if array.size(ku) > 0
+                    for i = 0 to array.size(ku) - 1
+                        int k = array.get(ku, i)
+                        int ix = math.max(0, math.min(dRows - 1, int(math.floor((k - minK) / float(grp)))))
+                        array.set(dUp, ix, array.get(dUp, ix) + nz(map.get(sUp, k)))
+                if array.size(kd) > 0
+                    for i = 0 to array.size(kd) - 1
+                        int k = array.get(kd, i)
+                        int ix = math.max(0, math.min(dRows - 1, int(math.floor((k - minK) / float(grp)))))
+                        array.set(dDn, ix, array.get(dDn, ix) + nz(map.get(sDn, k)))
+                dHi := sHi
+                dLo := sLo
+                dBars := sBars
+                dStart := math.min(bar_index, math.max(sStart, math.max(0, bar_index - 4000)))
+                dReady := true
+    else
+        // Fixed Bars and Visible Range still read back over the chart, because
+        // the block they cover is not a period the running profile tracks. Both
+        // are bounded by what the user asked for, so the reach stays sane.
+        int off = closedOnly ? 1 : 0
+        int want = rangeMode == 'Fixed Bars' ? lookback : visBars - off
+        int room = math.min(bar_index, 4998) - off + 1
+        int len = math.min(want, room)
+        if len < 2
+            dNote := 'not enough bars in range'
+        else
+            float lbHi = high[off]
+            float lbLo = low[off]
+            for i = off to off + len - 1
+                float h = high[i]
+                float l = low[i]
+                if not na(h) and not na(l)
+                    lbHi := math.max(nz(lbHi, h), h)
+                    lbLo := math.min(nz(lbLo, l), l)
+            float st = rowStep(lbHi, lbLo)
+            float gLo = math.floor(lbLo / st) * st
+            int n = int(math.ceil((lbHi - gLo) / st)) + 1
+            for _k = 0 to 12
+                if n <= 200
+                    break
+                st *= 2
+                gLo := math.floor(lbLo / st) * st
+                n := int(math.ceil((lbHi - gLo) / st)) + 1
+            n := math.max(2, math.min(n, 200))
+            for i = 0 to n - 1
+                array.push(dUp, 0.0)
+                array.push(dDn, 0.0)
+            for i = off to off + len - 1
+                float bh = high[i]
+                float bl = low[i]
+                if not na(bh) and not na(bl)
+                    float span = bh - bl
+                    float v = useTpo ? 1.0 : nz(volume[i])
+                    bool isUp = close[i] >= open[i]
+                    int r1 = math.max(0, math.min(n - 1, int(math.floor((bl - gLo) / st))))
+                    int r2 = math.max(0, math.min(n - 1, int(math.floor((bh - gLo) / st))))
+                    for r = r1 to r2
+                        float rBot = gLo + r * st
+                        float overlap = math.min(bh, rBot + st) - math.max(bl, rBot)
+                        float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
+                        float add = v * share
+                        if isUp
+                            array.set(dUp, r, array.get(dUp, r) + add)
+                        else
+                            array.set(dDn, r, array.get(dDn, r) + add)
+            dStep := st
+            dGridLo := gLo
+            dRows := n
+            dHi := lbHi
+            dLo := lbLo
+            dBars := len
+            dStart := math.max(0, bar_index - off - (len - 1))
+            dReady := true
 
-    // Row grid. 'Auto' re-slices the range every time it changes, which walks
-    // every boundary. 'Fixed Ticks' lays the rows on an absolute price grid so
-    // the boundaries stay put and only the volume in them moves.
-    float step = (hi - lo) / rows
-    float gridLo = lo
-    int nRows = rows
-    if rowMode == 'Fixed Ticks'
-        step := rowTicks * syminfo.mintick
-        for _k = 0 to 12
-            gridLo := math.floor(lo / step) * step
-            nRows := int(math.ceil((hi - gridLo) / step)) + 1
-            if nRows <= 200
+    if not dReady
+        planEntry := na
+        planDir := 'None'
+        planKind := 'No setup'
+        if showTable
+            table.clear(tbl, 0, 0, 1, 11)
+            cellKV(0, 'Profile', 'unavailable', color.new(#ffb300, 0))
+            cellKV(1, 'Why', dNote, color.gray)
+    else
+        // --- POC and value area ---
+        float grandTotal = 0.0
+        float maxRow = 0.0
+        int pocIdx = 0
+        array<float> totVol = array.new<float>(dRows, 0.0)
+        for r = 0 to dRows - 1
+            float t = array.get(dUp, r) + array.get(dDn, r)
+            array.set(totVol, r, t)
+            grandTotal += t
+            if t > maxRow
+                maxRow := t
+                pocIdx := r
+        maxRow := maxRow <= 0 ? 1.0 : maxRow
+
+        int vaUp = pocIdx
+        int vaDn = pocIdx
+        float acc = array.get(totVol, pocIdx)
+        float vaTarget = grandTotal * vaPct / 100.0
+        for _i = 0 to dRows - 1
+            if acc >= vaTarget
                 break
-            step *= 2
-        nRows := math.max(2, math.min(nRows, 200))
-    step := step <= 0 ? syminfo.mintick : step
-
-    // --- spread each bar's volume across every row it spans ---
-    upVol = array.new_float(nRows, 0.0)
-    dnVol = array.new_float(nRows, 0.0)
-
-    for i = rangeOffset to rangeOffset + rangeLen - 1
-        float bh = high[i]
-        float bl = low[i]
-        if na(bh) or na(bl)
-            continue
-        float span = bh - bl
-        float v = useTpo ? 1.0 : nz(volume[i])
-        bool isUp = close[i] >= open[i]
-        int r1 = math.max(0, math.min(nRows - 1, int(math.floor((bl - gridLo) / step))))
-        int r2 = math.max(0, math.min(nRows - 1, int(math.floor((bh - gridLo) / step))))
-        for r = r1 to r2
-            float rBot = gridLo + r * step
-            float rTop = rBot + step
-            float overlap = math.min(bh, rTop) - math.max(bl, rBot)
-            float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
-            float add = v * share
-            if isUp
-                array.set(upVol, r, array.get(upVol, r) + add)
+            float nUp = vaUp < dRows - 1 ? array.get(totVol, vaUp + 1) : -1.0
+            float nDn = vaDn > 0 ? array.get(totVol, vaDn - 1) : -1.0
+            if nUp < 0 and nDn < 0
+                break
+            if nUp >= nDn
+                vaUp += 1
+                acc += nUp
             else
-                array.set(dnVol, r, array.get(dnVol, r) + add)
+                vaDn -= 1
+                acc += nDn
 
-    // --- POC and value area ---
-    totVol = array.new_float(nRows, 0.0)
-    float grandTotal = 0.0
-    float maxRow = 0.0
-    int pocIdx = 0
-    for r = 0 to nRows - 1
-        float t = array.get(upVol, r) + array.get(dnVol, r)
-        array.set(totVol, r, t)
-        grandTotal += t
-        if t > maxRow
-            maxRow := t
-            pocIdx := r
-    maxRow := maxRow <= 0 ? 1.0 : maxRow
+        float hi = dHi
+        float lo = dLo
+        float step = dStep
+        // Snapped to the tick grid, otherwise a row boundary lands off-tick and
+        // the line is drawn at one price while its label prints the rounded one.
+        pocPrice := rt(dGridLo + (pocIdx + 0.5) * step)
+        // The grid row holding an extreme extends past it, so an unclamped edge
+        // can print above the range high or below the range low.
+        vahPrice := math.min(rt(dGridLo + (vaUp + 1) * step), hi)
+        valPrice := math.max(rt(dGridLo + vaDn * step), lo)
 
-    int vaUp = pocIdx
-    int vaDn = pocIdx
-    float acc = array.get(totVol, pocIdx)
-    float vaTarget = grandTotal * vaPct / 100.0
-    for _i = 0 to nRows - 1
-        if acc >= vaTarget
-            break
-        float nUp = vaUp < nRows - 1 ? array.get(totVol, vaUp + 1) : -1.0
-        float nDn = vaDn > 0 ? array.get(totVol, vaDn - 1) : -1.0
-        if nUp < 0 and nDn < 0
-            break
-        if nUp >= nDn
-            vaUp += 1
-            acc += nUp
-        else
-            vaDn -= 1
-            acc += nDn
+        int lastIdx = bar_index
+        int startIdx = dStart
+        int anchor = profileSide == 'Right of Range' ? lastIdx + profGap : startIdx
+        int lvlRight = lastIdx + math.max(lvlExtend, profileSide == 'Right of Range' ? profGap + profWidth + 2 : 2)
 
-    // Snapped to the tick grid, otherwise a row boundary lands off-tick and the
-    // line is drawn at one price while its label prints the rounded one.
-    pocPrice := rt(gridLo + (pocIdx + 0.5) * step)
-    // The grid row holding an extreme extends past it, so an unclamped edge can
-    // print above the range high or below the range low.
-    vahPrice := math.min(rt(gridLo + (vaUp + 1) * step), hi)
-    valPrice := math.max(rt(gridLo + vaDn * step), lo)
+        // --- histogram ---
+        if showProfile
+            for r = 0 to dRows - 1
+                float rBot = dGridLo + r * step
+                float rTop = rBot + step
+                float u = array.get(dUp, r)
+                float d = array.get(dDn, r)
+                bool inVa = r >= vaDn and r <= vaUp
+                int wUp = int(math.round(profWidth * (splitUpDown ? u : u + d) / maxRow))
+                int wDn = splitUpDown ? int(math.round(profWidth * d / maxRow)) : 0
+                color cu = r == pocIdx ? color.new(colPoc, 45) : inVa ? colUp : color.new(colUp, 80)
+                color cd = r == pocIdx ? color.new(colPoc, 45) : inVa ? colDn : color.new(colDn, 80)
+                if wUp > 0
+                    array.push(vpBoxes, box.new(anchor, rTop, anchor + wUp, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cu))
+                if wDn > 0
+                    array.push(vpBoxes, box.new(anchor + wUp, rTop, anchor + wUp + wDn, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cd))
 
-    int lastIdx = bar_index
-    int startIdx = lastIdx - rangeOffset - (rangeLen - 1)
-    int anchor = profileSide == 'Right of Range' ? lastIdx + profGap : startIdx
-    int lvlRight = lastIdx + math.max(lvlExtend, profileSide == 'Right of Range' ? profGap + profWidth + 2 : 2)
+        // --- value area shading and levels ---
+        if vaFill
+            // stop the shading at the last bar so it does not wash out the
+            // up/down rows of the histogram sitting to the right
+            int vaRight = profileSide == 'Right of Range' ? lastIdx : lvlRight
+            array.push(vpBoxes, box.new(startIdx, vahPrice, vaRight, valPrice, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colVa, 93)))
 
-    // --- histogram ---
-    if showProfile
-        for r = 0 to nRows - 1
-            float rBot = gridLo + r * step
-            float rTop = rBot + step
-            float u = array.get(upVol, r)
-            float d = array.get(dnVol, r)
-            bool inVa = r >= vaDn and r <= vaUp
-            int wUp = int(math.round(profWidth * (splitUpDown ? u : u + d) / maxRow))
-            int wDn = splitUpDown ? int(math.round(profWidth * d / maxRow)) : 0
-            color cu = r == pocIdx ? color.new(colPoc, 45) : inVa ? colUp : color.new(colUp, 80)
-            color cd = r == pocIdx ? color.new(colPoc, 45) : inVa ? colDn : color.new(colDn, 80)
-            if wUp > 0
-                array.push(vpBoxes, box.new(anchor, rTop, anchor + wUp, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cu))
-            if wDn > 0
-                array.push(vpBoxes, box.new(anchor + wUp, rTop, anchor + wUp + wDn, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cd))
+        mkLevel(startIdx, lvlRight, pocPrice, colPoc, 2, 'POC ' + fmt(pocPrice), false)
+        mkLevel(startIdx, lvlRight, vahPrice, colVa, 1, 'VAH ' + fmt(vahPrice), true)
+        mkLevel(startIdx, lvlRight, valPrice, colVa, 1, 'VAL ' + fmt(valPrice), true)
+        if showEdges
+            mkLevel(startIdx, lvlRight, hi, colEdge, 1, 'RH ' + fmt(hi), true)
+            mkLevel(startIdx, lvlRight, lo, colEdge, 1, 'RL ' + fmt(lo), true)
 
-    // --- value area shading and levels ---
-    if vaFill
-        // stop the shading at the last bar so it does not wash out the up/down
-        // rows of the histogram sitting to the right
-        int vaRight = profileSide == 'Right of Range' ? lastIdx : lvlRight
-        array.push(vpBoxes, box.new(startIdx, vahPrice, vaRight, valPrice, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colVa, 93)))
+        // --------------------------------------------------------------------
+        // Trade plan
+        // --------------------------------------------------------------------
+        planEntry := na
+        planStop := na
+        planTp1 := na
+        planTp2 := na
+        planDir := 'None'
+        planNote := ''
+        planKind := showPlan ? 'None' : 'Off'
 
-    mkLevel(startIdx, lvlRight, pocPrice, colPoc, 2, 'POC ' + fmt(pocPrice), false)
-    mkLevel(startIdx, lvlRight, vahPrice, colVa, 1, 'VAH ' + fmt(vahPrice), true)
-    mkLevel(startIdx, lvlRight, valPrice, colVa, 1, 'VAL ' + fmt(valPrice), true)
-    if showEdges
-        mkLevel(startIdx, lvlRight, hi, colEdge, 1, 'RH ' + fmt(hi), true)
-        mkLevel(startIdx, lvlRight, lo, colEdge, 1, 'RL ' + fmt(lo), true)
+        if showPlan
+            float px = close
+            string kind = planMode == 'Auto' ? (px > hi or px < lo ? 'Breakout' : 'Rotation') : planMode == 'Breakout (continuation)' ? 'Breakout' : 'Rotation'
 
-    // ------------------------------------------------------------------------
-    // Trade plan
-    // ------------------------------------------------------------------------
-    planEntry := na
-    planStop := na
-    planTp1 := na
-    planTp2 := na
-    planDir := 'None'
-    planNote := ''
-    planKind := showPlan ? 'None' : 'Off'
+            // Direction only flips once price is clear of the POC by the
+            // deadband, otherwise the setup thrashes every time price ticks
+            // across it.
+            float dirBand = (vahPrice - valPrice) * dirBandPct / 100.0
+            if px < pocPrice - dirBand
+                dirLatch := 'Long'
+            else if px > pocPrice + dirBand
+                dirLatch := 'Short'
+            bool rotLong = dirLatch == 'None' ? px < pocPrice : dirLatch == 'Long'
+            bool isLong = kind == 'Breakout' ? (px > hi ? true : px < lo ? false : rotLong) : rotLong
 
-    if showPlan
-        float px = close
-        string kind = planMode == 'Auto' ? (px > hi or px < lo ? 'Breakout' : 'Rotation') : planMode == 'Breakout (continuation)' ? 'Breakout' : 'Rotation'
-
-        // Direction only flips once price is clear of the POC by the deadband,
-        // otherwise the setup thrashes every time price ticks across it.
-        float dirBand = (vahPrice - valPrice) * dirBandPct / 100.0
-        if px < pocPrice - dirBand
-            dirLatch := 'Long'
-        else if px > pocPrice + dirBand
-            dirLatch := 'Short'
-        bool rotLong = dirLatch == 'None' ? px < pocPrice : dirLatch == 'Long'
-        bool isLong = kind == 'Breakout' ? (px > hi ? true : px < lo ? false : rotLong) : rotLong
-
-        if (isLong and dirFilter == 'Short Only') or (not isLong and dirFilter == 'Long Only')
-            planKind := 'Filtered'
-        else
-            float buf = atr * slBufATR
-            float vaHeight = vahPrice - valPrice
-            float entry = na
-            float sl = na
-
-            if kind == 'Rotation'
-                // fade the far side of value back toward the POC
-                entry := isLong ? valPrice : vahPrice
-                // The buffer pads the row, the way it pads the structural
-                // level under every other anchor. Taking the larger of the two
-                // threw away any buffer narrower than one row without saying
-                // so, and one row is already the floor minRisk enforces below.
-                float edgeStop = step + buf
-                sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? entry - edgeStop : entry + edgeStop) : (isLong ? lo - buf : hi + buf)
+            if (isLong and dirFilter == 'Short Only') or (not isLong and dirFilter == 'Long Only')
+                planKind := 'Filtered'
             else
-                // buy the retest of the level price broke out through
-                entry := isLong ? (px > hi ? hi : vahPrice) : (px < lo ? lo : valPrice)
-                sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? vahPrice - buf : valPrice + buf) : (isLong ? valPrice - buf : vahPrice + buf)
+                float buf = atr * slBufATR
+                float vaHeight = vahPrice - valPrice
+                float entry = na
+                float sl = na
 
-            // Snap to the tick grid so the numbers are prices you can key in,
-            // and so the tick count and R multiples are exact.
-            entry := rt(entry)
-            sl := rt(sl)
-            // A structural stop can land on top of the entry, or the wrong side
-            // of it, when the row grid puts a value edge past the range extreme
-            // the entry sits on. Hold it at least one row the correct way.
-            float minRisk = math.max(step, syminfo.mintick)
-            bool wrongSide = isLong ? sl >= entry : sl <= entry
-            if wrongSide or math.abs(entry - sl) < minRisk
-                sl := rt(isLong ? entry - minRisk : entry + minRisk)
-            float risk = math.abs(entry - sl)
-
-            float tp1 = na
-            float tp2 = na
-            if tpMode == 'R Multiple'
-                tp1 := isLong ? entry + risk * rr1 : entry - risk * rr1
-                tp2 := isLong ? entry + risk * rr2 : entry - risk * rr2
-            else
                 if kind == 'Rotation'
-                    tp1 := pocPrice
-                    tp2 := isLong ? vahPrice : valPrice
+                    // fade the far side of value back toward the POC
+                    entry := isLong ? valPrice : vahPrice
+                    // The buffer pads the row, the way it pads the structural
+                    // level under every other anchor.
+                    float edgeStop = step + buf
+                    sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? entry - edgeStop : entry + edgeStop) : (isLong ? lo - buf : hi + buf)
                 else
-                    tp1 := isLong ? entry + vaHeight : entry - vaHeight
-                    tp2 := isLong ? entry + (hi - lo) : entry - (hi - lo)
-                // fall back to R multiples if a structural target sits the wrong side of entry
-                if (isLong and tp1 <= entry) or (not isLong and tp1 >= entry)
+                    // buy the retest of the level price broke out through
+                    entry := isLong ? (px > hi ? hi : vahPrice) : (px < lo ? lo : valPrice)
+                    sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? vahPrice - buf : valPrice + buf) : (isLong ? valPrice - buf : vahPrice + buf)
+
+                // Snap to the tick grid so the numbers are prices you can key
+                // in, and so the tick count and R multiples are exact.
+                entry := rt(entry)
+                sl := rt(sl)
+                // A structural stop can land on top of the entry, or the wrong
+                // side of it, when the row grid puts a value edge past the range
+                // extreme the entry sits on. Hold it at least one row the
+                // correct way.
+                float minRisk = math.max(step, syminfo.mintick)
+                bool wrongSide = isLong ? sl >= entry : sl <= entry
+                if wrongSide or math.abs(entry - sl) < minRisk
+                    sl := rt(isLong ? entry - minRisk : entry + minRisk)
+                float risk = math.abs(entry - sl)
+
+                float tp1 = na
+                float tp2 = na
+                if tpMode == 'R Multiple'
                     tp1 := isLong ? entry + risk * rr1 : entry - risk * rr1
-                if (isLong and tp2 <= tp1) or (not isLong and tp2 >= tp1)
                     tp2 := isLong ? entry + risk * rr2 : entry - risk * rr2
+                else
+                    if kind == 'Rotation'
+                        tp1 := pocPrice
+                        tp2 := isLong ? vahPrice : valPrice
+                    else
+                        tp1 := isLong ? entry + vaHeight : entry - vaHeight
+                        tp2 := isLong ? entry + (hi - lo) : entry - (hi - lo)
+                    // fall back to R multiples if a structural target sits the
+                    // wrong side of entry
+                    if (isLong and tp1 <= entry) or (not isLong and tp1 >= entry)
+                        tp1 := isLong ? entry + risk * rr1 : entry - risk * rr1
+                    if (isLong and tp2 <= tp1) or (not isLong and tp2 >= tp1)
+                        tp2 := isLong ? entry + risk * rr2 : entry - risk * rr2
 
-            tp1 := rt(tp1)
-            tp2 := rt(tp2)
+                tp1 := rt(tp1)
+                tp2 := rt(tp2)
 
-            // Refuse to print a plan that price has already invalidated, rather
-            // than showing a stop that is behind the market or a target that has
-            // already been paid out.
-            if dirLatch == 'None'
-                planNote := 'price sitting on the POC'
-            else if (isLong and px <= sl) or (not isLong and px >= sl)
-                planNote := 'stop already breached'
-            else if (isLong and px >= tp2) or (not isLong and px <= tp2)
-                planNote := 'price already past TP2'
+                // Refuse to print a plan that price has already invalidated,
+                // rather than showing a stop that is behind the market or a
+                // target that has already been paid out.
+                if dirLatch == 'None'
+                    planNote := 'price sitting on the POC'
+                else if (isLong and px <= sl) or (not isLong and px >= sl)
+                    planNote := 'stop already breached'
+                else if (isLong and px >= tp2) or (not isLong and px <= tp2)
+                    planNote := 'price already past TP2'
 
-            if planNote != ''
-                planKind := 'No setup'
-                planDir := 'None'
+                if planNote != ''
+                    planKind := 'No setup'
+                    planDir := 'None'
+                else
+                    planEntry := entry
+                    planStop := sl
+                    planTp1 := tp1
+                    planTp2 := tp2
+                    planDir := isLong ? 'Long' : 'Short'
+                    planKind := kind
+
+                    int px1 = lastIdx + 1
+                    int px2 = lastIdx + planExtend
+                    array.push(vpBoxes, box.new(px1, math.max(entry, sl), px2, math.min(entry, sl), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colSl, 92)))
+                    array.push(vpBoxes, box.new(px1, math.max(tp2, entry), px2, math.min(tp2, entry), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colTp, 92)))
+                    mkLevel(px1, px2, entry, colEntry, 2, 'ENTRY ' + fmt(entry), false)
+                    mkLevel(px1, px2, sl, colSl, 2, 'SL ' + fmt(sl), false)
+                    mkLevel(px1, px2, tp1, colTp, 1, 'TP1 ' + fmt(tp1), true)
+                    mkLevel(px1, px2, tp2, colTp, 2, 'TP2 ' + fmt(tp2), false)
+
+        // --------------------------------------------------------------------
+        // Table
+        // --------------------------------------------------------------------
+        if showTable
+            string srcTxt = useTpo ? 'TPO' : 'Volume'
+            cellKV(0, 'Profile', str.tostring(dBars) + ' bars / ' + srcTxt, color.white)
+            cellKV(1, 'Range High', fmt(hi), colEdge)
+            cellKV(2, 'VAH', fmt(vahPrice), colVa)
+            cellKV(3, 'POC', fmt(pocPrice), colPoc)
+            cellKV(4, 'VAL', fmt(valPrice), colVa)
+            cellKV(5, 'Range Low', fmt(lo), colEdge)
+
+            string loc = close > vahPrice ? 'Above value' : close < valPrice ? 'Below value' : 'In value'
+            loc := close > hi ? 'Above range' : close < lo ? 'Below range' : loc
+            cellKV(6, 'Price', loc, close > vahPrice ? colTp : close < valPrice ? colSl : color.white)
+
+            if na(planEntry)
+                string why = planKind == 'Filtered' ? 'Filtered out' : planKind == 'No setup' ? 'No setup' : 'Off'
+                cellKV(7, 'Setup', why, planKind == 'No setup' ? color.new(#ffb300, 0) : color.gray)
+                cellKV(8, planKind == 'No setup' ? 'Why' : '', planNote, color.gray)
+                cellKV(9, '', '', color.gray)
+                cellKV(10, '', '', color.gray)
+                cellKV(11, '', '', color.gray)
             else
-                planEntry := entry
-                planStop := sl
-                planTp1 := tp1
-                planTp2 := tp2
-                planDir := isLong ? 'Long' : 'Short'
-                planKind := kind
-
-                int px1 = lastIdx + 1
-                int px2 = lastIdx + planExtend
-                array.push(vpBoxes, box.new(px1, math.max(entry, sl), px2, math.min(entry, sl), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colSl, 92)))
-                array.push(vpBoxes, box.new(px1, math.max(tp2, entry), px2, math.min(tp2, entry), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colTp, 92)))
-                mkLevel(px1, px2, entry, colEntry, 2, 'ENTRY ' + fmt(entry), false)
-                mkLevel(px1, px2, sl, colSl, 2, 'SL ' + fmt(sl), false)
-                mkLevel(px1, px2, tp1, colTp, 1, 'TP1 ' + fmt(tp1), true)
-                mkLevel(px1, px2, tp2, colTp, 2, 'TP2 ' + fmt(tp2), false)
-
-    // ------------------------------------------------------------------------
-    // Table
-    // ------------------------------------------------------------------------
-    if showTable
-        string srcTxt = useTpo ? 'TPO' : 'Volume'
-        cellKV(0, 'Profile', str.tostring(rangeLen) + (rangeCut ? ' of ' + str.tostring(rangeWant) : '') + ' bars / ' + srcTxt, rangeCut ? color.new(#ffb300, 0) : color.white)
-        cellKV(1, 'Range High', fmt(hi), colEdge)
-        cellKV(2, 'VAH', fmt(vahPrice), colVa)
-        cellKV(3, 'POC', fmt(pocPrice), colPoc)
-        cellKV(4, 'VAL', fmt(valPrice), colVa)
-        cellKV(5, 'Range Low', fmt(lo), colEdge)
-
-        string loc = close > vahPrice ? 'Above value' : close < valPrice ? 'Below value' : 'In value'
-        loc := close > hi ? 'Above range' : close < lo ? 'Below range' : loc
-        cellKV(6, 'Price', loc, close > vahPrice ? colTp : close < valPrice ? colSl : color.white)
-
-        if na(planEntry)
-            string why = planKind == 'Filtered' ? 'Filtered out' : planKind == 'No setup' ? 'No setup' : 'Off'
-            cellKV(7, 'Setup', why, planKind == 'No setup' ? color.new(#ffb300, 0) : color.gray)
-            cellKV(8, planKind == 'No setup' ? 'Why' : '', planNote, color.gray)
-            cellKV(9, '', '', color.gray)
-            cellKV(10, '', '', color.gray)
-            cellKV(11, '', '', color.gray)
-        else
-            float riskPts = math.abs(planEntry - planStop)
-            float rMult = riskPts > 0 ? math.abs(planTp2 - planEntry) / riskPts : na
-            cellKV(7, 'Setup', planKind + ' ' + planDir, planDir == 'Long' ? colTp : colSl)
-            string ordType = planDir == 'Long' ? (planEntry > close ? 'buy stop' : 'buy limit') : (planEntry < close ? 'sell stop' : 'sell limit')
-            cellKV(8, 'Entry', fmt(planEntry) + '  ' + ordType, colEntry)
-            cellKV(9, 'Stop', fmt(planStop) + '  (' + str.tostring(riskPts / syminfo.mintick, '#') + ' tk)', colSl)
-            cellKV(10, 'Targets', fmt(planTp1) + ' / ' + fmt(planTp2) + '  ' + str.tostring(rMult, '#.#') + 'R', colTp)
-            float perUnit = riskPts * syminfo.pointvalue
-            float qty = perUnit > 0 ? riskDollars / perUnit : na
-            cellKV(11, 'Size', not showSize ? 'off' : na(qty) ? 'n/a' : str.tostring(math.floor(qty), '#') + ' @ $' + str.tostring(perUnit, '#.##') + ' ea', color.white)
+                float riskPts = math.abs(planEntry - planStop)
+                float rMult = riskPts > 0 ? math.abs(planTp2 - planEntry) / riskPts : na
+                cellKV(7, 'Setup', planKind + ' ' + planDir, planDir == 'Long' ? colTp : colSl)
+                string ordType = planDir == 'Long' ? (planEntry > close ? 'buy stop' : 'buy limit') : (planEntry < close ? 'sell stop' : 'sell limit')
+                cellKV(8, 'Entry', fmt(planEntry) + '  ' + ordType, colEntry)
+                cellKV(9, 'Stop', fmt(planStop) + '  (' + str.tostring(riskPts / syminfo.mintick, '#') + ' tk)', colSl)
+                cellKV(10, 'Targets', fmt(planTp1) + ' / ' + fmt(planTp2) + '  ' + str.tostring(rMult, '#.#') + 'R', colTp)
+                float perUnit = riskPts * syminfo.pointvalue
+                float qty = perUnit > 0 ? riskDollars / perUnit : na
+                cellKV(11, 'Size', not showSize ? 'off' : na(qty) ? 'n/a' : str.tostring(math.floor(qty), '#') + ' @ $' + str.tostring(perUnit, '#.##') + ' ea', color.white)
