@@ -43,7 +43,7 @@ stopMode = input.string('Value Edge', title='Stop Anchor', options=['Profile Ext
 atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
 slBufATR = input.float(0, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan, tooltip='Padding beyond the structural stop level.')
 slATRMult = input.float(1.5, title='ATR Stop Multiple', minval=0.1, step=0.1, group=grpPlan, tooltip='Only used when Stop Anchor is set to ATR.')
-tpMode = input.string('Profile Structure', title='Targets', options=['R Multiple', 'Profile Structure'], group=grpPlan)
+tpMode = input.string('R Multiple', title='Targets', options=['R Multiple', 'Profile Structure'], group=grpPlan)
 rr1 = input.float(1.5, title='TP1 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
 rr2 = input.float(3.0, title='TP2 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
 planExtend = input.int(40, title='Plan Line Length (bars)', minval=5, maxval=200, group=grpPlan)
