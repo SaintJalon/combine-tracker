@@ -1,0 +1,315 @@
+//@version=6
+// SaintTrades Volume Profile - Strategy
+//
+// The trade plan from the SaintTrades Volume Profile indicator, wired into the
+// Strategy Tester so the rules can be measured instead of eyeballed.
+//
+// Two things make this an honest test rather than a flattering one:
+//
+//   The profile is built from a COMPLETED period only. Levels for today come
+//   from yesterday's bars and never change during the session, so no order is
+//   ever placed using information the bar had not produced yet.
+//
+//   Commission and slippage are on by default. A twenty tick stop looks superb
+//   with neither and is usually a loser with both. Adjust them in Properties to
+//   match your broker before you believe any number this prints.
+strategy('SaintTrades Volume Profile Strategy', shorttitle='ST VP Strat', overlay=true, max_bars_back=1000, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=2.5, slippage=1, pyramiding=0)
+
+// ----------------------------------------------------------------------------
+// Inputs
+// ----------------------------------------------------------------------------
+grpRange = 'Range'
+rangeMode = input.string('Prior Session (Day)', title='Range', options=['Prior Session (Day)', 'Prior Week'], group=grpRange, tooltip='Only completed periods are offered. A developing profile would let the strategy trade against levels the bar had not finished forming.')
+
+grpProf = 'Profile'
+rowMode = input.string('Fixed Ticks', title='Row Size', options=['Auto (N Rows)', 'Fixed Ticks'], group=grpProf)
+rows = input.int(48, title='Rows  (Auto only)', minval=10, maxval=150, group=grpProf)
+rowTicks = input.int(20, title='Ticks Per Row  (Fixed Ticks only)', minval=1, maxval=1000, group=grpProf, tooltip='Also sets the stop distance, since a Value Edge stop is held one row from the entry.')
+vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1, group=grpProf)
+weightBy = input.string('Volume', title='Weight By', options=['Volume', 'Bar Count (TPO)'], group=grpProf)
+
+grpPlan = 'Trade Plan'
+planMode = input.string('Auto', title='Setup Type', options=['Auto', 'Rotation (fade to POC)', 'Breakout (continuation)'], group=grpPlan)
+dirFilter = input.string('Both', title='Direction Filter', options=['Both', 'Long Only', 'Short Only'], group=grpPlan)
+dirBandPct = input.float(10, title='Direction Deadband (% of VA)', minval=0, maxval=50, step=1, group=grpPlan)
+stopMode = input.string('Value Edge', title='Stop Anchor', options=['Profile Extreme', 'Value Edge', 'ATR'], group=grpPlan)
+atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
+slBufATR = input.float(0, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan)
+slATRMult = input.float(1.5, title='ATR Stop Multiple  (ATR anchor only)', minval=0.1, step=0.1, group=grpPlan)
+tpMode = input.string('R Multiple', title='Targets', options=['R Multiple', 'Profile Structure'], group=grpPlan)
+rr1 = input.float(1.5, title='TP1 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
+rr2 = input.float(3.0, title='TP2 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
+tp1Pct = input.int(50, title='% Off At TP1', minval=0, maxval=100, group=grpPlan, tooltip='0 runs the whole position to TP2. 100 treats TP1 as the only target.')
+
+grpRisk = 'Risk'
+riskDollars = input.float(300, title='Risk Per Trade ($)', minval=1, step=25, group=grpRisk)
+maxContracts = input.int(10, title='Max Contracts', minval=1, group=grpRisk)
+
+grpWhen = 'When To Trade'
+useSession = input.bool(true, title='Restrict To Session', group=grpWhen)
+sessionStr = input.session('0930-1600', title='Session', group=grpWhen, tooltip='Entries are only placed inside this window. Exits always work.')
+maxTrades = input.int(2, title='Max Trades Per Period', minval=1, maxval=20, group=grpWhen)
+flatAtEnd = input.bool(true, title='Flat At Period Roll', group=grpWhen, tooltip='Close anything still open when a new session begins, rather than carrying it.')
+
+grpDisp = 'Display'
+showLevels = input.bool(true, title='Plot Levels', group=grpDisp)
+
+// ----------------------------------------------------------------------------
+// Period tracking
+// ----------------------------------------------------------------------------
+chD = timeframe.change('D')
+chW = timeframe.change('W')
+newPeriod = rangeMode == 'Prior Week' ? chW : chD
+
+var int barsInPeriod = 0
+var int barsPrevPeriod = 0
+if newPeriod
+    barsPrevPeriod := barsInPeriod
+    barsInPeriod := 1
+else
+    barsInPeriod += 1
+
+atr = ta.atr(atrLen)
+hasVolume = ta.cum(nz(volume)) > 0
+useTpo = weightBy == 'Bar Count (TPO)' or not hasVolume
+
+rt(float p) => na(p) ? na : math.round(p / syminfo.mintick) * syminfo.mintick
+
+// ----------------------------------------------------------------------------
+// Profile of the completed period
+//
+// Built once, on the first bar of each new period, from the bars of the period
+// that just closed. Held fixed until the next roll, which is both faithful to
+// how the levels are traded and the only way a full profile is affordable to
+// compute inside a strategy.
+// ----------------------------------------------------------------------------
+var float pPoc = na
+var float pVah = na
+var float pVal = na
+var float pHi = na
+var float pLo = na
+var float pStep = na
+
+if newPeriod and barsPrevPeriod >= 10
+    int off = 1
+    int len = math.min(barsPrevPeriod, 980)
+
+    float hi = high[off]
+    float lo = low[off]
+    for i = off to off + len - 1
+        float h = high[i]
+        float l = low[i]
+        if not na(h) and not na(l)
+            hi := math.max(nz(hi, h), h)
+            lo := math.min(nz(lo, l), l)
+
+    float step = (hi - lo) / rows
+    float gridLo = lo
+    int nRows = rows
+    if rowMode == 'Fixed Ticks'
+        step := rowTicks * syminfo.mintick
+        for _k = 0 to 12
+            gridLo := math.floor(lo / step) * step
+            nRows := int(math.ceil((hi - gridLo) / step)) + 1
+            if nRows <= 200
+                break
+            step *= 2
+        nRows := math.max(2, math.min(nRows, 200))
+    step := step <= 0 ? syminfo.mintick : step
+
+    totVol = array.new_float(nRows, 0.0)
+    for i = off to off + len - 1
+        float bh = high[i]
+        float bl = low[i]
+        if not na(bh) and not na(bl)
+            float span = bh - bl
+            float v = useTpo ? 1.0 : nz(volume[i])
+            int r1 = math.max(0, math.min(nRows - 1, int(math.floor((bl - gridLo) / step))))
+            int r2 = math.max(0, math.min(nRows - 1, int(math.floor((bh - gridLo) / step))))
+            for r = r1 to r2
+                float rBot = gridLo + r * step
+                float overlap = math.min(bh, rBot + step) - math.max(bl, rBot)
+                float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
+                array.set(totVol, r, array.get(totVol, r) + v * share)
+
+    float grandTotal = 0.0
+    float maxRow = 0.0
+    int pocIdx = 0
+    for r = 0 to nRows - 1
+        float t = array.get(totVol, r)
+        grandTotal += t
+        if t > maxRow
+            maxRow := t
+            pocIdx := r
+
+    int vaUp = pocIdx
+    int vaDn = pocIdx
+    float acc = array.get(totVol, pocIdx)
+    float vaTarget = grandTotal * vaPct / 100.0
+    for _i = 0 to nRows - 1
+        if acc >= vaTarget
+            break
+        float nUp = vaUp < nRows - 1 ? array.get(totVol, vaUp + 1) : -1.0
+        float nDn = vaDn > 0 ? array.get(totVol, vaDn - 1) : -1.0
+        if nUp < 0 and nDn < 0
+            break
+        if nUp >= nDn
+            vaUp += 1
+            acc += nUp
+        else
+            vaDn -= 1
+            acc += nDn
+
+    pPoc := gridLo + (pocIdx + 0.5) * step
+    pVah := math.min(gridLo + (vaUp + 1) * step, hi)
+    pVal := math.max(gridLo + vaDn * step, lo)
+    pHi := hi
+    pLo := lo
+    pStep := step
+
+// ----------------------------------------------------------------------------
+// Plan for this bar, off the fixed levels
+// ----------------------------------------------------------------------------
+var string dirLatch = 'None'
+
+bool ready = not na(pPoc) and not na(pStep)
+float px = close
+
+float planEntry = na
+float planStop = na
+float planTp1 = na
+float planTp2 = na
+bool planLong = false
+bool planValid = false
+
+if ready
+    string kind = planMode == 'Auto' ? (px > pHi or px < pLo ? 'Breakout' : 'Rotation') : planMode == 'Breakout (continuation)' ? 'Breakout' : 'Rotation'
+
+    float dirBand = (pVah - pVal) * dirBandPct / 100.0
+    if px < pPoc - dirBand
+        dirLatch := 'Long'
+    else if px > pPoc + dirBand
+        dirLatch := 'Short'
+    bool rotLong = dirLatch == 'None' ? px < pPoc : dirLatch == 'Long'
+    bool isLong = kind == 'Breakout' ? (px > pHi ? true : px < pLo ? false : rotLong) : rotLong
+
+    bool filtered = (isLong and dirFilter == 'Short Only') or (not isLong and dirFilter == 'Long Only')
+
+    if not filtered and dirLatch != 'None'
+        float buf = atr * slBufATR
+        float entry = na
+        float sl = na
+
+        if kind == 'Rotation'
+            entry := isLong ? pVal : pVah
+            sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? entry - math.max(buf, pStep) : entry + math.max(buf, pStep)) : (isLong ? pLo - buf : pHi + buf)
+        else
+            entry := isLong ? (px > pHi ? pHi : pVah) : (px < pLo ? pLo : pVal)
+            sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? pVah - buf : pVal + buf) : (isLong ? pVal - buf : pVah + buf)
+
+        entry := rt(entry)
+        sl := rt(sl)
+        float minRisk = math.max(pStep, syminfo.mintick)
+        bool wrongSide = isLong ? sl >= entry : sl <= entry
+        if wrongSide or math.abs(entry - sl) < minRisk
+            sl := rt(isLong ? entry - minRisk : entry + minRisk)
+        float risk = math.abs(entry - sl)
+
+        float tp1 = na
+        float tp2 = na
+        if tpMode == 'R Multiple'
+            tp1 := isLong ? entry + risk * rr1 : entry - risk * rr1
+            tp2 := isLong ? entry + risk * rr2 : entry - risk * rr2
+        else
+            if kind == 'Rotation'
+                tp1 := pPoc
+                tp2 := isLong ? pVah : pVal
+            else
+                tp1 := isLong ? entry + (pVah - pVal) : entry - (pVah - pVal)
+                tp2 := isLong ? entry + (pHi - pLo) : entry - (pHi - pLo)
+            if (isLong and tp1 <= entry) or (not isLong and tp1 >= entry)
+                tp1 := isLong ? entry + risk * rr1 : entry - risk * rr1
+            if (isLong and tp2 <= tp1) or (not isLong and tp2 >= tp1)
+                tp2 := isLong ? entry + risk * rr2 : entry - risk * rr2
+        tp1 := rt(tp1)
+        tp2 := rt(tp2)
+
+        // The same invalidation the indicator uses. Price through the stop or
+        // past the far target means the idea is spent, not pending.
+        bool dead = (isLong and px <= sl) or (not isLong and px >= sl) or (isLong and px >= tp2) or (not isLong and px <= tp2)
+
+        if not dead
+            planEntry := entry
+            planStop := sl
+            planTp1 := tp1
+            planTp2 := tp2
+            planLong := isLong
+            planValid := true
+
+// ----------------------------------------------------------------------------
+// Orders
+// ----------------------------------------------------------------------------
+var int tradesThisPeriod = 0
+if newPeriod
+    tradesThisPeriod := 0
+
+bool inWindow = not useSession or not na(time(timeframe.period, sessionStr))
+bool flat = strategy.position_size == 0
+
+float riskPts = math.abs(planEntry - planStop)
+float perUnit = riskPts * syminfo.pointvalue
+int qty = perUnit > 0 ? int(math.floor(riskDollars / perUnit)) : 0
+qty := math.max(0, math.min(qty, maxContracts))
+
+bool armed = planValid and inWindow and flat and qty > 0 and tradesThisPeriod < maxTrades
+
+if armed
+    if planLong
+        if planEntry < close
+            strategy.entry('L', strategy.long, qty=qty, limit=planEntry)
+        else
+            strategy.entry('L', strategy.long, qty=qty, stop=planEntry)
+        strategy.cancel('S')
+    else
+        if planEntry > close
+            strategy.entry('S', strategy.short, qty=qty, limit=planEntry)
+        else
+            strategy.entry('S', strategy.short, qty=qty, stop=planEntry)
+        strategy.cancel('L')
+else
+    strategy.cancel('L')
+    strategy.cancel('S')
+
+// Freeze the bracket at the fill, so a later change of plan cannot move the
+// stop or targets of a position that is already open.
+var float actStop = na
+var float actTp1 = na
+var float actTp2 = na
+
+bool justOpened = strategy.position_size != 0 and strategy.position_size[1] == 0
+if justOpened
+    actStop := planStop
+    actTp1 := planTp1
+    actTp2 := planTp2
+    tradesThisPeriod += 1
+
+if strategy.position_size != 0 and not na(actStop)
+    if tp1Pct > 0 and tp1Pct < 100
+        strategy.exit('X1', qty_percent=tp1Pct, stop=actStop, limit=actTp1)
+        strategy.exit('X2', stop=actStop, limit=actTp2)
+    else if tp1Pct >= 100
+        strategy.exit('X1', stop=actStop, limit=actTp1)
+    else
+        strategy.exit('X2', stop=actStop, limit=actTp2)
+
+if newPeriod and flatAtEnd and strategy.position_size != 0
+    strategy.close_all(comment='roll')
+
+// ----------------------------------------------------------------------------
+// Levels, so the fills can be checked against what the plan said
+// ----------------------------------------------------------------------------
+plot(showLevels and ready ? pPoc : na, 'POC', color=#ffb300, style=plot.style_linebr, linewidth=2)
+plot(showLevels and ready ? pVah : na, 'VAH', color=#42a5f5, style=plot.style_linebr)
+plot(showLevels and ready ? pVal : na, 'VAL', color=#42a5f5, style=plot.style_linebr)
+plot(showLevels and ready ? pHi : na, 'Range High', color=color.new(#9e9e9e, 40), style=plot.style_linebr)
+plot(showLevels and ready ? pLo : na, 'Range Low', color=color.new(#9e9e9e, 40), style=plot.style_linebr)
