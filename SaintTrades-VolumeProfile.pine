@@ -1,0 +1,362 @@
+//@version=6
+// SaintTrades Fixed Range Volume Profile
+// Builds a volume profile over a fixed range of bars, marks the POC / VAH / VAL,
+// and lays out a mechanical trade plan (entry, stop, two targets) off those levels.
+indicator('SaintTrades Volume Profile', shorttitle='ST VP', overlay=true, max_boxes_count=500, max_lines_count=100, max_labels_count=100, max_bars_back=1000)
+
+// ----------------------------------------------------------------------------
+// Inputs
+// ----------------------------------------------------------------------------
+grpRange = 'Range'
+rangeMode = input.string('Fixed Bars', title='Range', options=['Fixed Bars', 'Session (Day)', 'Week', 'Month', 'Visible Range'], group=grpRange, tooltip='Which block of bars the profile is built from. Session/Week/Month build from the open of the current period.')
+lookback = input.int(200, title='Fixed Bars Lookback', minval=10, maxval=999, group=grpRange)
+
+grpProf = 'Profile'
+rows = input.int(48, title='Rows', minval=10, maxval=150, group=grpProf, tooltip='Price buckets the range is sliced into. More rows means a finer POC and a slower calculation.')
+vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1, group=grpProf)
+weightBy = input.string('Volume', title='Weight By', options=['Volume', 'Bar Count (TPO)'], group=grpProf, tooltip='Bar Count builds a TPO style profile, and is used automatically on symbols with no volume data.')
+
+grpDisp = 'Display'
+showProfile = input.bool(true, title='Show Profile', group=grpDisp)
+profileSide = input.string('Right of Range', title='Placement', options=['Right of Range', 'Inside Range'], group=grpDisp)
+profWidth = input.int(60, title='Profile Width (bars)', minval=5, maxval=200, group=grpDisp)
+profGap = input.int(5, title='Gap From Last Bar', minval=0, maxval=100, group=grpDisp)
+splitUpDown = input.bool(true, title='Split Buy / Sell Volume', group=grpDisp)
+colUp = input.color(color.new(#26a69a, 55), title='Up', inline='vpcol', group=grpDisp)
+colDn = input.color(color.new(#ef5350, 55), title='Down', inline='vpcol', group=grpDisp)
+colPoc = input.color(#ffb300, title='POC', inline='lvlcol', group=grpDisp)
+colVa = input.color(#42a5f5, title='Value Area', inline='lvlcol', group=grpDisp)
+colEdge = input.color(color.new(#9e9e9e, 20), title='Range H/L', inline='lvlcol', group=grpDisp)
+vaFill = input.bool(true, title='Shade Value Area', group=grpDisp)
+showEdges = input.bool(true, title='Show Range High / Low', group=grpDisp)
+lvlExtend = input.int(20, title='Extend Levels (bars)', minval=0, maxval=200, group=grpDisp)
+
+grpPlan = 'Trade Plan'
+showPlan = input.bool(true, title='Show Trade Plan', group=grpPlan)
+planMode = input.string('Auto', title='Setup Type', options=['Auto', 'Rotation (fade to POC)', 'Breakout (continuation)'], group=grpPlan, tooltip='Auto plans a rotation while price sits inside the profile range, and a breakout retest once price trades outside it.')
+dirFilter = input.string('Both', title='Direction Filter', options=['Both', 'Long Only', 'Short Only'], group=grpPlan)
+stopMode = input.string('Profile Extreme', title='Stop Anchor', options=['Profile Extreme', 'Value Edge', 'ATR'], group=grpPlan)
+atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
+slBufATR = input.float(0.25, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan, tooltip='Padding beyond the structural stop level.')
+slATRMult = input.float(1.5, title='ATR Stop Multiple', minval=0.1, step=0.1, group=grpPlan, tooltip='Only used when Stop Anchor is set to ATR.')
+tpMode = input.string('R Multiple', title='Targets', options=['R Multiple', 'Profile Structure'], group=grpPlan)
+rr1 = input.float(1.5, title='TP1 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
+rr2 = input.float(3.0, title='TP2 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
+planExtend = input.int(40, title='Plan Line Length (bars)', minval=5, maxval=200, group=grpPlan)
+colEntry = input.color(#42a5f5, title='Entry', inline='plancol', group=grpPlan)
+colSl = input.color(#ef5350, title='Stop', inline='plancol', group=grpPlan)
+colTp = input.color(#26a69a, title='Target', inline='plancol', group=grpPlan)
+
+grpRisk = 'Position Size'
+showSize = input.bool(true, title='Suggest Size', group=grpRisk)
+riskDollars = input.float(300, title='Risk Per Trade ($)', minval=1, step=25, group=grpRisk)
+
+grpTbl = 'Table'
+showTable = input.bool(true, title='Show Table', group=grpTbl)
+tblPos = input.string('Top Right', title='Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpTbl)
+tblSize = input.string('Small', title='Text Size', options=['Tiny', 'Small', 'Normal'], group=grpTbl)
+
+// ----------------------------------------------------------------------------
+// Range length
+// ----------------------------------------------------------------------------
+chD = timeframe.change('D')
+chW = timeframe.change('W')
+chM = timeframe.change('M')
+newPeriod = rangeMode == 'Session (Day)' ? chD : rangeMode == 'Week' ? chW : rangeMode == 'Month' ? chM : false
+
+var int barsInPeriod = 0
+barsInPeriod := newPeriod ? 1 : barsInPeriod + 1
+
+visibleBars() =>
+    int cnt = 0
+    if not na(chart.left_visible_bar_time)
+        for i = 0 to 998
+            if i > bar_index
+                break
+            if time[i] < chart.left_visible_bar_time
+                break
+            cnt += 1
+    cnt
+
+int visBars = visibleBars()
+int rangeLen = rangeMode == 'Fixed Bars' ? lookback : rangeMode == 'Visible Range' ? visBars : barsInPeriod
+rangeLen := math.max(2, math.min(rangeLen, math.min(bar_index + 1, 999)))
+
+atr = ta.atr(atrLen)
+hasVolume = ta.cum(nz(volume)) > 0
+useTpo = weightBy == 'Bar Count (TPO)' or not hasVolume
+
+// ----------------------------------------------------------------------------
+// State carried between bars, so the alerts can read the live profile
+// ----------------------------------------------------------------------------
+var float pocPrice = na
+var float vahPrice = na
+var float valPrice = na
+var float planEntry = na
+var float planStop = na
+var float planTp1 = na
+var float planTp2 = na
+var string planDir = 'None'
+var string planKind = 'None'
+
+var array<box> vpBoxes = array.new<box>()
+var array<line> vpLines = array.new<line>()
+var array<label> vpLabels = array.new<label>()
+
+tblPosition = tblPos == 'Top Left' ? position.top_left : tblPos == 'Bottom Right' ? position.bottom_right : tblPos == 'Bottom Left' ? position.bottom_left : tblPos == 'Middle Right' ? position.middle_right : position.top_right
+txtSize = tblSize == 'Tiny' ? size.tiny : tblSize == 'Normal' ? size.normal : size.small
+var table tbl = table.new(tblPosition, 2, 12, bgcolor=color.new(#131722, 12), border_color=color.new(#5d606b, 60), border_width=1, frame_color=color.new(#5d606b, 40), frame_width=1)
+
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+clearDrawings() =>
+    if array.size(vpBoxes) > 0
+        for i = 0 to array.size(vpBoxes) - 1
+            box.delete(array.get(vpBoxes, i))
+        array.clear(vpBoxes)
+    if array.size(vpLines) > 0
+        for i = 0 to array.size(vpLines) - 1
+            line.delete(array.get(vpLines, i))
+        array.clear(vpLines)
+    if array.size(vpLabels) > 0
+        for i = 0 to array.size(vpLabels) - 1
+            label.delete(array.get(vpLabels, i))
+        array.clear(vpLabels)
+
+mkLevel(int x1, int x2, float y, color c, int w, string txt, bool dashed) =>
+    ln = line.new(x1, y, x2, y, xloc=xloc.bar_index, color=c, style=dashed ? line.style_dashed : line.style_solid, width=w)
+    array.push(vpLines, ln)
+    if txt != ''
+        lb = label.new(x2, y, txt, xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=c, size=size.small)
+        array.push(vpLabels, lb)
+
+cellKV(int r, string k, string v, color vc) =>
+    table.cell(tbl, 0, r, k, text_color=color.new(color.silver, 0), text_size=txtSize, text_halign=text.align_left)
+    table.cell(tbl, 1, r, v, text_color=vc, text_size=txtSize, text_halign=text.align_right)
+
+fmt(float p) => str.tostring(p, format.mintick)
+
+// ----------------------------------------------------------------------------
+// Build and draw, on the last bar only
+// ----------------------------------------------------------------------------
+if barstate.islast
+    clearDrawings()
+
+    // --- range extremes ---
+    float hi = high
+    float lo = low
+    for i = 0 to rangeLen - 1
+        hi := math.max(hi, high[i])
+        lo := math.min(lo, low[i])
+
+    float step = (hi - lo) / rows
+    step := step <= 0 ? syminfo.mintick : step
+
+    // --- spread each bar's volume across every row it spans ---
+    upVol = array.new_float(rows, 0.0)
+    dnVol = array.new_float(rows, 0.0)
+
+    for i = 0 to rangeLen - 1
+        float bh = high[i]
+        float bl = low[i]
+        float span = bh - bl
+        float v = useTpo ? 1.0 : nz(volume[i])
+        bool isUp = close[i] >= open[i]
+        int r1 = math.max(0, math.min(rows - 1, int(math.floor((bl - lo) / step))))
+        int r2 = math.max(0, math.min(rows - 1, int(math.floor((bh - lo) / step))))
+        for r = r1 to r2
+            float rBot = lo + r * step
+            float rTop = rBot + step
+            float overlap = math.min(bh, rTop) - math.max(bl, rBot)
+            float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
+            float add = v * share
+            if isUp
+                array.set(upVol, r, array.get(upVol, r) + add)
+            else
+                array.set(dnVol, r, array.get(dnVol, r) + add)
+
+    // --- POC and value area ---
+    totVol = array.new_float(rows, 0.0)
+    float grandTotal = 0.0
+    float maxRow = 0.0
+    int pocIdx = 0
+    for r = 0 to rows - 1
+        float t = array.get(upVol, r) + array.get(dnVol, r)
+        array.set(totVol, r, t)
+        grandTotal += t
+        if t > maxRow
+            maxRow := t
+            pocIdx := r
+    maxRow := maxRow <= 0 ? 1.0 : maxRow
+
+    int vaUp = pocIdx
+    int vaDn = pocIdx
+    float acc = array.get(totVol, pocIdx)
+    float vaTarget = grandTotal * vaPct / 100.0
+    for _i = 0 to rows - 1
+        if acc >= vaTarget
+            break
+        float nUp = vaUp < rows - 1 ? array.get(totVol, vaUp + 1) : -1.0
+        float nDn = vaDn > 0 ? array.get(totVol, vaDn - 1) : -1.0
+        if nUp < 0 and nDn < 0
+            break
+        if nUp >= nDn
+            vaUp += 1
+            acc += nUp
+        else
+            vaDn -= 1
+            acc += nDn
+
+    pocPrice := lo + (pocIdx + 0.5) * step
+    vahPrice := lo + (vaUp + 1) * step
+    valPrice := lo + vaDn * step
+
+    int lastIdx = bar_index
+    int startIdx = lastIdx - (rangeLen - 1)
+    int anchor = profileSide == 'Right of Range' ? lastIdx + profGap : startIdx
+    int lvlRight = lastIdx + math.max(lvlExtend, profileSide == 'Right of Range' ? profGap + profWidth + 2 : 2)
+
+    // --- histogram ---
+    if showProfile
+        for r = 0 to rows - 1
+            float rBot = lo + r * step
+            float rTop = rBot + step
+            float u = array.get(upVol, r)
+            float d = array.get(dnVol, r)
+            bool inVa = r >= vaDn and r <= vaUp
+            int wUp = int(math.round(profWidth * (splitUpDown ? u : u + d) / maxRow))
+            int wDn = splitUpDown ? int(math.round(profWidth * d / maxRow)) : 0
+            color cu = r == pocIdx ? color.new(colPoc, 45) : inVa ? colUp : color.new(colUp, 80)
+            color cd = r == pocIdx ? color.new(colPoc, 45) : inVa ? colDn : color.new(colDn, 80)
+            if wUp > 0
+                array.push(vpBoxes, box.new(anchor, rTop, anchor + wUp, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cu))
+            if wDn > 0
+                array.push(vpBoxes, box.new(anchor + wUp, rTop, anchor + wUp + wDn, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cd))
+
+    // --- value area shading and levels ---
+    if vaFill
+        array.push(vpBoxes, box.new(startIdx, vahPrice, lvlRight, valPrice, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colVa, 93)))
+
+    mkLevel(startIdx, lvlRight, pocPrice, colPoc, 2, 'POC ' + fmt(pocPrice), false)
+    mkLevel(startIdx, lvlRight, vahPrice, colVa, 1, 'VAH ' + fmt(vahPrice), true)
+    mkLevel(startIdx, lvlRight, valPrice, colVa, 1, 'VAL ' + fmt(valPrice), true)
+    if showEdges
+        mkLevel(startIdx, lvlRight, hi, colEdge, 1, 'RH ' + fmt(hi), true)
+        mkLevel(startIdx, lvlRight, lo, colEdge, 1, 'RL ' + fmt(lo), true)
+
+    // ------------------------------------------------------------------------
+    // Trade plan
+    // ------------------------------------------------------------------------
+    planEntry := na
+    planStop := na
+    planTp1 := na
+    planTp2 := na
+    planDir := 'None'
+    planKind := showPlan ? 'None' : 'Off'
+
+    if showPlan
+        float px = close
+        string kind = planMode == 'Auto' ? (px > hi or px < lo ? 'Breakout' : 'Rotation') : planMode == 'Breakout (continuation)' ? 'Breakout' : 'Rotation'
+        bool isLong = kind == 'Breakout' ? (px > hi ? true : px < lo ? false : px >= pocPrice) : px < pocPrice
+
+        if (isLong and dirFilter == 'Short Only') or (not isLong and dirFilter == 'Long Only')
+            planKind := 'Filtered'
+        else
+            float buf = atr * slBufATR
+            float vaHeight = vahPrice - valPrice
+            float entry = na
+            float sl = na
+
+            if kind == 'Rotation'
+                // fade the far side of value back toward the POC
+                entry := isLong ? valPrice : vahPrice
+                sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? entry - math.max(buf, step) : entry + math.max(buf, step)) : (isLong ? lo - buf : hi + buf)
+            else
+                // buy the retest of the level price broke out through
+                entry := isLong ? (px > hi ? hi : vahPrice) : (px < lo ? lo : valPrice)
+                sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? vahPrice - buf : valPrice + buf) : (isLong ? valPrice - buf : vahPrice + buf)
+
+            float risk = math.abs(entry - sl)
+            if risk < syminfo.mintick
+                risk := math.max(atr * slATRMult, syminfo.mintick * 4)
+                sl := isLong ? entry - risk : entry + risk
+
+            float tp1 = na
+            float tp2 = na
+            if tpMode == 'R Multiple'
+                tp1 := isLong ? entry + risk * rr1 : entry - risk * rr1
+                tp2 := isLong ? entry + risk * rr2 : entry - risk * rr2
+            else
+                if kind == 'Rotation'
+                    tp1 := pocPrice
+                    tp2 := isLong ? vahPrice : valPrice
+                else
+                    tp1 := isLong ? entry + vaHeight : entry - vaHeight
+                    tp2 := isLong ? entry + (hi - lo) : entry - (hi - lo)
+                // fall back to R multiples if a structural target sits the wrong side of entry
+                if (isLong and tp1 <= entry) or (not isLong and tp1 >= entry)
+                    tp1 := isLong ? entry + risk * rr1 : entry - risk * rr1
+                if (isLong and tp2 <= tp1) or (not isLong and tp2 >= tp1)
+                    tp2 := isLong ? entry + risk * rr2 : entry - risk * rr2
+
+            planEntry := entry
+            planStop := sl
+            planTp1 := tp1
+            planTp2 := tp2
+            planDir := isLong ? 'Long' : 'Short'
+            planKind := kind
+
+            int px1 = lastIdx + 1
+            int px2 = lastIdx + planExtend
+            array.push(vpBoxes, box.new(px1, math.max(entry, sl), px2, math.min(entry, sl), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colSl, 92)))
+            array.push(vpBoxes, box.new(px1, math.max(tp2, entry), px2, math.min(tp2, entry), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colTp, 92)))
+            mkLevel(px1, px2, entry, colEntry, 2, 'ENTRY ' + fmt(entry), false)
+            mkLevel(px1, px2, sl, colSl, 2, 'SL ' + fmt(sl), false)
+            mkLevel(px1, px2, tp1, colTp, 1, 'TP1 ' + fmt(tp1), true)
+            mkLevel(px1, px2, tp2, colTp, 2, 'TP2 ' + fmt(tp2), false)
+
+    // ------------------------------------------------------------------------
+    // Table
+    // ------------------------------------------------------------------------
+    if showTable
+        string srcTxt = useTpo ? 'TPO' : 'Volume'
+        cellKV(0, 'Profile', str.tostring(rangeLen) + ' bars / ' + srcTxt, color.white)
+        cellKV(1, 'Range High', fmt(hi), colEdge)
+        cellKV(2, 'VAH', fmt(vahPrice), colVa)
+        cellKV(3, 'POC', fmt(pocPrice), colPoc)
+        cellKV(4, 'VAL', fmt(valPrice), colVa)
+        cellKV(5, 'Range Low', fmt(lo), colEdge)
+
+        string loc = close > vahPrice ? 'Above value' : close < valPrice ? 'Below value' : 'In value'
+        loc := close > hi ? 'Above range' : close < lo ? 'Below range' : loc
+        cellKV(6, 'Price', loc, close > vahPrice ? colTp : close < valPrice ? colSl : color.white)
+
+        if na(planEntry)
+            cellKV(7, 'Setup', planKind == 'Filtered' ? 'Filtered out' : 'Off', color.gray)
+            cellKV(8, '', '', color.gray)
+            cellKV(9, '', '', color.gray)
+            cellKV(10, '', '', color.gray)
+            cellKV(11, '', '', color.gray)
+        else
+            float riskPts = math.abs(planEntry - planStop)
+            float rMult = riskPts > 0 ? math.abs(planTp2 - planEntry) / riskPts : na
+            cellKV(7, 'Setup', planKind + ' ' + planDir, planDir == 'Long' ? colTp : colSl)
+            string ordType = planDir == 'Long' ? (planEntry > close ? 'buy stop' : 'buy limit') : (planEntry < close ? 'sell stop' : 'sell limit')
+            cellKV(8, 'Entry', fmt(planEntry) + '  ' + ordType, colEntry)
+            cellKV(9, 'Stop', fmt(planStop) + '  (' + str.tostring(riskPts / syminfo.mintick, '#') + ' tk)', colSl)
+            cellKV(10, 'Targets', fmt(planTp1) + ' / ' + fmt(planTp2) + '  ' + str.tostring(rMult, '#.#') + 'R', colTp)
+            float perUnit = riskPts * syminfo.pointvalue
+            float qty = perUnit > 0 ? riskDollars / perUnit : na
+            cellKV(11, 'Size', not showSize ? 'off' : na(qty) ? 'n/a' : str.tostring(math.floor(qty), '#') + ' @ $' + str.tostring(perUnit, '#.##') + ' ea', color.white)
+
+// ----------------------------------------------------------------------------
+// Alerts, evaluated against the live profile
+// ----------------------------------------------------------------------------
+alertcondition(ta.cross(close, pocPrice), 'Price crossed POC', 'Price crossed the volume POC')
+alertcondition(ta.crossover(close, vahPrice), 'Break above VAH', 'Price traded above the value area high')
+alertcondition(ta.crossunder(close, valPrice), 'Break below VAL', 'Price traded below the value area low')
+alertcondition(not na(planEntry) and high >= planEntry and low <= planEntry, 'Entry touched', 'Price tagged the volume profile entry level')
+alertcondition(not na(planStop) and high >= planStop and low <= planStop, 'Stop touched', 'Price tagged the volume profile stop level')
+alertcondition(not na(planTp1) and high >= planTp1 and low <= planTp1, 'TP1 touched', 'Price tagged the first volume profile target')
+alertcondition(not na(planTp2) and high >= planTp2 and low <= planTp2, 'TP2 touched', 'Price tagged the second volume profile target')
