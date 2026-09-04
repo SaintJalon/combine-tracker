@@ -391,15 +391,26 @@ if barstate.islast
         // --- POC and value area ---
         float grandTotal = 0.0
         float maxRow = 0.0
-        int pocIdx = 0
         array<float> totVol = array.new<float>(dRows, 0.0)
         for r = 0 to dRows - 1
             float t = array.get(dUp, r) + array.get(dDn, r)
             array.set(totVol, r, t)
             grandTotal += t
-            if t > maxRow
-                maxRow := t
-                pocIdx := r
+            maxRow := math.max(maxRow, t)
+
+        // Keeping the first row to hit the maximum pins the POC to the lowest
+        // tied price, and drags the value area and the plan direction down with
+        // it. Ties are the rule in TPO mode, where every bar contributes one.
+        // Take the tied row nearest the middle of the profile instead.
+        int pocIdx = 0
+        float pocMid = (dRows - 1) / 2.0
+        float pocBest = dRows + 1.0
+        for r = 0 to dRows - 1
+            if array.get(totVol, r) >= maxRow
+                float dist = math.abs(r - pocMid)
+                if dist < pocBest
+                    pocBest := dist
+                    pocIdx := r
         maxRow := maxRow <= 0 ? 1.0 : maxRow
 
         int vaUp = pocIdx
