@@ -15,7 +15,7 @@ closedOnly = input.bool(true, title='Closed Bars Only', group=grpRange, tooltip=
 grpProf = 'Profile'
 rowMode = input.string('Fixed Ticks', title='Row Size', options=['Auto (N Rows)', 'Fixed Ticks'], group=grpProf, tooltip='Auto slices the range into N rows, so every row boundary shifts when the range changes. Fixed Ticks pins the rows to an absolute price grid, which holds the POC and value area edges still.')
 rows = input.int(48, title='Rows  (Auto only)', minval=10, maxval=150, group=grpProf, tooltip='Price buckets the range is sliced into. More rows means a finer POC and a slower calculation.')
-rowTicks = input.int(10, title='Ticks Per Row  (Fixed Ticks only)', minval=1, maxval=1000, group=grpProf, tooltip='Row height when Row Size is Fixed Ticks.')
+rowTicks = input.int(20, title='Ticks Per Row  (Fixed Ticks only)', minval=1, maxval=1000, group=grpProf, tooltip='Row height when Row Size is Fixed Ticks.')
 vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1, group=grpProf)
 weightBy = input.string('Volume', title='Weight By', options=['Volume', 'Bar Count (TPO)'], group=grpProf, tooltip='Bar Count builds a TPO style profile, and is used automatically on symbols with no volume data.')
 
