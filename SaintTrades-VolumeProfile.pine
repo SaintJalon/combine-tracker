@@ -93,9 +93,17 @@ bool priorMode = rangeMode == 'Prior Session (Day)' or rangeMode == 'Prior Week'
 // A prior-period profile starts behind every bar of the current period, so it
 // stops moving the moment that period opens.
 int rangeOffset = priorMode ? barsInPeriod : (closedOnly ? 1 : 0)
-int rangeLen = rangeMode == 'Fixed Bars' ? lookback : rangeMode == 'Visible Range' ? visBars : priorMode ? barsPrevPeriod : barsInPeriod
-rangeOffset := math.max(0, math.min(rangeOffset, 900))
-rangeLen := math.max(2, math.min(rangeLen, math.min(bar_index + 1 - rangeOffset, 999 - rangeOffset)))
+// Dropping the forming bar shortens the window as well as shifting it. Counting
+// a whole period from one bar back would reach a bar into the period before it.
+int rangeWant = rangeMode == 'Fixed Bars' ? lookback : rangeMode == 'Visible Range' ? visBars - rangeOffset : priorMode ? barsPrevPeriod : barsInPeriod - rangeOffset
+
+// Pine can only address a bounded slice of history. Clamping the offset to fit
+// would slide the window forward into the current period and draw confident,
+// wrong levels, so an unreachable range is reported instead of drawn.
+int rangeRoom = math.min(bar_index, 998) - rangeOffset + 1
+string rangeIssue = rangeRoom < 2 ? 'range starts ' + str.tostring(rangeOffset) + ' bars back' : rangeWant < 2 ? 'not enough bars in range' : ''
+int rangeLen = rangeIssue != '' ? 2 : math.min(rangeWant, rangeRoom)
+bool rangeCut = rangeIssue == '' and rangeWant > rangeLen
 
 atr = ta.atr(atrLen)
 hasVolume = ta.cum(nz(volume)) > 0
@@ -159,7 +167,21 @@ rt(float p) => na(p) ? na : math.round(p / syminfo.mintick) * syminfo.mintick
 // ----------------------------------------------------------------------------
 // Build and draw, on the last bar only
 // ----------------------------------------------------------------------------
-if barstate.islast
+if barstate.islast and rangeIssue != ''
+    clearDrawings()
+    pocPrice := na
+    vahPrice := na
+    valPrice := na
+    planEntry := na
+    planDir := 'None'
+    planKind := 'No setup'
+    if showTable
+        table.clear(tbl, 0, 0, 1, 11)
+        cellKV(0, 'Profile', 'unavailable', color.new(#ffb300, 0))
+        cellKV(1, 'Why', rangeIssue, color.gray)
+        cellKV(2, '', rangeRoom < 2 ? 'try a higher timeframe' : '', color.gray)
+
+if barstate.islast and rangeIssue == ''
     clearDrawings()
 
     // --- range extremes ---
@@ -246,11 +268,13 @@ if barstate.islast
             vaDn -= 1
             acc += nDn
 
-    pocPrice := gridLo + (pocIdx + 0.5) * step
+    // Snapped to the tick grid, otherwise a row boundary lands off-tick and the
+    // line is drawn at one price while its label prints the rounded one.
+    pocPrice := rt(gridLo + (pocIdx + 0.5) * step)
     // The grid row holding an extreme extends past it, so an unclamped edge can
     // print above the range high or below the range low.
-    vahPrice := math.min(gridLo + (vaUp + 1) * step, hi)
-    valPrice := math.max(gridLo + vaDn * step, lo)
+    vahPrice := math.min(rt(gridLo + (vaUp + 1) * step), hi)
+    valPrice := math.max(rt(gridLo + vaDn * step), lo)
 
     int lastIdx = bar_index
     int startIdx = lastIdx - rangeOffset - (rangeLen - 1)
@@ -399,7 +423,7 @@ if barstate.islast
     // ------------------------------------------------------------------------
     if showTable
         string srcTxt = useTpo ? 'TPO' : 'Volume'
-        cellKV(0, 'Profile', str.tostring(rangeLen) + ' bars / ' + srcTxt, color.white)
+        cellKV(0, 'Profile', str.tostring(rangeLen) + (rangeCut ? ' of ' + str.tostring(rangeWant) : '') + ' bars / ' + srcTxt, rangeCut ? color.new(#ffb300, 0) : color.white)
         cellKV(1, 'Range High', fmt(hi), colEdge)
         cellKV(2, 'VAH', fmt(vahPrice), colVa)
         cellKV(3, 'POC', fmt(pocPrice), colPoc)
