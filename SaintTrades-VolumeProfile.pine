@@ -2,14 +2,14 @@
 // SaintTrades Fixed Range Volume Profile
 // Builds a volume profile over a fixed range of bars, marks the POC / VAH / VAL,
 // and lays out a mechanical trade plan (entry, stop, two targets) off those levels.
-indicator('SaintTrades Volume Profile', shorttitle='ST VP', overlay=true, max_boxes_count=500, max_lines_count=100, max_labels_count=100, max_bars_back=1000)
+indicator('SaintTrades Volume Profile', shorttitle='ST VP', overlay=true, max_boxes_count=500, max_lines_count=100, max_labels_count=100, max_bars_back=5000)
 
 // ----------------------------------------------------------------------------
 // Inputs
 // ----------------------------------------------------------------------------
 grpRange = 'Range'
 rangeMode = input.string('Prior Session (Day)', title='Range', options=['Fixed Bars', 'Session (Day)', 'Week', 'Month', 'Prior Session (Day)', 'Prior Week', 'Visible Range'], group=grpRange, tooltip='Which block of bars the profile is built from. The Prior modes read the last completed period, so the levels are fixed for the whole of the current one.')
-lookback = input.int(200, title='Lookback Bars  (Fixed Bars only)', minval=10, maxval=999, group=grpRange)
+lookback = input.int(200, title='Lookback Bars  (Fixed Bars only)', minval=10, maxval=4999, group=grpRange)
 closedOnly = input.bool(true, title='Closed Bars Only', group=grpRange, tooltip='Leave the forming bar out of the profile, so the levels only move when a bar closes instead of on every tick.')
 
 grpProf = 'Profile'
@@ -79,7 +79,7 @@ else
 visibleBars() =>
     int cnt = 0
     if not na(chart.left_visible_bar_time)
-        for i = 0 to 998
+        for i = 0 to 4998
             if i > bar_index
                 break
             if time[i] < chart.left_visible_bar_time
@@ -100,7 +100,7 @@ int rangeWant = rangeMode == 'Fixed Bars' ? lookback : rangeMode == 'Visible Ran
 // Pine can only address a bounded slice of history. Clamping the offset to fit
 // would slide the window forward into the current period and draw confident,
 // wrong levels, so an unreachable range is reported instead of drawn.
-int rangeRoom = math.min(bar_index, 998) - rangeOffset + 1
+int rangeRoom = math.min(bar_index, 4998) - rangeOffset + 1
 string rangeIssue = rangeRoom < 2 ? 'range starts ' + str.tostring(rangeOffset) + ' bars back' : rangeWant < 2 ? 'not enough bars in range' : ''
 int rangeLen = rangeIssue != '' ? 2 : math.min(rangeWant, rangeRoom)
 bool rangeCut = rangeIssue == '' and rangeWant > rangeLen
