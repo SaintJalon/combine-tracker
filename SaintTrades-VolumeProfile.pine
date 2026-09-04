@@ -53,7 +53,7 @@ riskDollars = input.float(300, title='Risk Per Trade ($)', minval=1, step=25, gr
 
 grpTbl = 'Table'
 showTable = input.bool(true, title='Show Table', group=grpTbl)
-tblPos = input.string('Top Right', title='Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpTbl)
+tblPos = input.string('Bottom Right', title='Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpTbl)
 tblSize = input.string('Small', title='Text Size', options=['Tiny', 'Small', 'Normal'], group=grpTbl)
 
 // ----------------------------------------------------------------------------
@@ -236,7 +236,10 @@ if barstate.islast
 
     // --- value area shading and levels ---
     if vaFill
-        array.push(vpBoxes, box.new(startIdx, vahPrice, lvlRight, valPrice, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colVa, 93)))
+        // stop the shading at the last bar so it does not wash out the up/down
+        // rows of the histogram sitting to the right
+        int vaRight = profileSide == 'Right of Range' ? lastIdx : lvlRight
+        array.push(vpBoxes, box.new(startIdx, vahPrice, vaRight, valPrice, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colVa, 93)))
 
     mkLevel(startIdx, lvlRight, pocPrice, colPoc, 2, 'POC ' + fmt(pocPrice), false)
     mkLevel(startIdx, lvlRight, vahPrice, colVa, 1, 'VAH ' + fmt(vahPrice), true)
