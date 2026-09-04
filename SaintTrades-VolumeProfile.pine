@@ -417,19 +417,38 @@ if barstate.islast
         int vaDn = pocIdx
         float acc = array.get(totVol, pocIdx)
         float vaTarget = grandTotal * vaPct / 100.0
+        // The conventional Market Profile walk weighs the next TWO rows on each
+        // side and takes the heavier pair whole. Stepping a single row at a
+        // time lets one fat row pull the area onto its side even when the rows
+        // beyond it are thin. Rows are read only after the bounds are checked,
+        // never inside a ternary, so no out of range index is ever formed.
         for _i = 0 to dRows - 1
             if acc >= vaTarget
                 break
-            float nUp = vaUp < dRows - 1 ? array.get(totVol, vaUp + 1) : -1.0
-            float nDn = vaDn > 0 ? array.get(totVol, vaDn - 1) : -1.0
-            if nUp < 0 and nDn < 0
+            float sumUp = -1.0
+            int upRows = 0
+            if vaUp + 1 <= dRows - 1
+                sumUp := array.get(totVol, vaUp + 1)
+                upRows := 1
+                if vaUp + 2 <= dRows - 1
+                    sumUp += array.get(totVol, vaUp + 2)
+                    upRows := 2
+            float sumDn = -1.0
+            int dnRows = 0
+            if vaDn - 1 >= 0
+                sumDn := array.get(totVol, vaDn - 1)
+                dnRows := 1
+                if vaDn - 2 >= 0
+                    sumDn += array.get(totVol, vaDn - 2)
+                    dnRows := 2
+            if upRows == 0 and dnRows == 0
                 break
-            if nUp >= nDn
-                vaUp += 1
-                acc += nUp
+            if sumUp >= sumDn
+                vaUp += upRows
+                acc += sumUp
             else
-                vaDn -= 1
-                acc += nDn
+                vaDn -= dnRows
+                acc += sumDn
 
         float hi = dHi
         float lo = dLo
