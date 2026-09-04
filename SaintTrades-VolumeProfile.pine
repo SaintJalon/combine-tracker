@@ -8,11 +8,14 @@ indicator('SaintTrades Volume Profile', shorttitle='ST VP', overlay=true, max_bo
 // Inputs
 // ----------------------------------------------------------------------------
 grpRange = 'Range'
-rangeMode = input.string('Fixed Bars', title='Range', options=['Fixed Bars', 'Session (Day)', 'Week', 'Month', 'Visible Range'], group=grpRange, tooltip='Which block of bars the profile is built from. Session/Week/Month build from the open of the current period.')
+rangeMode = input.string('Fixed Bars', title='Range', options=['Fixed Bars', 'Session (Day)', 'Week', 'Month', 'Prior Session (Day)', 'Prior Week', 'Visible Range'], group=grpRange, tooltip='Which block of bars the profile is built from. The Prior modes read the last completed period, so the levels are fixed for the whole of the current one.')
 lookback = input.int(200, title='Fixed Bars Lookback', minval=10, maxval=999, group=grpRange)
+closedOnly = input.bool(true, title='Closed Bars Only', group=grpRange, tooltip='Leave the forming bar out of the profile, so the levels only move when a bar closes instead of on every tick.')
 
 grpProf = 'Profile'
+rowMode = input.string('Auto (N Rows)', title='Row Size', options=['Auto (N Rows)', 'Fixed Ticks'], group=grpProf, tooltip='Auto slices the range into N rows, so every row boundary shifts when the range changes. Fixed Ticks pins the rows to an absolute price grid, which holds the POC and value area edges still.')
 rows = input.int(48, title='Rows', minval=10, maxval=150, group=grpProf, tooltip='Price buckets the range is sliced into. More rows means a finer POC and a slower calculation.')
+rowTicks = input.int(10, title='Ticks Per Row', minval=1, maxval=1000, group=grpProf, tooltip='Row height when Row Size is Fixed Ticks.')
 vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1, group=grpProf)
 weightBy = input.string('Volume', title='Weight By', options=['Volume', 'Bar Count (TPO)'], group=grpProf, tooltip='Bar Count builds a TPO style profile, and is used automatically on symbols with no volume data.')
 
@@ -35,6 +38,7 @@ grpPlan = 'Trade Plan'
 showPlan = input.bool(true, title='Show Trade Plan', group=grpPlan)
 planMode = input.string('Auto', title='Setup Type', options=['Auto', 'Rotation (fade to POC)', 'Breakout (continuation)'], group=grpPlan, tooltip='Auto plans a rotation while price sits inside the profile range, and a breakout retest once price trades outside it.')
 dirFilter = input.string('Both', title='Direction Filter', options=['Both', 'Long Only', 'Short Only'], group=grpPlan)
+dirBandPct = input.float(10, title='Direction Deadband (% of VA)', minval=0, maxval=50, step=1, group=grpPlan, tooltip='How far past the POC price has to trade before the plan is allowed to flip direction. Stops the setup oscillating while price sits on the POC.')
 stopMode = input.string('Value Edge', title='Stop Anchor', options=['Profile Extreme', 'Value Edge', 'ATR'], group=grpPlan)
 atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
 slBufATR = input.float(1.0, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan, tooltip='Padding beyond the structural stop level.')
@@ -62,10 +66,15 @@ tblSize = input.string('Small', title='Text Size', options=['Tiny', 'Small', 'No
 chD = timeframe.change('D')
 chW = timeframe.change('W')
 chM = timeframe.change('M')
-newPeriod = rangeMode == 'Session (Day)' ? chD : rangeMode == 'Week' ? chW : rangeMode == 'Month' ? chM : false
+newPeriod = (rangeMode == 'Session (Day)' or rangeMode == 'Prior Session (Day)') ? chD : (rangeMode == 'Week' or rangeMode == 'Prior Week') ? chW : rangeMode == 'Month' ? chM : false
 
 var int barsInPeriod = 0
-barsInPeriod := newPeriod ? 1 : barsInPeriod + 1
+var int barsPrevPeriod = 0
+if newPeriod
+    barsPrevPeriod := barsInPeriod
+    barsInPeriod := 1
+else
+    barsInPeriod += 1
 
 visibleBars() =>
     int cnt = 0
@@ -79,8 +88,14 @@ visibleBars() =>
     cnt
 
 int visBars = visibleBars()
-int rangeLen = rangeMode == 'Fixed Bars' ? lookback : rangeMode == 'Visible Range' ? visBars : barsInPeriod
-rangeLen := math.max(2, math.min(rangeLen, math.min(bar_index + 1, 999)))
+bool priorMode = rangeMode == 'Prior Session (Day)' or rangeMode == 'Prior Week'
+
+// A prior-period profile starts behind every bar of the current period, so it
+// stops moving the moment that period opens.
+int rangeOffset = priorMode ? barsInPeriod : (closedOnly ? 1 : 0)
+int rangeLen = rangeMode == 'Fixed Bars' ? lookback : rangeMode == 'Visible Range' ? visBars : priorMode ? barsPrevPeriod : barsInPeriod
+rangeOffset := math.max(0, math.min(rangeOffset, 900))
+rangeLen := math.max(2, math.min(rangeLen, math.min(bar_index + 1 - rangeOffset, 999 - rangeOffset)))
 
 atr = ta.atr(atrLen)
 hasVolume = ta.cum(nz(volume)) > 0
@@ -98,6 +113,7 @@ var float planTp1 = na
 var float planTp2 = na
 var string planDir = 'None'
 var string planKind = 'None'
+var string dirLatch = 'None'
 
 var array<box> vpBoxes = array.new<box>()
 var array<line> vpLines = array.new<line>()
@@ -137,6 +153,8 @@ cellKV(int r, string k, string v, color vc) =>
 
 fmt(float p) => str.tostring(p, format.mintick)
 
+rt(float p) => na(p) ? na : math.round(p / syminfo.mintick) * syminfo.mintick
+
 // ----------------------------------------------------------------------------
 // Build and draw, on the last bar only
 // ----------------------------------------------------------------------------
@@ -144,29 +162,48 @@ if barstate.islast
     clearDrawings()
 
     // --- range extremes ---
-    float hi = high
-    float lo = low
-    for i = 0 to rangeLen - 1
-        hi := math.max(hi, high[i])
-        lo := math.min(lo, low[i])
+    float hi = high[rangeOffset]
+    float lo = low[rangeOffset]
+    for i = rangeOffset to rangeOffset + rangeLen - 1
+        float h = high[i]
+        float l = low[i]
+        if not na(h) and not na(l)
+            hi := math.max(nz(hi, h), h)
+            lo := math.min(nz(lo, l), l)
 
+    // Row grid. 'Auto' re-slices the range every time it changes, which walks
+    // every boundary. 'Fixed Ticks' lays the rows on an absolute price grid so
+    // the boundaries stay put and only the volume in them moves.
     float step = (hi - lo) / rows
+    float gridLo = lo
+    int nRows = rows
+    if rowMode == 'Fixed Ticks'
+        step := rowTicks * syminfo.mintick
+        for _k = 0 to 12
+            gridLo := math.floor(lo / step) * step
+            nRows := int(math.ceil((hi - gridLo) / step)) + 1
+            if nRows <= 200
+                break
+            step *= 2
+        nRows := math.max(2, math.min(nRows, 200))
     step := step <= 0 ? syminfo.mintick : step
 
     // --- spread each bar's volume across every row it spans ---
-    upVol = array.new_float(rows, 0.0)
-    dnVol = array.new_float(rows, 0.0)
+    upVol = array.new_float(nRows, 0.0)
+    dnVol = array.new_float(nRows, 0.0)
 
-    for i = 0 to rangeLen - 1
+    for i = rangeOffset to rangeOffset + rangeLen - 1
         float bh = high[i]
         float bl = low[i]
+        if na(bh) or na(bl)
+            continue
         float span = bh - bl
         float v = useTpo ? 1.0 : nz(volume[i])
         bool isUp = close[i] >= open[i]
-        int r1 = math.max(0, math.min(rows - 1, int(math.floor((bl - lo) / step))))
-        int r2 = math.max(0, math.min(rows - 1, int(math.floor((bh - lo) / step))))
+        int r1 = math.max(0, math.min(nRows - 1, int(math.floor((bl - gridLo) / step))))
+        int r2 = math.max(0, math.min(nRows - 1, int(math.floor((bh - gridLo) / step))))
         for r = r1 to r2
-            float rBot = lo + r * step
+            float rBot = gridLo + r * step
             float rTop = rBot + step
             float overlap = math.min(bh, rTop) - math.max(bl, rBot)
             float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
@@ -177,11 +214,11 @@ if barstate.islast
                 array.set(dnVol, r, array.get(dnVol, r) + add)
 
     // --- POC and value area ---
-    totVol = array.new_float(rows, 0.0)
+    totVol = array.new_float(nRows, 0.0)
     float grandTotal = 0.0
     float maxRow = 0.0
     int pocIdx = 0
-    for r = 0 to rows - 1
+    for r = 0 to nRows - 1
         float t = array.get(upVol, r) + array.get(dnVol, r)
         array.set(totVol, r, t)
         grandTotal += t
@@ -194,10 +231,10 @@ if barstate.islast
     int vaDn = pocIdx
     float acc = array.get(totVol, pocIdx)
     float vaTarget = grandTotal * vaPct / 100.0
-    for _i = 0 to rows - 1
+    for _i = 0 to nRows - 1
         if acc >= vaTarget
             break
-        float nUp = vaUp < rows - 1 ? array.get(totVol, vaUp + 1) : -1.0
+        float nUp = vaUp < nRows - 1 ? array.get(totVol, vaUp + 1) : -1.0
         float nDn = vaDn > 0 ? array.get(totVol, vaDn - 1) : -1.0
         if nUp < 0 and nDn < 0
             break
@@ -208,19 +245,19 @@ if barstate.islast
             vaDn -= 1
             acc += nDn
 
-    pocPrice := lo + (pocIdx + 0.5) * step
-    vahPrice := lo + (vaUp + 1) * step
-    valPrice := lo + vaDn * step
+    pocPrice := gridLo + (pocIdx + 0.5) * step
+    vahPrice := gridLo + (vaUp + 1) * step
+    valPrice := gridLo + vaDn * step
 
     int lastIdx = bar_index
-    int startIdx = lastIdx - (rangeLen - 1)
+    int startIdx = lastIdx - rangeOffset - (rangeLen - 1)
     int anchor = profileSide == 'Right of Range' ? lastIdx + profGap : startIdx
     int lvlRight = lastIdx + math.max(lvlExtend, profileSide == 'Right of Range' ? profGap + profWidth + 2 : 2)
 
     // --- histogram ---
     if showProfile
-        for r = 0 to rows - 1
-            float rBot = lo + r * step
+        for r = 0 to nRows - 1
+            float rBot = gridLo + r * step
             float rTop = rBot + step
             float u = array.get(upVol, r)
             float d = array.get(dnVol, r)
@@ -261,7 +298,16 @@ if barstate.islast
     if showPlan
         float px = close
         string kind = planMode == 'Auto' ? (px > hi or px < lo ? 'Breakout' : 'Rotation') : planMode == 'Breakout (continuation)' ? 'Breakout' : 'Rotation'
-        bool isLong = kind == 'Breakout' ? (px > hi ? true : px < lo ? false : px >= pocPrice) : px < pocPrice
+
+        // Direction only flips once price is clear of the POC by the deadband,
+        // otherwise the setup thrashes every time price ticks across it.
+        float dirBand = (vahPrice - valPrice) * dirBandPct / 100.0
+        if px < pocPrice - dirBand
+            dirLatch := 'Long'
+        else if px > pocPrice + dirBand
+            dirLatch := 'Short'
+        bool rotLong = dirLatch == 'None' ? px < pocPrice : dirLatch == 'Long'
+        bool isLong = kind == 'Breakout' ? (px > hi ? true : px < lo ? false : rotLong) : rotLong
 
         if (isLong and dirFilter == 'Short Only') or (not isLong and dirFilter == 'Long Only')
             planKind := 'Filtered'
@@ -280,9 +326,13 @@ if barstate.islast
                 entry := isLong ? (px > hi ? hi : vahPrice) : (px < lo ? lo : valPrice)
                 sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? vahPrice - buf : valPrice + buf) : (isLong ? valPrice - buf : vahPrice + buf)
 
+            // Snap to the tick grid so the numbers are prices you can key in,
+            // and so the tick count and R multiples are exact.
+            entry := rt(entry)
+            sl := rt(sl)
             float risk = math.abs(entry - sl)
             if risk < syminfo.mintick
-                risk := math.max(atr * slATRMult, syminfo.mintick * 4)
+                risk := rt(math.max(atr * slATRMult, syminfo.mintick * 4))
                 sl := isLong ? entry - risk : entry + risk
 
             float tp1 = na
@@ -303,6 +353,8 @@ if barstate.islast
                 if (isLong and tp2 <= tp1) or (not isLong and tp2 >= tp1)
                     tp2 := isLong ? entry + risk * rr2 : entry - risk * rr2
 
+            tp1 := rt(tp1)
+            tp2 := rt(tp2)
             planEntry := entry
             planStop := sl
             planTp1 := tp1
