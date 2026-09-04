@@ -8,12 +8,12 @@ indicator('SaintTrades Volume Profile', shorttitle='ST VP', overlay=true, max_bo
 // Inputs
 // ----------------------------------------------------------------------------
 grpRange = 'Range'
-rangeMode = input.string('Fixed Bars', title='Range', options=['Fixed Bars', 'Session (Day)', 'Week', 'Month', 'Prior Session (Day)', 'Prior Week', 'Visible Range'], group=grpRange, tooltip='Which block of bars the profile is built from. The Prior modes read the last completed period, so the levels are fixed for the whole of the current one.')
+rangeMode = input.string('Prior Session (Day)', title='Range', options=['Fixed Bars', 'Session (Day)', 'Week', 'Month', 'Prior Session (Day)', 'Prior Week', 'Visible Range'], group=grpRange, tooltip='Which block of bars the profile is built from. The Prior modes read the last completed period, so the levels are fixed for the whole of the current one.')
 lookback = input.int(200, title='Fixed Bars Lookback', minval=10, maxval=999, group=grpRange)
 closedOnly = input.bool(true, title='Closed Bars Only', group=grpRange, tooltip='Leave the forming bar out of the profile, so the levels only move when a bar closes instead of on every tick.')
 
 grpProf = 'Profile'
-rowMode = input.string('Auto (N Rows)', title='Row Size', options=['Auto (N Rows)', 'Fixed Ticks'], group=grpProf, tooltip='Auto slices the range into N rows, so every row boundary shifts when the range changes. Fixed Ticks pins the rows to an absolute price grid, which holds the POC and value area edges still.')
+rowMode = input.string('Fixed Ticks', title='Row Size', options=['Auto (N Rows)', 'Fixed Ticks'], group=grpProf, tooltip='Auto slices the range into N rows, so every row boundary shifts when the range changes. Fixed Ticks pins the rows to an absolute price grid, which holds the POC and value area edges still.')
 rows = input.int(48, title='Rows', minval=10, maxval=150, group=grpProf, tooltip='Price buckets the range is sliced into. More rows means a finer POC and a slower calculation.')
 rowTicks = input.int(10, title='Ticks Per Row', minval=1, maxval=1000, group=grpProf, tooltip='Row height when Row Size is Fixed Ticks.')
 vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1, group=grpProf)
@@ -41,7 +41,7 @@ dirFilter = input.string('Both', title='Direction Filter', options=['Both', 'Lon
 dirBandPct = input.float(10, title='Direction Deadband (% of VA)', minval=0, maxval=50, step=1, group=grpPlan, tooltip='How far past the POC price has to trade before the plan is allowed to flip direction. Stops the setup oscillating while price sits on the POC.')
 stopMode = input.string('Value Edge', title='Stop Anchor', options=['Profile Extreme', 'Value Edge', 'ATR'], group=grpPlan)
 atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
-slBufATR = input.float(1.0, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan, tooltip='Padding beyond the structural stop level.')
+slBufATR = input.float(0, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan, tooltip='Padding beyond the structural stop level.')
 slATRMult = input.float(1.5, title='ATR Stop Multiple', minval=0.1, step=0.1, group=grpPlan, tooltip='Only used when Stop Anchor is set to ATR.')
 tpMode = input.string('Profile Structure', title='Targets', options=['R Multiple', 'Profile Structure'], group=grpPlan)
 rr1 = input.float(1.5, title='TP1 R', minval=0.1, step=0.1, inline='rr', group=grpPlan)
@@ -330,10 +330,14 @@ if barstate.islast
             // and so the tick count and R multiples are exact.
             entry := rt(entry)
             sl := rt(sl)
+            // A structural stop can land on top of the entry, or the wrong side
+            // of it, when the row grid puts a value edge past the range extreme
+            // the entry sits on. Hold it at least one row the correct way.
+            float minRisk = math.max(step, syminfo.mintick)
+            bool wrongSide = isLong ? sl >= entry : sl <= entry
+            if wrongSide or math.abs(entry - sl) < minRisk
+                sl := rt(isLong ? entry - minRisk : entry + minRisk)
             float risk = math.abs(entry - sl)
-            if risk < syminfo.mintick
-                risk := rt(math.max(atr * slATRMult, syminfo.mintick * 4))
-                sl := isLong ? entry - risk : entry + risk
 
             float tp1 = na
             float tp2 = na
