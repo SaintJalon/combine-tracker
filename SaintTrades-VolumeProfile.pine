@@ -38,7 +38,7 @@ grpPlan = 'Trade Plan'
 showPlan = input.bool(true, title='Show Trade Plan', group=grpPlan)
 planMode = input.string('Auto', title='Setup Type', options=['Auto', 'Rotation (fade to POC)', 'Breakout (continuation)'], group=grpPlan, tooltip='Auto plans a rotation while price sits inside the profile range, and a breakout retest once price trades outside it.')
 dirFilter = input.string('Both', title='Direction Filter', options=['Both', 'Long Only', 'Short Only'], group=grpPlan)
-dirBandPct = input.float(10, title='Direction Deadband (% of VA)', minval=0, maxval=50, step=1, group=grpPlan, tooltip='How far past the POC price has to trade before the plan is allowed to flip direction. Stops the setup oscillating while price sits on the POC.')
+dirBandPct = input.float(5, title='Direction Deadband (% of VA)', minval=0, maxval=50, step=1, group=grpPlan, tooltip='How far past the POC price has to trade before the plan is allowed to flip direction. Stops the setup oscillating while price sits on the POC.')
 stopMode = input.string('Value Edge', title='Stop Anchor', options=['Profile Extreme', 'Value Edge', 'ATR'], group=grpPlan)
 atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
 slBufATR = input.float(0, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan, tooltip='Padding beyond the structural stop level.')
