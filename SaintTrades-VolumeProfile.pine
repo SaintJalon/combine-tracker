@@ -110,6 +110,7 @@ var string planDir = 'None'
 var string planKind = 'None'
 var string planNote = ''
 var string dirLatch = 'None'
+var bool planInit = false
 
 var array<box> vpBoxes = array.new<box>()
 var array<line> vpLines = array.new<line>()
@@ -499,16 +500,32 @@ if barstate.islast
 
         // --------------------------------------------------------------------
         // Trade plan
+        //
+        // The plan advances once per closed bar. Recomputing it on every tick
+        // deleted it the moment a wick poked through the stop and put it back
+        // on the next tick, several times a second, which is no use to anyone
+        // trying to rest an order against it. Nothing it reads moves intrabar
+        // in any case: the profile is only ever fed closed bars. The plan vars
+        // are var, so they simply stand until the next close replaces them.
         // --------------------------------------------------------------------
-        planEntry := na
-        planStop := na
-        planTp1 := na
-        planTp2 := na
-        planDir := 'None'
-        planNote := ''
-        planKind := showPlan ? 'None' : 'Off'
+        if not showPlan
+            planEntry := na
+            planStop := na
+            planTp1 := na
+            planTp2 := na
+            planDir := 'None'
+            planNote := ''
+            planKind := 'Off'
+        else if barstate.isconfirmed or not planInit
+            planInit := true
+            planEntry := na
+            planStop := na
+            planTp1 := na
+            planTp2 := na
+            planDir := 'None'
+            planNote := ''
+            planKind := 'None'
 
-        if showPlan
             float px = close
             string kind = planMode == 'Auto' ? (px > hi or px < lo ? 'Breakout' : 'Rotation') : planMode == 'Breakout (continuation)' ? 'Breakout' : 'Rotation'
 
@@ -600,14 +617,17 @@ if barstate.islast
                     planDir := isLong ? 'Long' : 'Short'
                     planKind := kind
 
-                    int px1 = lastIdx + 1
-                    int px2 = lastIdx + planExtend
-                    array.push(vpBoxes, box.new(px1, math.max(entry, sl), px2, math.min(entry, sl), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colSl, 92)))
-                    array.push(vpBoxes, box.new(px1, math.max(tp2, entry), px2, math.min(tp2, entry), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colTp, 92)))
-                    mkLevel(px1, px2, entry, colEntry, 2, 'ENTRY ' + fmt(entry), false)
-                    mkLevel(px1, px2, sl, colSl, 2, 'SL ' + fmt(sl), false)
-                    mkLevel(px1, px2, tp1, colTp, 1, 'TP1 ' + fmt(tp1), true)
-                    mkLevel(px1, px2, tp2, colTp, 2, 'TP2 ' + fmt(tp2), false)
+        // Redrawn every tick from whatever plan is standing, because
+        // clearDrawings wipes the chart each time this block runs.
+        if showPlan and not na(planEntry)
+            int px1 = lastIdx + 1
+            int px2 = lastIdx + planExtend
+            array.push(vpBoxes, box.new(px1, math.max(planEntry, planStop), px2, math.min(planEntry, planStop), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colSl, 92)))
+            array.push(vpBoxes, box.new(px1, math.max(planTp2, planEntry), px2, math.min(planTp2, planEntry), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(colTp, 92)))
+            mkLevel(px1, px2, planEntry, colEntry, 2, 'ENTRY ' + fmt(planEntry), false)
+            mkLevel(px1, px2, planStop, colSl, 2, 'SL ' + fmt(planStop), false)
+            mkLevel(px1, px2, planTp1, colTp, 1, 'TP1 ' + fmt(planTp1), true)
+            mkLevel(px1, px2, planTp2, colTp, 2, 'TP2 ' + fmt(planTp2), false)
 
         // --------------------------------------------------------------------
         // Table
