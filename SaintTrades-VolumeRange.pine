@@ -17,7 +17,7 @@ indicator('SaintTrades Volume Range', shorttitle='ST VR', overlay=true, max_boxe
 lenBars = input.int(200, title='Range (bars)', minval=20, maxval=500, tooltip='Bars the profile is built from.')
 rows = input.int(40, title='Rows', minval=10, maxval=120)
 vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1)
-anchorMode = input.string('Rolling', title='Range Anchor', options=['Rolling', 'Fixed block'], tooltip='Rolling rebuilds the profile every bar, so the levels follow price. Fixed block builds it once every N bars and holds it, so price travels further before it comes back.')
+anchorMode = input.string('Fixed block', title='Range Anchor', options=['Rolling', 'Fixed block'], tooltip='Rolling rebuilds the profile every bar, so the levels follow price. Fixed block builds it once every N bars and holds it, so price travels further before it comes back.')
 
 grpSig = 'Signal'
 confirmBars = input.int(2, title='Bars Outside First', minval=1, maxval=20, group=grpSig, tooltip='How long price must hold beyond the value area before a close back inside counts.')
