@@ -1,62 +1,43 @@
 //@version=6
 // SaintTrades Volume Range
 //
-// A fixed range volume profile, and what to do about it.
+// A fixed range volume profile, reduced to what you act on.
 //
-// The profile is built from the last N bars, and you choose whether that window
-// rolls with every bar or freezes into blocks. Rolling keeps the levels near
-// price and signals more often. Fixed block holds them where they formed, so
-// price travels further before coming back, which gives fewer signals with more
-// room between the entry and the level.
+// The profile is built from the last N bars and marks the POC and the value
+// area. When price leaves value, holds out, and closes back in, three lines go
+// on the chart: where to get in, where to be out, and where to take it off.
+// Nothing is drawn that you would not put an order against.
 //
-// It marks the POC and the value area, and when price leaves value, holds out,
-// and closes back in, it gives an entry, a stop and a target. Any symbol, any
-// timeframe, no sessions, nothing to set per instrument.
-indicator('SaintTrades Volume Range', shorttitle='ST VR', overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=300, max_bars_back=1000)
+// Any symbol, any timeframe. No sessions, nothing to set per instrument.
+indicator('SaintTrades Volume Range', shorttitle='ST VR', overlay=true, max_lines_count=500, max_labels_count=500, max_bars_back=1000)
 
 // ----------------------------------------------------------------------------
 // Inputs
 // ----------------------------------------------------------------------------
-lenBars = input.int(200, title='Range (bars)', minval=20, maxval=500, tooltip='Bars in a block. The profile is built from one block and held for the next, so the levels are fixed while price trades against them.')
+lenBars = input.int(200, title='Range (bars)', minval=20, maxval=500, tooltip='Bars the profile is built from.')
 rows = input.int(40, title='Rows', minval=10, maxval=120)
 vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1)
-anchorMode = input.string('Rolling', title='Range Anchor', options=['Rolling', 'Fixed block'], tooltip='Rolling rebuilds the profile every bar from the last N, so the levels follow price. Fixed block builds it once every N bars and holds it, so the levels stay where they formed and price travels away from them. Rolling gives more signals; fixed gives fewer and further from the level.')
+anchorMode = input.string('Rolling', title='Range Anchor', options=['Rolling', 'Fixed block'], tooltip='Rolling rebuilds the profile every bar, so the levels follow price. Fixed block builds it once every N bars and holds it, so price travels further before it comes back.')
 
 grpSig = 'Signal'
 confirmBars = input.int(2, title='Bars Outside First', minval=1, maxval=20, group=grpSig, tooltip='How long price must hold beyond the value area before a close back inside counts.')
-planLen = input.int(40, title='Plan Length (bars)', minval=5, maxval=200, group=grpSig, tooltip='How far forward the entry, stop and target are carried across the chart.')
+minR = input.float(1.5, title='Minimum R', minval=0, step=0.1, group=grpSig, tooltip='Signals worth less than this much reward per unit of risk are not shown. The stop is set by how far price ran while it was outside value, so a deep excursion gives a wide stop and a poor R.')
+planLen = input.int(40, title='Line Length (bars)', minval=5, maxval=200, group=grpSig)
 
 grpDisp = 'Display'
-showProfile = input.bool(true, title='Show Profile', group=grpDisp)
-profWidth = input.int(60, title='Profile Width (bars)', minval=5, maxval=200, group=grpDisp)
-colUp = input.color(color.new(#26a69a, 60), title='Up', inline='c1', group=grpDisp)
-colDn = input.color(color.new(#ef5350, 60), title='Down', inline='c1', group=grpDisp)
-colPoc = input.color(#ffb300, title='POC', inline='c2', group=grpDisp)
-colVa = input.color(#42a5f5, title='Value', inline='c2', group=grpDisp)
+colPoc = input.color(#ffb300, title='POC', inline='c', group=grpDisp)
+colVa = input.color(#42a5f5, title='Value', inline='c', group=grpDisp)
 
 fmt(float p) => str.tostring(p, format.mintick)
 
 // ----------------------------------------------------------------------------
-// The profile, built once a block and held
+// Profile
 // ----------------------------------------------------------------------------
 var float poc = na
 var float vah = na
 var float val = na
-var float rHi = na
-var float rLo = na
 var float vaStep = na
 
-var array<float> upVol = array.new<float>(0)
-var array<float> dnVol = array.new<float>(0)
-var float pGridLo = na
-var float pStep = na
-var int pRows = 0
-var int pPoc = 0
-var int pVaUp = 0
-var int pVaDn = 0
-
-// Rolling recomputes every bar. Fixed block freezes the profile and holds it
-// for the next N bars.
 bool roll = anchorMode == 'Fixed block' ? (bar_index >= lenBars and bar_index % lenBars == 0) : (bar_index > lenBars + 1)
 
 if roll
@@ -69,12 +50,7 @@ if roll
     float step = (hi - lo) / rows
     step := step <= 0 ? syminfo.mintick : step
 
-    array.clear(upVol)
-    array.clear(dnVol)
-    for r = 0 to rows - 1
-        array.push(upVol, 0.0)
-        array.push(dnVol, 0.0)
-
+    array<float> rowVol = array.new<float>(rows, 0.0)
     // Each bar spreads across every row it spans. A bar is not all at its close.
     for i = 1 to lenBars
         float bh = high[i]
@@ -83,25 +59,18 @@ if roll
             float span = bh - bl
             float v = nz(volume[i], 1.0)
             v := v <= 0 ? 1.0 : v
-            bool isUp = close[i] >= open[i]
             int r1 = math.max(0, math.min(rows - 1, int(math.floor((bl - lo) / step))))
             int r2 = math.max(0, math.min(rows - 1, int(math.floor((bh - lo) / step))))
             for r = r1 to r2
                 float rBot = lo + r * step
                 float overlap = math.min(bh, rBot + step) - math.max(bl, rBot)
                 float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
-                float add = v * share
-                if isUp
-                    array.set(upVol, r, array.get(upVol, r) + add)
-                else
-                    array.set(dnVol, r, array.get(dnVol, r) + add)
+                array.set(rowVol, r, array.get(rowVol, r) + v * share)
 
     float total = 0.0
     float maxRow = 0.0
-    array<float> rowVol = array.new<float>(rows, 0.0)
     for r = 0 to rows - 1
-        float t = array.get(upVol, r) + array.get(dnVol, r)
-        array.set(rowVol, r, t)
+        float t = array.get(rowVol, r)
         total += t
         maxRow := math.max(maxRow, t)
 
@@ -152,25 +121,16 @@ if roll
     poc := math.round((lo + (pocIdx + 0.5) * step) / syminfo.mintick) * syminfo.mintick
     vah := math.min(math.round((lo + (vaUp + 1) * step) / syminfo.mintick) * syminfo.mintick, hi)
     val := math.max(math.round((lo + vaDn * step) / syminfo.mintick) * syminfo.mintick, lo)
-    rHi := hi
-    rLo := lo
     vaStep := step
-    pGridLo := lo
-    pStep := step
-    pRows := rows
-    pPoc := pocIdx
-    pVaUp := vaUp
-    pVaDn := vaDn
 
 bool ready = not na(val) and not na(vah)
 
 // ----------------------------------------------------------------------------
-// Signal, entry, stop, target
+// Signal
 //
 // Price leaves value, holds out, closes back in. The stop goes beyond the
-// extreme it reached while it was out - if price goes back through that, the
-// move back in has failed. The target is the POC, which is what price is
-// coming back for.
+// extreme it reached while out, because through that the move back has failed.
+// The target is the POC, which is what price came back for.
 // ----------------------------------------------------------------------------
 var int barsBelow = 0
 var int barsAbove = 0
@@ -210,55 +170,36 @@ if ready
         outLow := na
         outHigh := na
 
-// A target the wrong side of entry is not a trade.
-if buy and (na(sigTgt) or sigTgt <= sigEntry or sigStop >= sigEntry)
+// A target the wrong side of entry is not a trade, and neither is one that pays
+// less than the minimum asked for. The stop is set by how far price ran while
+// it was outside, so a deep excursion can leave a target that is not worth the
+// risk of reaching it.
+float sigRisk = math.abs(sigEntry - sigStop)
+float sigR = sigRisk > 0 ? math.abs(sigTgt - sigEntry) / sigRisk : na
+
+if buy and (na(sigTgt) or sigTgt <= sigEntry or sigStop >= sigEntry or na(sigR) or sigR < minR)
     buy := false
-if sell and (na(sigTgt) or sigTgt >= sigEntry or sigStop <= sigEntry)
+if sell and (na(sigTgt) or sigTgt >= sigEntry or sigStop <= sigEntry or na(sigR) or sigR < minR)
     sell := false
 
 if buy or sell
-    float risk = math.abs(sigEntry - sigStop)
-    float rr = risk > 0 ? math.abs(sigTgt - sigEntry) / risk : na
-    color c = buy ? color.new(#26a69a, 0) : color.new(#ef5350, 0)
-    string txt = (buy ? 'BUY ' : 'SELL ') + fmt(sigEntry) + '\nSL ' + fmt(sigStop) + '\nTP ' + fmt(sigTgt) + '   ' + str.tostring(rr, '#.#') + 'R'
-    label.new(bar_index, buy ? low : high, txt, xloc=xloc.bar_index, yloc=buy ? yloc.belowbar : yloc.abovebar, style=buy ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=size.small)
-    // Three lines and nothing else. The prices are already on the signal
-    // label, so shading the levels and naming them again at the far end was
-    // saying the same thing three times over a chart that has to stay readable.
     int x1 = bar_index
     int x2 = bar_index + planLen
+    // Three lines, each carrying its own price. Nothing else goes on the chart.
     line.new(x1, sigEntry, x2, sigEntry, xloc=xloc.bar_index, color=#42a5f5, width=2)
     line.new(x1, sigStop, x2, sigStop, xloc=xloc.bar_index, color=#ef5350, width=1)
     line.new(x1, sigTgt, x2, sigTgt, xloc=xloc.bar_index, color=#26a69a, width=1)
+    label.new(x2, sigEntry, (buy ? ' BUY ' : ' SELL ') + fmt(sigEntry), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#42a5f5, size=size.small)
+    label.new(x2, sigStop, ' SL ' + fmt(sigStop), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#ef5350, size=size.small)
+    label.new(x2, sigTgt, ' TP ' + fmt(sigTgt) + '  ' + str.tostring(sigR, '#.#') + 'R', xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#26a69a, size=size.small)
 
 alertcondition(buy, title='Buy', message='ST VR BUY - price closed back inside the value area from below')
 alertcondition(sell, title='Sell', message='ST VR SELL - price closed back inside the value area from above')
 
 // ----------------------------------------------------------------------------
-// Levels and profile
+// Levels
 // ----------------------------------------------------------------------------
 plot(ready ? poc : na, title='POC', color=colPoc, linewidth=2, style=plot.style_linebr)
 p1 = plot(ready ? vah : na, title='VAH', color=colVa, style=plot.style_linebr)
 p2 = plot(ready ? val : na, title='VAL', color=colVa, style=plot.style_linebr)
-fill(p1, p2, color=color.new(colVa, 92), title='Value Area')
-plot(ready ? rHi : na, title='Range High', color=color.new(#9e9e9e, 45), style=plot.style_linebr)
-plot(ready ? rLo : na, title='Range Low', color=color.new(#9e9e9e, 45), style=plot.style_linebr)
-
-if showProfile and barstate.islast and ready and pRows > 0
-    float maxR = 0.0
-    for r = 0 to pRows - 1
-        maxR := math.max(maxR, array.get(upVol, r) + array.get(dnVol, r))
-    maxR := maxR <= 0 ? 1.0 : maxR
-    for r = 0 to pRows - 1
-        float rBot = pGridLo + r * pStep
-        float u = array.get(upVol, r)
-        float d = array.get(dnVol, r)
-        bool inVa = r >= pVaDn and r <= pVaUp
-        int wu = int(math.round(profWidth * u / maxR))
-        int wd = int(math.round(profWidth * d / maxR))
-        color cu = r == pPoc ? color.new(colPoc, 45) : inVa ? colUp : color.new(colUp, 82)
-        color cd = r == pPoc ? color.new(colPoc, 45) : inVa ? colDn : color.new(colDn, 82)
-        if wu > 0
-            box.new(bar_index + 3, rBot + pStep, bar_index + 3 + wu, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cu)
-        if wd > 0
-            box.new(bar_index + 3 + wu, rBot + pStep, bar_index + 3 + wu + wd, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cd)
+fill(p1, p2, color=color.new(colVa, 94), title='Value Area')
