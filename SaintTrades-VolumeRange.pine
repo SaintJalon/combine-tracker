@@ -1,0 +1,205 @@
+//@version=6
+// SaintTrades Volume Range
+//
+// A fixed range volume profile, and one thing to do about it.
+//
+// The profile is built from the last N bars, wherever you are. Any symbol, any
+// timeframe, no sessions, no periods, nothing to configure per instrument. It
+// marks the POC and the value area, and it says BUY or SELL when price closes
+// back inside value after leaving it, which is the one signal a volume profile
+// gives that needs no story told about it: price left the area most of the
+// business was done in, failed, and came back.
+indicator('SaintTrades Volume Range', shorttitle='ST VR', overlay=true, max_boxes_count=500, max_lines_count=20, max_labels_count=200, max_bars_back=1000)
+
+// ----------------------------------------------------------------------------
+// Inputs
+// ----------------------------------------------------------------------------
+lenBars = input.int(200, title='Range (bars)', minval=20, maxval=500, tooltip='How many bars the profile is built from. Fixed, so it means the same thing on every symbol and timeframe. Larger is slower.')
+rows = input.int(40, title='Rows', minval=10, maxval=120, tooltip='Price buckets the range is cut into. More rows is a finer POC.')
+vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1)
+
+grpSig = 'Signal'
+sigOn = input.bool(true, title='Show Buy / Sell', group=grpSig)
+confirmBars = input.int(2, title='Bars Outside First', minval=1, maxval=20, group=grpSig, tooltip='How long price must stay beyond the value area before a close back inside counts as a signal. Higher gives fewer and cleaner signals.')
+
+grpDisp = 'Display'
+showProfile = input.bool(true, title='Show Profile', group=grpDisp)
+profWidth = input.int(60, title='Profile Width (bars)', minval=5, maxval=200, group=grpDisp)
+colUp = input.color(color.new(#26a69a, 60), title='Up', inline='c1', group=grpDisp)
+colDn = input.color(color.new(#ef5350, 60), title='Down', inline='c1', group=grpDisp)
+colPoc = input.color(#ffb300, title='POC', inline='c2', group=grpDisp)
+colVa = input.color(#42a5f5, title='Value', inline='c2', group=grpDisp)
+
+// ----------------------------------------------------------------------------
+// Profile of the last N closed bars, rebuilt every bar
+//
+// The current bar is left out, so the levels a signal is judged against are
+// settled before the bar that triggers it.
+// ----------------------------------------------------------------------------
+bool ready = bar_index > lenBars + 1
+
+float poc = na
+float vah = na
+float val = na
+float rangeHi = na
+float rangeLo = na
+
+var array<float> upVol = array.new<float>(0)
+var array<float> dnVol = array.new<float>(0)
+
+if ready
+    float hi = high[1]
+    float lo = low[1]
+    for i = 1 to lenBars
+        hi := math.max(hi, high[i])
+        lo := math.min(lo, low[i])
+
+    float step = (hi - lo) / rows
+    step := step <= 0 ? syminfo.mintick : step
+
+    array.clear(upVol)
+    array.clear(dnVol)
+    for r = 0 to rows - 1
+        array.push(upVol, 0.0)
+        array.push(dnVol, 0.0)
+
+    // Each bar spreads its volume across every row it spans, in proportion to
+    // how much of the bar sits in each. A bar is not all at its close.
+    for i = 1 to lenBars
+        float bh = high[i]
+        float bl = low[i]
+        if not na(bh) and not na(bl)
+            float span = bh - bl
+            float v = nz(volume[i], 1.0)
+            v := v <= 0 ? 1.0 : v
+            bool isUp = close[i] >= open[i]
+            int r1 = math.max(0, math.min(rows - 1, int(math.floor((bl - lo) / step))))
+            int r2 = math.max(0, math.min(rows - 1, int(math.floor((bh - lo) / step))))
+            for r = r1 to r2
+                float rBot = lo + r * step
+                float overlap = math.min(bh, rBot + step) - math.max(bl, rBot)
+                float share = span <= 0 ? 1.0 : math.max(overlap, 0) / span
+                float add = v * share
+                if isUp
+                    array.set(upVol, r, array.get(upVol, r) + add)
+                else
+                    array.set(dnVol, r, array.get(dnVol, r) + add)
+
+    // --- POC, then the value area grown out from it two rows at a time ---
+    float total = 0.0
+    float maxRow = 0.0
+    array<float> rowVol = array.new<float>(rows, 0.0)
+    for r = 0 to rows - 1
+        float t = array.get(upVol, r) + array.get(dnVol, r)
+        array.set(rowVol, r, t)
+        total += t
+        maxRow := math.max(maxRow, t)
+
+    int pocIdx = 0
+    float mid = (rows - 1) / 2.0
+    float best = rows + 1.0
+    for r = 0 to rows - 1
+        if array.get(rowVol, r) >= maxRow
+            float d = math.abs(r - mid)
+            if d < best
+                best := d
+                pocIdx := r
+
+    int vaUp = pocIdx
+    int vaDn = pocIdx
+    float acc = array.get(rowVol, pocIdx)
+    float target = total * vaPct / 100.0
+    for _i = 0 to rows - 1
+        if acc >= target
+            break
+        float sumUp = -1.0
+        int upRows = 0
+        if vaUp + 1 <= rows - 1
+            sumUp := array.get(rowVol, vaUp + 1)
+            upRows := 1
+            if vaUp + 2 <= rows - 1
+                sumUp += array.get(rowVol, vaUp + 2)
+                upRows := 2
+        float sumDn = -1.0
+        int dnRows = 0
+        if vaDn - 1 >= 0
+            sumDn := array.get(rowVol, vaDn - 1)
+            dnRows := 1
+            if vaDn - 2 >= 0
+                sumDn += array.get(rowVol, vaDn - 2)
+                dnRows := 2
+        if upRows == 0 and dnRows == 0
+            break
+        if sumUp >= sumDn
+            vaUp += upRows
+            acc += sumUp
+        else
+            vaDn -= dnRows
+            acc += sumDn
+
+    poc := math.round((lo + (pocIdx + 0.5) * step) / syminfo.mintick) * syminfo.mintick
+    vah := math.min(math.round((lo + (vaUp + 1) * step) / syminfo.mintick) * syminfo.mintick, hi)
+    val := math.max(math.round((lo + vaDn * step) / syminfo.mintick) * syminfo.mintick, lo)
+    rangeHi := hi
+    rangeLo := lo
+
+    // --- histogram, drawn to the right of the last bar only ---
+    if showProfile and barstate.islast
+        for r = 0 to rows - 1
+            float rBot = lo + r * step
+            float u = array.get(upVol, r)
+            float d = array.get(dnVol, r)
+            bool inVa = r >= vaDn and r <= vaUp
+            int wu = int(math.round(profWidth * u / (maxRow <= 0 ? 1.0 : maxRow)))
+            int wd = int(math.round(profWidth * d / (maxRow <= 0 ? 1.0 : maxRow)))
+            color cu = r == pocIdx ? color.new(colPoc, 45) : inVa ? colUp : color.new(colUp, 82)
+            color cd = r == pocIdx ? color.new(colPoc, 45) : inVa ? colDn : color.new(colDn, 82)
+            if wu > 0
+                box.new(bar_index + 3, rBot + step, bar_index + 3 + wu, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cu)
+            if wd > 0
+                box.new(bar_index + 3 + wu, rBot + step, bar_index + 3 + wu + wd, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=cd)
+
+// ----------------------------------------------------------------------------
+// The signal
+//
+// Price leaves value, stays out long enough to mean it, then closes back in.
+// Buy when it comes back up through the low edge, sell when it comes back down
+// through the high edge. Nothing else is a signal.
+// ----------------------------------------------------------------------------
+var int barsBelow = 0
+var int barsAbove = 0
+
+bool buy = false
+bool sell = false
+
+if ready
+    if close < val
+        barsBelow += 1
+        barsAbove := 0
+    else if close > vah
+        barsAbove += 1
+        barsBelow := 0
+    else
+        if barsBelow >= confirmBars
+            buy := true
+        if barsAbove >= confirmBars
+            sell := true
+        barsBelow := 0
+        barsAbove := 0
+
+plotshape(sigOn and buy, title='Buy', style=shape.labelup, location=location.belowbar, color=color.new(#26a69a, 0), textcolor=color.white, text='BUY', size=size.small)
+plotshape(sigOn and sell, title='Sell', style=shape.labeldown, location=location.abovebar, color=color.new(#ef5350, 0), textcolor=color.white, text='SELL', size=size.small)
+
+alertcondition(buy, title='Buy', message='ST VR BUY - price closed back inside the value area from below')
+alertcondition(sell, title='Sell', message='ST VR SELL - price closed back inside the value area from above')
+
+// ----------------------------------------------------------------------------
+// Levels
+// ----------------------------------------------------------------------------
+plot(ready ? poc : na, title='POC', color=colPoc, linewidth=2, style=plot.style_linebr)
+plot(ready ? vah : na, title='VAH', color=colVa, style=plot.style_linebr)
+plot(ready ? val : na, title='VAL', color=colVa, style=plot.style_linebr)
+plot(ready ? rangeHi : na, title='Range High', color=color.new(#9e9e9e, 45), style=plot.style_linebr)
+plot(ready ? rangeLo : na, title='Range Low', color=color.new(#9e9e9e, 45), style=plot.style_linebr)
+
+fill(plot(ready ? vah : na, display=display.none), plot(ready ? val : na, display=display.none), color=color.new(colVa, 93), title='Value Area')
