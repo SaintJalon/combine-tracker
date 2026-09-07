@@ -46,6 +46,7 @@ showPlan = input.bool(true, title='Show Trade Plan', group=grpPlan)
 planMode = input.string('Auto', title='Setup Type', options=['Auto', 'Rotation (fade to POC)', 'Breakout (continuation)'], group=grpPlan, tooltip='Auto plans a rotation while price sits inside the profile range, and a breakout retest once price trades outside it.')
 dirFilter = input.string('Both', title='Direction Filter', options=['Both', 'Long Only', 'Short Only'], group=grpPlan)
 dirBandPct = input.float(5, title='Direction Deadband (% of VA)', minval=0, maxval=50, step=1, group=grpPlan, tooltip='How far past the POC price has to trade before the plan is allowed to flip direction. Stops the setup oscillating while price sits on the POC.')
+entryStyle = input.string('Market (enter now)', title='Entry', options=['Market (enter now)', 'Limit at the level'], group=grpPlan, tooltip='Market prices the entry where price is now and puts the stop at the level that would prove the idea wrong, so the plan says where to buy and where to be out. Limit rests the order on the value edge and waits for a pullback that may never come.')
 stopMode = input.string('Value Edge', title='Stop Anchor', options=['Profile Extreme', 'Value Edge', 'ATR'], group=grpPlan)
 atrLen = input.int(14, title='ATR Length', minval=1, group=grpPlan)
 slBufATR = input.float(0.25, title='Stop Buffer (ATR)', minval=0, step=0.05, group=grpPlan, tooltip='Padding beyond the structural stop level.')
@@ -548,17 +549,33 @@ if barstate.islast
                 float entry = na
                 float sl = na
 
+                // The buffer pads the row, the way it pads the structural
+                // level under every other anchor.
+                float edgeStop = step + buf
+                bool atMarket = entryStyle == 'Market (enter now)'
+
                 if kind == 'Rotation'
-                    // fade the far side of value back toward the POC
-                    entry := isLong ? valPrice : vahPrice
-                    // The buffer pads the row, the way it pads the structural
-                    // level under every other anchor.
-                    float edgeStop = step + buf
-                    sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? entry - edgeStop : entry + edgeStop) : (isLong ? lo - buf : hi + buf)
+                    if atMarket
+                        // Buy where price is, and be wrong at the edge of value.
+                        // Resting the entry on the edge itself gave a bid that
+                        // may never fill and a stop one row from it, which says
+                        // nothing about where the idea stops being true.
+                        entry := px
+                        sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Profile Extreme' ? (isLong ? lo - buf : hi + buf) : (isLong ? valPrice - edgeStop : vahPrice + edgeStop)
+                    else
+                        // fade the far side of value back toward the POC
+                        entry := isLong ? valPrice : vahPrice
+                        sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? entry - edgeStop : entry + edgeStop) : (isLong ? lo - buf : hi + buf)
                 else
-                    // buy the retest of the level price broke out through
-                    entry := isLong ? (px > hi ? hi : vahPrice) : (px < lo ? lo : valPrice)
-                    sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? vahPrice - buf : valPrice + buf) : (isLong ? valPrice - buf : vahPrice + buf)
+                    if atMarket
+                        // Wrong once price is back through the level it broke.
+                        float brk = isLong ? (px > hi ? hi : vahPrice) : (px < lo ? lo : valPrice)
+                        entry := px
+                        sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Profile Extreme' ? (isLong ? lo - buf : hi + buf) : (isLong ? brk - edgeStop : brk + edgeStop)
+                    else
+                        // buy the retest of the level price broke out through
+                        entry := isLong ? (px > hi ? hi : vahPrice) : (px < lo ? lo : valPrice)
+                        sl := stopMode == 'ATR' ? (isLong ? entry - atr * slATRMult : entry + atr * slATRMult) : stopMode == 'Value Edge' ? (isLong ? vahPrice - buf : valPrice + buf) : (isLong ? valPrice - buf : vahPrice + buf)
 
                 // Snap to the tick grid so the numbers are prices you can key
                 // in, and so the tick count and R multiples are exact.
@@ -601,6 +618,10 @@ if barstate.islast
                 // target that has already been paid out.
                 if dirLatch == 'None'
                     planNote := 'price sitting on the POC'
+                else if atMarket and kind == 'Rotation' and (px < valPrice or px > vahPrice)
+                    // A rotation back to the POC is taken from inside value.
+                    // Outside it there is no edge to be wrong at.
+                    planNote := 'price outside the value area'
                 else if (isLong and px <= sl) or (not isLong and px >= sl)
                     planNote := 'stop already breached'
                 else if (isLong and px >= tp2) or (not isLong and px <= tp2)
@@ -656,7 +677,7 @@ if barstate.islast
                 float riskPts = math.abs(planEntry - planStop)
                 float rMult = riskPts > 0 ? math.abs(planTp2 - planEntry) / riskPts : na
                 cellKV(7, 'Setup', planKind + ' ' + planDir, planDir == 'Long' ? colTp : colSl)
-                string ordType = planDir == 'Long' ? (planEntry > close ? 'buy stop' : 'buy limit') : (planEntry < close ? 'sell stop' : 'sell limit')
+                string ordType = entryStyle == 'Market (enter now)' ? 'at market' : planDir == 'Long' ? (planEntry > close ? 'buy stop' : 'buy limit') : (planEntry < close ? 'sell stop' : 'sell limit')
                 cellKV(8, 'Entry', fmt(planEntry) + '  ' + ordType, colEntry)
                 cellKV(9, 'Stop', fmt(planStop) + '  (' + str.tostring(riskPts / syminfo.mintick, '#') + ' tk)', colSl)
                 cellKV(10, 'Targets', fmt(planTp1) + ' / ' + fmt(planTp2) + '  ' + str.tostring(rMult, '#.#') + 'R', colTp)
