@@ -193,6 +193,15 @@ plotshape(sigOn and sell, title='Sell', style=shape.labeldown, location=location
 alertcondition(buy, title='Buy', message='ST VR BUY - price closed back inside the value area from below')
 alertcondition(sell, title='Sell', message='ST VR SELL - price closed back inside the value area from above')
 
+// Price outside the value area is the state a signal comes out of, so it is
+// shaded. No shading anywhere means price never leaves value and no signal can
+// ever fire, which is a different problem from the signal itself being broken.
+bgcolor(ready and close < val ? color.new(#26a69a, 90) : ready and close > vah ? color.new(#ef5350, 90) : na, title='Outside value')
+
+// The counters, in the Data Window, so the two halves can be told apart.
+plot(ready ? barsBelow : na, title='Bars below value', display=display.data_window)
+plot(ready ? barsAbove : na, title='Bars above value', display=display.data_window)
+
 // ----------------------------------------------------------------------------
 // Levels
 // ----------------------------------------------------------------------------
