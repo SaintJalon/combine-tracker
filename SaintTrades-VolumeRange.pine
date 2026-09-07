@@ -9,7 +9,7 @@
 // Nothing is drawn that you would not put an order against.
 //
 // Any symbol, any timeframe. No sessions, nothing to set per instrument.
-indicator('SaintTrades Volume Range', shorttitle='ST VR', overlay=true, max_lines_count=500, max_labels_count=500, max_bars_back=1000)
+indicator('SaintTrades Volume Range', shorttitle='ST VR', overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=1000)
 
 // ----------------------------------------------------------------------------
 // Inputs
@@ -25,6 +25,8 @@ minR = input.float(1.5, title='Minimum R', minval=0, step=0.1, group=grpSig, too
 planLen = input.int(40, title='Line Length (bars)', minval=5, maxval=200, group=grpSig)
 
 grpDisp = 'Display'
+showProfile = input.bool(true, title='Show Profile', group=grpDisp, tooltip='The histogram is drawn clear of the last bar so it never sits on top of price. Rows inside the value area are solid, the rest are faded, and the POC is picked out.')
+profWidth = input.int(70, title='Profile Width (bars)', minval=10, maxval=250, group=grpDisp)
 colPoc = input.color(#ffb300, title='POC', inline='c', group=grpDisp)
 colVa = input.color(#42a5f5, title='Value', inline='c', group=grpDisp)
 
@@ -37,6 +39,15 @@ var float poc = na
 var float vah = na
 var float val = na
 var float vaStep = na
+
+// Held for the histogram, which is drawn on the last bar from the finished rows
+var array<float> pRows = array.new<float>(0)
+var float pLo = na
+var float pStep = na
+var float pMax = na
+var int pPocIdx = 0
+var int pVaUp = 0
+var int pVaDn = 0
 
 bool roll = anchorMode == 'Fixed block' ? (bar_index >= lenBars and bar_index % lenBars == 0) : (bar_index > lenBars + 1)
 
@@ -51,6 +62,7 @@ if roll
     step := step <= 0 ? syminfo.mintick : step
 
     array<float> rowVol = array.new<float>(rows, 0.0)
+
     // Each bar spreads across every row it spans. A bar is not all at its close.
     for i = 1 to lenBars
         float bh = high[i]
@@ -122,6 +134,13 @@ if roll
     vah := math.min(math.round((lo + (vaUp + 1) * step) / syminfo.mintick) * syminfo.mintick, hi)
     val := math.max(math.round((lo + vaDn * step) / syminfo.mintick) * syminfo.mintick, lo)
     vaStep := step
+    pRows := array.copy(rowVol)
+    pLo := lo
+    pStep := step
+    pMax := maxRow <= 0 ? 1.0 : maxRow
+    pPocIdx := pocIdx
+    pVaUp := vaUp
+    pVaDn := vaDn
 
 bool ready = not na(val) and not na(vah)
 
@@ -186,10 +205,10 @@ if buy or sell
     int x1 = bar_index
     int x2 = bar_index + planLen
     // Three lines, each carrying its own price. Nothing else goes on the chart.
-    line.new(x1, sigEntry, x2, sigEntry, xloc=xloc.bar_index, color=#42a5f5, width=2)
+    line.new(x1, sigEntry, x2, sigEntry, xloc=xloc.bar_index, color=#42a5f5, width=3)
     line.new(x1, sigStop, x2, sigStop, xloc=xloc.bar_index, color=#ef5350, width=1)
     line.new(x1, sigTgt, x2, sigTgt, xloc=xloc.bar_index, color=#26a69a, width=1)
-    label.new(x2, sigEntry, (buy ? ' BUY ' : ' SELL ') + fmt(sigEntry), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#42a5f5, size=size.small)
+    label.new(x2, sigEntry, (buy ? ' BUY ' : ' SELL ') + fmt(sigEntry), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#42a5f5, size=size.normal)
     label.new(x2, sigStop, ' SL ' + fmt(sigStop), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#ef5350, size=size.small)
     label.new(x2, sigTgt, ' TP ' + fmt(sigTgt) + '  ' + str.tostring(sigR, '#.#') + 'R', xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#26a69a, size=size.small)
 
@@ -203,3 +222,17 @@ plot(ready ? poc : na, title='POC', color=colPoc, linewidth=2, style=plot.style_
 p1 = plot(ready ? vah : na, title='VAH', color=colVa, style=plot.style_linebr)
 p2 = plot(ready ? val : na, title='VAL', color=colVa, style=plot.style_linebr)
 fill(p1, p2, color=color.new(colVa, 94), title='Value Area')
+
+// The histogram, drawn once on the last bar and clear of it, so it reads as a
+// profile beside the chart rather than shading laid over the candles. One
+// colour: solid inside value, faded outside, the POC picked out.
+if showProfile and barstate.islast and ready and array.size(pRows) > 0
+    int anchor = bar_index + 4
+    for r = 0 to array.size(pRows) - 1
+        float w = profWidth * array.get(pRows, r) / pMax
+        int wi = int(math.round(w))
+        if wi > 0
+            float rBot = pLo + r * pStep
+            bool inVa = r >= pVaDn and r <= pVaUp
+            color c = r == pPocIdx ? color.new(colPoc, 25) : inVa ? color.new(colVa, 55) : color.new(colVa, 85)
+            box.new(anchor, rBot + pStep, anchor + wi, rBot, xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=c)
