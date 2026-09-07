@@ -3,11 +3,11 @@
 //
 // A fixed range volume profile, and what to do about it.
 //
-// The profile is built from a block of N bars and then HELD for the next N,
-// which is the part that matters. Rebuilding it every bar makes the value area
-// chase price around: wherever price goes, the last N bars go with it, the area
-// re-forms around the new price, and price is never outside it. Frozen, the
-// levels stay where they were formed and price can actually leave them.
+// The profile is built from the last N bars, and you choose whether that window
+// rolls with every bar or freezes into blocks. Rolling keeps the levels near
+// price and signals more often. Fixed block holds them where they formed, so
+// price travels further before coming back, which gives fewer signals with more
+// room between the entry and the level.
 //
 // It marks the POC and the value area, and when price leaves value, holds out,
 // and closes back in, it gives an entry, a stop and a target. Any symbol, any
@@ -20,6 +20,7 @@ indicator('SaintTrades Volume Range', shorttitle='ST VR', overlay=true, max_boxe
 lenBars = input.int(200, title='Range (bars)', minval=20, maxval=500, tooltip='Bars in a block. The profile is built from one block and held for the next, so the levels are fixed while price trades against them.')
 rows = input.int(40, title='Rows', minval=10, maxval=120)
 vaPct = input.float(70, title='Value Area %', minval=30, maxval=95, step=1)
+anchorMode = input.string('Rolling', title='Range Anchor', options=['Rolling', 'Fixed block'], tooltip='Rolling rebuilds the profile every bar from the last N, so the levels follow price. Fixed block builds it once every N bars and holds it, so the levels stay where they formed and price travels away from them. Rolling gives more signals; fixed gives fewer and further from the level.')
 
 grpSig = 'Signal'
 confirmBars = input.int(2, title='Bars Outside First', minval=1, maxval=20, group=grpSig, tooltip='How long price must hold beyond the value area before a close back inside counts.')
@@ -54,7 +55,9 @@ var int pPoc = 0
 var int pVaUp = 0
 var int pVaDn = 0
 
-bool roll = bar_index >= lenBars and bar_index % lenBars == 0
+// Rolling recomputes every bar. Fixed block freezes the profile and holds it
+// for the next N bars.
+bool roll = anchorMode == 'Fixed block' ? (bar_index >= lenBars and bar_index % lenBars == 0) : (bar_index > lenBars + 1)
 
 if roll
     float hi = high[1]
