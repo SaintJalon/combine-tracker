@@ -24,7 +24,7 @@ anchorMode = input.string('Rolling', title='Range Anchor', options=['Rolling', '
 
 grpSig = 'Signal'
 confirmBars = input.int(2, title='Bars Outside First', minval=1, maxval=20, group=grpSig, tooltip='How long price must hold beyond the value area before a close back inside counts.')
-planLen = input.int(30, title='Plan Lines (bars)', minval=5, maxval=200, group=grpSig)
+planLen = input.int(40, title='Plan Length (bars)', minval=5, maxval=200, group=grpSig, tooltip='How far forward the entry, stop and target are carried across the chart.')
 
 grpDisp = 'Display'
 showProfile = input.bool(true, title='Show Profile', group=grpDisp)
@@ -222,9 +222,18 @@ if buy or sell
     color c = buy ? color.new(#26a69a, 0) : color.new(#ef5350, 0)
     string txt = (buy ? 'BUY ' : 'SELL ') + fmt(sigEntry) + '\nSL ' + fmt(sigStop) + '\nTP ' + fmt(sigTgt) + '   ' + str.tostring(rr, '#.#') + 'R'
     label.new(bar_index, buy ? low : high, txt, xloc=xloc.bar_index, yloc=buy ? yloc.belowbar : yloc.abovebar, style=buy ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=size.small)
-    line.new(bar_index, sigEntry, bar_index + planLen, sigEntry, xloc=xloc.bar_index, color=#42a5f5, width=2)
-    line.new(bar_index, sigStop, bar_index + planLen, sigStop, xloc=xloc.bar_index, color=#ef5350, width=1, style=line.style_dashed)
-    line.new(bar_index, sigTgt, bar_index + planLen, sigTgt, xloc=xloc.bar_index, color=#26a69a, width=1, style=line.style_dashed)
+    int x1 = bar_index
+    int x2 = bar_index + planLen
+    // What is being risked and what is being played for, as blocks, so the
+    // trade reads at a glance instead of being worked out from three numbers.
+    box.new(x1, math.max(sigEntry, sigStop), x2, math.min(sigEntry, sigStop), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(#ef5350, 86))
+    box.new(x1, math.max(sigTgt, sigEntry), x2, math.min(sigTgt, sigEntry), xloc=xloc.bar_index, border_color=color.new(color.black, 100), bgcolor=color.new(#26a69a, 86))
+    line.new(x1, sigEntry, x2, sigEntry, xloc=xloc.bar_index, color=#42a5f5, width=2)
+    line.new(x1, sigStop, x2, sigStop, xloc=xloc.bar_index, color=#ef5350, width=2)
+    line.new(x1, sigTgt, x2, sigTgt, xloc=xloc.bar_index, color=#26a69a, width=2)
+    label.new(x2, sigEntry, ' ENTRY ' + fmt(sigEntry), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#42a5f5, size=size.small)
+    label.new(x2, sigStop, ' SL ' + fmt(sigStop), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#ef5350, size=size.small)
+    label.new(x2, sigTgt, ' TP ' + fmt(sigTgt), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=#26a69a, size=size.small)
 
 alertcondition(buy, title='Buy', message='ST VR BUY - price closed back inside the value area from below')
 alertcondition(sell, title='Sell', message='ST VR SELL - price closed back inside the value area from above')
