@@ -23,9 +23,16 @@
 //   with neither and is usually a loser with both. Set them to your broker in
 //   Properties before you believe any number this prints.
 //
+// Margin is set to zero on both sides. One NQ contract carries something like
+// six hundred thousand dollars of notional, so against a fifty thousand dollar
+// account the tester rejects every order and reports nothing at all. Zero means
+// it stops checking notional against equity and lets the position size input do
+// the sizing, which is what a futures account with day trade margin actually
+// behaves like.
+//
 // The Strategy Tester reports dollars. The table on the chart reports R, which
 // is the number that survives a change of account size.
-strategy('SaintTrades Pulse Strategy', shorttitle='ST Pulse Strat', overlay=true, max_bars_back=5000, max_boxes_count=500, max_lines_count=500, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=2.5, slippage=1, pyramiding=0)
+strategy('SaintTrades Pulse Strategy', shorttitle='ST Pulse Strat', overlay=true, max_bars_back=5000, max_boxes_count=500, max_lines_count=500, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=2.5, slippage=1, pyramiding=0, margin_long=0, margin_short=0)
 
 // ----------------------------------------------------------------------------
 // Inputs
@@ -83,7 +90,7 @@ flatOutside = input.bool(true, title='Flat Outside The Session', group=grpWhen, 
 grpDisp = 'Display'
 showPlan = input.bool(true, title='Plot The Bracket', group=grpDisp)
 showStats = input.bool(true, title='R Stats Table', group=grpDisp)
-dashPos = input.string('Top Right', title='Table Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpDisp)
+dashPos = input.string('Bottom Left', title='Table Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpDisp, tooltip='Bottom left by default because the indicator puts its own dashboard top right, and with both on one chart they sit on top of each other.')
 colUp = input.color(#26a69a, title='Up', inline='c', group=grpDisp)
 colDn = input.color(#ef5350, title='Down', inline='c', group=grpDisp)
 colFlat = input.color(#787b86, title='Flat', inline='c', group=grpDisp)
@@ -152,8 +159,8 @@ var array<box> sZones = array.new<box>()
 var array<bool> dHtf = array.new<bool>()
 var array<bool> sHtf = array.new<bool>()
 
-color zoneEdge(bool dem, bool htfZ) => color.new(dem ? colUp : colDn, showZones ? (htfZ ? 25 : 45) : 100)
-color zoneFill(bool dem, bool htfZ) => color.new(dem ? colUp : colDn, showZones ? (htfZ ? 82 : 90) : 100)
+zoneEdge(bool dem, bool htfZ) => color.new(dem ? colUp : colDn, showZones ? (htfZ ? 25 : 45) : 100)
+zoneFill(bool dem, bool htfZ) => color.new(dem ? colUp : colDn, showZones ? (htfZ ? 82 : 90) : 100)
 
 addZone(array<box> arr, array<bool> flags, float top, float bot, int left, bool dem, bool htfZ) =>
     box b = box.new(left, top, bar_index + 3, bot, xloc=xloc.bar_index, border_color=zoneEdge(dem, htfZ), border_width=htfZ ? 2 : 1, bgcolor=zoneFill(dem, htfZ))
@@ -186,9 +193,9 @@ keepZones(array<box> arr, array<bool> flags, bool dem) =>
             box b = array.get(arr, i)
             bool hz = array.get(flags, i)
             if dem ? close < box.get_bottom(b) : close > box.get_top(b)
-                box.delete(b)
                 array.remove(arr, i)
                 array.remove(flags, i)
+                box.delete(b)
             else
                 box.set_right(b, bar_index + 3)
                 box.set_border_color(b, zoneEdge(dem, hz))
@@ -306,7 +313,7 @@ var bool tk2 = false
 var float fillPx = na
 var float netAtOpen = na
 var bool badFill = false
-var bool live = false
+var bool inPlay = false
 var int bQty = 0
 var int closedSeen = 0
 var int rN = 0
@@ -326,7 +333,7 @@ var int takenAll = 0
 // position size. Position size alone would miss a trade that opened and stopped
 // out inside a single bar, which on a fast chart is exactly the trade you want
 // counted against you.
-bool booked = live and strategy.position_size == 0 and strategy.closedtrades > closedSeen
+bool booked = inPlay and strategy.position_size == 0 and strategy.closedtrades > closedSeen
 
 if booked
     float entPx = strategy.closedtrades.entry_price(strategy.closedtrades - 1)
@@ -348,7 +355,7 @@ if booked
     bT3 := na
     bDir := 0
     badFill := false
-    live := false
+    inPlay := false
 
 closedSeen := strategy.closedtrades
 
@@ -377,7 +384,7 @@ if armed
     bQ1 := math.min(qty, int(math.round(qty * p1 / 100.0)))
     bQ2 := math.min(qty - bQ1, int(math.round(qty * p2 / 100.0)))
     bQty := qty
-    live := true
+    inPlay := true
     tradesToday += 1
     takenAll += 1
     tk1 := false
@@ -452,7 +459,7 @@ if barstate.islast and showStats
     float winPct = rN > 0 ? rWin * 100.0 / rN : na
     string posTxt = strategy.position_size == 0 ? 'FLAT' : (strategy.position_size > 0 ? 'LONG ' : 'SHORT ') + str.tostring(math.abs(strategy.position_size), '#') + ' @ ' + fmt(fillPx)
 
-    table.cell(stats, 0, 0, ' PULSE  ·  R STATS ', text_color=color.new(color.white, 0), text_size=size.small, text_halign=text.align_left, bgcolor=color.new(#42a5f5, 60))
+    table.cell(stats, 0, 0, ' PULSE  -  R STATS ', text_color=color.new(color.white, 0), text_size=size.small, text_halign=text.align_left, bgcolor=color.new(#42a5f5, 60))
     table.cell(stats, 1, 0, syminfo.ticker + '  ' + timeframe.period, text_color=color.new(color.white, 20), text_size=size.small, text_halign=text.align_right, bgcolor=color.new(#42a5f5, 60))
 
     srow(1, ' Trades', str.tostring(rN), color.new(color.white, 15))

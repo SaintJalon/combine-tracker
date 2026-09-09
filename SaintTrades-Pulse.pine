@@ -158,8 +158,8 @@ var array<box> sZones = array.new<box>()
 var array<bool> dHtf = array.new<bool>()
 var array<bool> sHtf = array.new<bool>()
 
-color zoneEdge(bool dem, bool htfZ) => color.new(dem ? colUp : colDn, showZones and drawAll ? (htfZ ? 25 : 45) : 100)
-color zoneFill(bool dem, bool htfZ) => color.new(dem ? colUp : colDn, showZones and drawAll ? (htfZ ? 82 : 90) : 100)
+zoneEdge(bool dem, bool htfZ) => color.new(dem ? colUp : colDn, showZones and drawAll ? (htfZ ? 25 : 45) : 100)
+zoneFill(bool dem, bool htfZ) => color.new(dem ? colUp : colDn, showZones and drawAll ? (htfZ ? 82 : 90) : 100)
 
 addZone(array<box> arr, array<bool> flags, float top, float bot, int left, bool dem, bool htfZ) =>
     box b = box.new(left, top, bar_index + 3, bot, xloc=xloc.bar_index, border_color=zoneEdge(dem, htfZ), border_width=htfZ ? 2 : 1, bgcolor=zoneFill(dem, htfZ), text=htfZ ? 'HTF' : '', text_color=color.new(dem ? colUp : colDn, showZones and drawAll ? 25 : 100), text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_center)
@@ -193,9 +193,9 @@ keepZones(array<box> arr, array<bool> flags, bool dem) =>
             box b = array.get(arr, i)
             bool hz = array.get(flags, i)
             if dem ? close < box.get_bottom(b) : close > box.get_top(b)
-                box.delete(b)
                 array.remove(arr, i)
                 array.remove(flags, i)
+                box.delete(b)
             else
                 box.set_right(b, bar_index + 3)
                 box.set_border_color(b, zoneEdge(dem, hz))
@@ -429,7 +429,7 @@ if (tDir != 0 or evStop or evT3) and drawTrade and not na(lnE)
     label.set_text(lb2, (tB2 ? ' TP2 HIT ' : ' TP2 ') + fmt(tT2))
     label.set_text(lb3, (tB3 ? ' TP3 HIT ' : ' TP3 ') + fmt(tT3))
     if evStop or evT3
-        label.set_text(lbE, label.get_text(lbE) + '  ·  ' + str.tostring(lastR, '#.##') + 'R')
+        label.set_text(lbE, label.get_text(lbE) + '  -  ' + str.tostring(lastR, '#.##') + 'R')
 
 plot(drawAll ? emaFast : na, title='Fast EMA', color=color.new(#42a5f5, 20), linewidth=1)
 plot(drawAll ? emaSlow : na, title='Slow EMA', color=color.new(colFlat, 20), linewidth=1)
@@ -454,7 +454,7 @@ row(int r, string k, string v, color c) =>
 
 if barstate.islast and showDash
     float openR = tDir == 0 or na(tRisk) or tRisk <= 0 ? na : (close - tEntry) / tRisk * tDir
-    string manage = tDir == 0 ? (na(lastR) ? 'flat' : 'flat  ·  last ' + str.tostring(lastR, '#.##') + 'R') : tB3 ? 'TP3 hit  ·  done' : tB2 ? 'TP2 hit  ·  running to TP3' : tB1 ? (tBe ? 'TP1 hit  ·  stop at breakeven' : 'TP1 hit') : tBe ? 'stop at breakeven' : 'working to TP1'
+    string manage = tDir == 0 ? (na(lastR) ? 'flat' : 'flat  -  last ' + str.tostring(lastR, '#.##') + 'R') : tB3 ? 'TP3 hit  -  done' : tB2 ? 'TP2 hit  -  running to TP3' : tB1 ? (tBe ? 'TP1 hit  -  stop at breakeven' : 'TP1 hit') : tBe ? 'stop at breakeven' : 'working to TP1'
     string tradeTxt = tDir == 0 ? 'FLAT' : (tDir == 1 ? 'LONG ' : 'SHORT ') + fmt(tEntry) + '  ' + str.tostring(openR, '#.##') + 'R'
 
     table.cell(dash, 0, 0, ' SAINTTRADES PULSE ', text_color=color.new(color.white, 0), text_size=size.small, text_halign=text.align_left, bgcolor=color.new(#42a5f5, 60))
@@ -467,7 +467,7 @@ if barstate.islast and showDash
     row(5, ' Structure', structTxt, structDir == 1 ? colUp : structDir == -1 ? colDn : colFlat)
     row(6, ' Last Signal', lastSig, str.startswith(lastSig, 'BUY') ? colUp : str.startswith(lastSig, 'SELL') ? colDn : colFlat)
     row(7, ' Trade', tradeTxt, tDir == 1 ? colUp : tDir == -1 ? colDn : colFlat)
-    row(8, ' Management', manage + (wins + losses > 0 ? '  ·  ' + str.tostring(wins) + 'W ' + str.tostring(losses) + 'L' : ''), color.new(color.white, 25))
+    row(8, ' Management', manage + (wins + losses > 0 ? '  -  ' + str.tostring(wins) + 'W ' + str.tostring(losses) + 'L' : ''), color.new(color.white, 25))
 
 // ----------------------------------------------------------------------------
 // Alerts
