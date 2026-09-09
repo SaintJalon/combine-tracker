@@ -55,8 +55,8 @@ grpSig = 'Signals'
 armLen = input.int(12, title='Pullback Window (bars)', minval=2, maxval=60, group=grpSig, tooltip='How long a pullback stays live. Price has to touch the fast EMA and then push off it inside this many bars, or the setup is dropped.')
 allowRev = input.bool(true, title='Reversal Trades', group=grpSig, tooltip='Takes a sweep of a recent high or low that closes straight back inside. Off means continuation only.')
 swpLen = input.int(20, title='Sweep Lookback (bars)', minval=5, maxval=100, group=grpSig)
-minQual = input.int(40, title='Minimum Quality', minval=0, maxval=100, group=grpSig, tooltip='Signals scoring under this are not taken. 75 and up reads as an A, 55 to 74 a B.')
-oneAtATime = input.bool(false, title='One Trade at a Time', group=grpSig, tooltip='On, nothing new prints until the trade on the chart is done. Off, signals keep coming and the tracker follows the newest one.')
+minQual = input.int(50, title='Minimum Quality', minval=0, maxval=100, group=grpSig, tooltip='This is the accuracy dial. Every rule the CRT notes ask for feeds the score rather than deleting the signal, so raising this gives you fewer and better trades instead of none. 65 and up is strict, 35 is loose.')
+oneAtATime = input.bool(true, title='One Trade at a Time', group=grpSig, tooltip='On, nothing new prints until the trade on the chart is done. Off, signals keep coming and the tracker follows the newest one.')
 
 grpChop = 'Chop Filter'
 useChop = input.bool(true, title='Hold Signals in Chop', group=grpChop)
@@ -83,8 +83,10 @@ maxRiskAtr = input.float(2.5, title='Maximum Risk (ATR)', minval=0.5, maxval=10,
 grpDisp = 'Display'
 mode = input.string('Trade', title='Mode', options=['Trade', 'Full'], group=grpDisp, tooltip='Trade is the default and it draws one thing: the trade. An arrow, the entry, the stop and the targets, each carrying its price. Full adds the EMAs, the zones, the range and the dashboard for when you want to look at the reasoning rather than act on it.')
 showDash = input.bool(false, title='Dashboard', group=grpDisp, tooltip='Off by default. It is eleven rows of reasoning and none of it is something you put an order against.')
-planLen = input.int(30, title='Line Length (bars)', minval=5, maxval=200, group=grpDisp)
-showT3 = input.bool(false, title='Show Third Target', group=grpDisp, tooltip='Two targets is usually enough on the chart. The trade still manages all three.')
+planLen = input.int(20, title='Line Length (bars)', minval=5, maxval=200, group=grpDisp)
+maxSets = input.int(5, title='Trades Kept On Chart', minval=1, maxval=40, group=grpDisp, tooltip='Older trades are removed as new ones print, so the chart never fills up.')
+showT2 = input.bool(false, title='Show Second Target', group=grpDisp, tooltip='One target on the chart by default. The trade still manages all three behind it.')
+showT3 = input.bool(false, title='Show Third Target', group=grpDisp)
 dashPos = input.string('Top Right', title='Dashboard Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpDisp)
 colUp = input.color(#26a69a, title='Up', inline='c', group=grpDisp)
 colDn = input.color(#ef5350, title='Down', inline='c', group=grpDisp)
@@ -411,16 +413,34 @@ bool isRevS = revShort and not trigShort and not crtSigS
 // Alignment with the timeframe above carries the most, then how much trend
 // there is to work with, then momentum, whether the entry is off a zone, and
 // whether anyone traded it.
+// Quality is the accuracy dial, and everything the CRT notes ask of a setup is
+// asked here rather than used to delete the signal. A filter that throws a trade
+// away tells you nothing; a score tells you how much of the framework agreed,
+// and then one number decides what you are willing to take.
+//
+//   higher timeframe alignment   25    the draw on liquidity agrees
+//   sweep closed back inside     15    the high odds version of a CRT
+//   discount for longs           12    premium is how a good setup gets a bad price
+//   profile is expansion         12    only expansion and reversal are traded
+//   trend strength               12
+//   momentum                     10
+//   entry off a zone              8
+//   structure agrees              6
+//   volume                        5
+//   killzone hour                 5
 score(int dir, bool rev, bool crt) =>
-    float s = crt ? (closedIn ? 30.0 : 18.0) : rev ? 15.0 : (dir == 1 ? htfUp : htfDn) ? 30.0 : (dir == 1 ? htfDn : htfUp) ? 0.0 : 15.0
-    s += math.min(25.0, adx / 40.0 * 25.0)
+    float s = 0.0
+    s += (dir == 1 ? htfUp : htfDn) ? 25.0 : (dir == 1 ? htfDn : htfUp) ? 0.0 : 12.0
+    s += crt ? (closedIn ? 15.0 : 6.0) : rev ? 6.0 : 8.0
+    s += (dir == 1 ? inDiscount : inPremium) ? 12.0 : 0.0
+    s += profile == 'EXPANSION' or profile == 'REVERSAL' ? 12.0 : profile == 'MANIPULATION' ? 6.0 : 0.0
+    s += math.min(12.0, adx / 40.0 * 12.0)
     float m = dir == 1 ? rsi - 50.0 : 50.0 - rsi
-    s += math.min(20.0, math.max(0.0, m))
-    s += (dir == 1 ? atDemand : atSupply) ? 15.0 : 0.0
-    s += volume > volAvg ? 10.0 : 0.0
-    s += structDir == dir ? 5.0 : 0.0
-    s += crt and (dir == 1 ? inDiscount : inPremium) ? 8.0 : 0.0
-    s += crt and kzOk and useKz ? 5.0 : 0.0
+    s += math.min(10.0, math.max(0.0, m / 2.0))
+    s += (dir == 1 ? atDemand : atSupply) ? 8.0 : 0.0
+    s += structDir == dir ? 6.0 : 0.0
+    s += volume > volAvg ? 5.0 : 0.0
+    s += kzOk and useKz ? 5.0 : 0.0
     math.max(0.0, math.min(100.0, s))
 
 grade(float s) => s >= 75 ? 'A' : s >= 55 ? 'B' : s >= 35 ? 'C' : 'D'
@@ -548,26 +568,39 @@ if longSig or shortSig
 // ----------------------------------------------------------------------------
 // The trade on the chart
 //
-// Every signal gets its own set and keeps it. The old version redrew one trade
-// and deleted the last, so a session of work showed as a single set of lines in
-// the middle of an empty chart. These stay where they were printed.
+// Three lines and their prices: where to get in, where to be out, where to take
+// it off. The same shape the volume range indicator ended up in.
+//
+// Only the last few stay. Every signal keeping its lines forever turns a session
+// into a wall of labels you cannot read a price off.
 // ----------------------------------------------------------------------------
+var array<line> drawnLines = array.new<line>()
+var array<label> drawnLabels = array.new<label>()
+
 if (longSig or shortSig) and drawTrade
     int x1 = bar_index
     int x2 = bar_index + planLen
     color cd = tDir == 1 ? colUp : colDn
-    line.new(x1, tEntry, x2, tEntry, xloc=xloc.bar_index, color=#42a5f5, width=2)
-    line.new(x1, tStop, x2, tStop, xloc=xloc.bar_index, color=colDn, width=1, style=line.style_dashed)
-    line.new(x1, tT1, x2, tT1, xloc=xloc.bar_index, color=colUp, width=1)
-    line.new(x1, tT2, x2, tT2, xloc=xloc.bar_index, color=color.new(colUp, 30), width=1)
+    array.push(drawnLines, line.new(x1, tEntry, x2, tEntry, xloc=xloc.bar_index, color=#42a5f5, width=2))
+    array.push(drawnLines, line.new(x1, tStop, x2, tStop, xloc=xloc.bar_index, color=colDn, width=1, style=line.style_dashed))
+    array.push(drawnLines, line.new(x1, tT1, x2, tT1, xloc=xloc.bar_index, color=colUp, width=1))
+    array.push(drawnLabels, label.new(x2, tEntry, (tDir == 1 ? ' BUY ' : ' SELL ') + fmt(tEntry), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=cd, size=size.small))
+    array.push(drawnLabels, label.new(x2, tStop, ' SL ' + fmt(tStop), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colDn, size=size.small))
+    array.push(drawnLabels, label.new(x2, tT1, ' TP ' + fmt(tT1), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colUp, size=size.small))
+    if showT2
+        array.push(drawnLines, line.new(x1, tT2, x2, tT2, xloc=xloc.bar_index, color=color.new(colUp, 40), width=1))
+        array.push(drawnLabels, label.new(x2, tT2, ' TP2 ' + fmt(tT2), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=color.new(colUp, 25), size=size.tiny))
     if showT3
-        line.new(x1, tT3, x2, tT3, xloc=xloc.bar_index, color=color.new(colUp, 55), width=1)
-    label.new(x2, tEntry, (tDir == 1 ? ' BUY ' : ' SELL ') + fmt(tEntry), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=cd, size=size.normal)
-    label.new(x2, tStop, ' SL ' + fmt(tStop), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colDn, size=size.small)
-    label.new(x2, tT1, ' TP1 ' + fmt(tT1), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colUp, size=size.small)
-    label.new(x2, tT2, ' TP2 ' + fmt(tT2), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colUp, size=size.small)
-    if showT3
-        label.new(x2, tT3, ' TP3 ' + fmt(tT3), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colUp, size=size.small)
+        array.push(drawnLines, line.new(x1, tT3, x2, tT3, xloc=xloc.bar_index, color=color.new(colUp, 60), width=1))
+        array.push(drawnLabels, label.new(x2, tT3, ' TP3 ' + fmt(tT3), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=color.new(colUp, 45), size=size.tiny))
+
+    // Trim to the last few trades. Three a set, plus whichever extra targets
+    // are switched on.
+    int perSet = 3 + (showT2 ? 1 : 0) + (showT3 ? 1 : 0)
+    while array.size(drawnLines) > maxSets * perSet
+        line.delete(array.shift(drawnLines))
+    while array.size(drawnLabels) > maxSets * perSet
+        label.delete(array.shift(drawnLabels))
 
 // The range itself, so the targets on the chart can be checked against the
 // candle they came from.
