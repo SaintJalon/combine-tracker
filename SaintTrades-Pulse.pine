@@ -101,11 +101,14 @@ tick(float p) => math.round(p / syminfo.mintick) * syminfo.mintick
 // what it is doing inside. A signal with both behind it is worth more than one
 // fighting the timeframe above.
 // ----------------------------------------------------------------------------
-// The step up is much larger than it was. CRT puts key levels twelve to twenty
-// times above the chart you enter on - M15 over M1, H1 over M5, H4 over M15 -
-// not the three or four steps that a moving average filter would use.
+// The step up, capped. CRT puts key levels twelve to twenty times above the
+// chart you enter on, and on 1m and 5m that is what works. On 15m it does not:
+// a 4h range puts its far end further than a session can reach, and 15m measured
+// at 0.53 profit factor against a 4h range and 2.48 against a 1h one. So the
+// ladder tops out where the far end is still reachable rather than where the
+// ratio says it should.
 int chartSec = timeframe.in_seconds(timeframe.period)
-string htfAutoTf = chartSec <= 60 ? '15' : chartSec <= 300 ? '60' : chartSec <= 900 ? '240' : chartSec <= 3600 ? 'D' : chartSec <= 14400 ? 'W' : 'M'
+string htfAutoTf = chartSec <= 60 ? '15' : chartSec <= 900 ? '60' : chartSec <= 3600 ? '240' : chartSec <= 14400 ? 'D' : 'W'
 string htf = htfAuto ? htfAutoTf : htfPin
 string crtTf = crtAuto ? htfAutoTf : crtPin
 
