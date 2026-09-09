@@ -41,7 +41,7 @@ crtAuto = input.bool(true, title='CRT Timeframe Follows Chart', group=grpCrt, to
 crtPin = input.timeframe('60', title='CRT Timeframe', group=grpCrt)
 crtCloseIn = input.bool(true, title='Sweep Must Close Back Inside', group=grpCrt, tooltip='A sweep that closes back inside the range is the high odds version. One that closes outside leaves the range intact but the reversal is a worse bet, and this drops it.')
 crtT1 = input.bool(true, title='First Target At The Midpoint', group=grpCrt, tooltip='The range midpoint, then the far end. Both come from the candle rather than from an R multiple.')
-crtMinR = input.float(1.0, title='Minimum R To The Far End', minval=0, step=0.25, group=grpCrt)
+crtMinR = input.float(2.0, title='Minimum R To The Far End', minval=0, step=0.25, group=grpCrt, tooltip='The far end of the range has to pay this much per unit of risk or the trade is not taken. One was too low: it let through ranges whose far end barely covered the stop, and on gold that is most of them. Two measured better on every symbol tried.')
 
 grpFilter = 'Filters'
 useKz = input.bool(false, title='Only In Killzone Hours', group=grpFilter, tooltip='CRT says the purge happens at particular hours. These are New York hours and the default set is the one in the notes.')
