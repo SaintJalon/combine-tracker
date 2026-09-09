@@ -84,8 +84,10 @@ maxContracts = input.int(10, title='Max Contracts', minval=1, group=grpRisk)
 grpWhen = 'When To Trade'
 useSession = input.bool(true, title='Restrict To Session', group=grpWhen)
 sessionStr = input.session('0930-1600', title='Session', group=grpWhen, tooltip='Entries are only placed inside this window. Exits always work.')
+sessionTz = input.string('America/New_York', title='Session Timezone', options=['America/New_York', 'America/Chicago', 'Exchange'], group=grpWhen, tooltip='Left unset, a session is read in the exchange timezone, which for NQ is Chicago, not New York. Pinning it means 0930-1600 is the New York cash session on every symbol you point this at.')
 maxTrades = input.int(3, title='Max Trades Per Day', minval=1, maxval=20, group=grpWhen)
 flatOutside = input.bool(true, title='Flat Outside The Session', group=grpWhen, tooltip='Closes anything still open once the window ends, rather than carrying it overnight.')
+maxHold = input.int(40, title='Max Bars In Trade', minval=0, group=grpWhen, tooltip='A backstop for the trade that never reaches its stop or its target and just sits there. 0 turns it off. The session flush is not enough on its own: it is a market order, so it fills on the next bar, and after a Friday close the next bar is Sunday evening.')
 
 grpDisp = 'Display'
 showPlan = input.bool(true, title='Plot The Bracket', group=grpDisp)
@@ -292,7 +294,7 @@ bool newDay = timeframe.change('D')
 if newDay
     tradesToday := 0
 
-bool inWindow = not useSession or not na(time(timeframe.period, sessionStr))
+bool inWindow = not useSession or not na(sessionTz == 'Exchange' ? time(timeframe.period, sessionStr) : time(timeframe.period, sessionStr, sessionTz))
 bool flat = strategy.position_size == 0
 
 // The bracket, frozen at the signal and left alone afterwards except for the
@@ -316,6 +318,7 @@ var bool badFill = false
 var bool inPlay = false
 var int bQty = 0
 var int closedSeen = 0
+var int openBar = 0
 var int rN = 0
 var int rWin = 0
 var float rSum = 0.0
@@ -385,6 +388,7 @@ if armed
     bQ2 := math.min(qty - bQ1, int(math.round(qty * p2 / 100.0)))
     bQty := qty
     inPlay := true
+    openBar := bar_index
     tradesToday += 1
     takenAll += 1
     tk1 := false
@@ -431,6 +435,13 @@ if not na(bStop) and not badFill
 
 if flatOutside and not inWindow and strategy.position_size != 0
     strategy.close_all(comment='session end')
+
+// A trade that has neither been stopped nor paid inside this many bars is not
+// working. Left alone it becomes a position held on hope through whatever the
+// gap does next, which is where the equity swing comes from rather than from
+// any stop being hit.
+if maxHold > 0 and strategy.position_size != 0 and bar_index - openBar >= maxHold
+    strategy.close_all(comment='held too long')
 
 // ----------------------------------------------------------------------------
 // The bracket on the chart, so the fills can be checked against what was asked
