@@ -15,6 +15,12 @@
 // and the trade is then tracked bar by bar: targets hit, stop moved to
 // breakeven, result in R. The dashboard says the same thing in words.
 //
+// Candle Range Theory is the other engine in here. A completed higher timeframe
+// candle is the range. The next one sweeps one end of it and closes back inside,
+// which is the manipulation. The one after that is where you trade, back across
+// the range, and the range itself gives you the targets: the midpoint first, the
+// far end second. No invented R multiples - the levels come from the candle.
+//
 // Any symbol, any timeframe. The higher timeframe follows the chart unless you
 // pin it.
 indicator('SaintTrades Pulse', shorttitle='ST Pulse', overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
@@ -28,6 +34,22 @@ slowLen = input.int(21, title='Slow EMA', minval=3, group=grpTrend)
 htfAuto = input.bool(true, title='Higher Timeframe Follows Chart', group=grpTrend, tooltip='On a 1m chart the higher timeframe is 5m, on 5m it is 15m, and so on up. Turn this off to pin one.')
 htfPin = input.timeframe('60', title='Higher Timeframe', group=grpTrend)
 htfLen = input.int(50, title='HTF EMA', minval=5, group=grpTrend)
+
+grpCrt = 'Candle Range Theory'
+useCrt = input.bool(true, title='CRT Signals', group=grpCrt, tooltip='A completed higher timeframe candle is the range. The next sweeps one end and closes back inside it. You trade the one after that, back across the range.')
+crtAuto = input.bool(true, title='CRT Timeframe Follows Chart', group=grpCrt, tooltip='1m takes its range from 15m, 5m from 1h, 15m from 4h, 1h from the day. That is the alignment CRT asks for.')
+crtPin = input.timeframe('60', title='CRT Timeframe', group=grpCrt)
+crtCloseIn = input.bool(true, title='Sweep Must Close Back Inside', group=grpCrt, tooltip='A sweep that closes back inside the range is the high odds version. One that closes outside leaves the range intact but the reversal is a worse bet, and this drops it.')
+crtT1 = input.bool(true, title='First Target At The Midpoint', group=grpCrt, tooltip='The range midpoint, then the far end. Both come from the candle rather than from an R multiple.')
+crtMinR = input.float(1.0, title='Minimum R To The Far End', minval=0, step=0.25, group=grpCrt)
+
+grpFilter = 'Filters'
+useKz = input.bool(false, title='Only In Killzone Hours', group=grpFilter, tooltip='CRT says the purge happens at particular hours. These are New York hours and the default set is the one in the notes.')
+kzHours = input.string('1,3,6,8,9,11', title='Killzone Hours (NY)', group=grpFilter)
+drLen = input.int(60, title='Dealing Range (bars)', minval=10, maxval=300, group=grpFilter, tooltip='The swing range that premium and discount are measured against.')
+profLen = input.int(20, title='Profile Window (bars)', minval=5, maxval=100, group=grpFilter)
+usePd = input.bool(true, title='Premium / Discount Filter', group=grpFilter, tooltip='Longs only in the lower half of the dealing range, shorts only in the upper half. Buying premium is how a good setup becomes a bad price.')
+useProfile = input.bool(true, title='Profile Filter', group=grpFilter, tooltip='Only expansion and reversal profiles are traded. Ranging, manipulation and retracement are stood out, which is the filter the notes lead with.')
 
 grpSig = 'Signals'
 armLen = input.int(12, title='Pullback Window (bars)', minval=2, maxval=60, group=grpSig, tooltip='How long a pullback stays live. Price has to touch the fast EMA and then push off it inside this many bars, or the setup is dropped.')
@@ -79,9 +101,13 @@ tick(float p) => math.round(p / syminfo.mintick) * syminfo.mintick
 // what it is doing inside. A signal with both behind it is worth more than one
 // fighting the timeframe above.
 // ----------------------------------------------------------------------------
+// The step up is much larger than it was. CRT puts key levels twelve to twenty
+// times above the chart you enter on - M15 over M1, H1 over M5, H4 over M15 -
+// not the three or four steps that a moving average filter would use.
 int chartSec = timeframe.in_seconds(timeframe.period)
-string htfAutoTf = chartSec <= 60 ? '5' : chartSec <= 180 ? '15' : chartSec <= 300 ? '30' : chartSec <= 900 ? '60' : chartSec <= 1800 ? '120' : chartSec <= 3600 ? '240' : chartSec <= 14400 ? 'D' : 'W'
+string htfAutoTf = chartSec <= 60 ? '15' : chartSec <= 300 ? '60' : chartSec <= 900 ? '240' : chartSec <= 3600 ? 'D' : chartSec <= 14400 ? 'W' : 'M'
 string htf = htfAuto ? htfAutoTf : htfPin
+string crtTf = crtAuto ? htfAutoTf : crtPin
 
 // Everything pulled from the higher timeframe is taken one bar back, so a bar
 // that is still forming up there cannot change what is already on the chart.
@@ -218,6 +244,109 @@ bool atDemand = inZone(dZones, low, atr * 0.15)
 bool atSupply = inZone(sZones, high, atr * 0.15)
 
 // ----------------------------------------------------------------------------
+// Candle Range Theory
+//
+// Three candles on the timeframe above. The first is the range and nothing about
+// it needs to be a consolidation - the whole candle is the framework. The second
+// sweeps one end of that range and, in the version worth taking, closes back
+// inside it. The third is where the move goes, and the range it came from says
+// where to: the midpoint, then the far end.
+//
+// The candles are accumulated here rather than requested, so nothing is read
+// from a bar that has not finished forming.
+// ----------------------------------------------------------------------------
+bool newCrt = timeframe.change(crtTf)
+
+var float curH = na
+var float curL = na
+var float c1H = na
+var float c1L = na
+var float c2H = na
+var float c2L = na
+var float c2C = na
+
+if newCrt
+    c1H := c2H
+    c1L := c2L
+    c2H := curH
+    c2L := curL
+    c2C := close[1]
+    curH := high
+    curL := low
+else
+    curH := na(curH) ? high : math.max(curH, high)
+    curL := na(curL) ? low : math.min(curL, low)
+
+bool crtReady = not na(c1H) and not na(c1L) and not na(c2H) and not na(c2L) and c1H > c1L
+
+// The sweep. Below the range low and back inside is a bullish candle range; the
+// mirror is bearish. Closing back outside leaves the range intact but is the
+// weaker of the two, so it is gated rather than scored down.
+bool sweptLow = crtReady and c2L < c1L
+bool sweptHigh = crtReady and c2H > c1H
+bool closedIn = crtReady and c2C > c1L and c2C < c1H
+bool crtBull = sweptLow and not sweptHigh and (not crtCloseIn or c2C > c1L)
+bool crtBear = sweptHigh and not sweptLow and (not crtCloseIn or c2C < c1H)
+
+float crtMid = crtReady ? (c1H + c1L) / 2.0 : na
+float crtEql = crtMid
+
+// One trade per range. The third candle is the whole opportunity.
+var bool crtUsed = false
+if newCrt
+    crtUsed := false
+
+// ----------------------------------------------------------------------------
+// Premium and discount
+//
+// The dealing range, split at the middle. A long belongs in the lower half and a
+// short in the upper half, whatever else agrees.
+// ----------------------------------------------------------------------------
+float drHi = ta.highest(high, drLen)
+float drLo = ta.lowest(low, drLen)
+float drEql = (drHi + drLo) / 2.0
+bool inDiscount = close < drEql
+bool inPremium = close > drEql
+
+// ----------------------------------------------------------------------------
+// Market profile
+//
+// Range, expansion, retracement, manipulation, reversal. The notes only let you
+// trade the expansion and the reversal, and stand you out of the other three,
+// which is the single biggest filter in them.
+// ----------------------------------------------------------------------------
+float rngHi = ta.highest(high, profLen)[1]
+float rngLo = ta.lowest(low, profLen)[1]
+bool brokeUp = close > rngHi
+bool brokeDn = close < rngLo
+bool sweptBack = (high > rngHi and close < rngHi) or (low < rngLo and close > rngLo)
+
+string profile = sweptBack ? 'MANIPULATION' : (brokeUp or brokeDn) and not chop ? 'EXPANSION' : chop ? 'RANGE' : structDir != 0 and ((structDir == 1 and close < close[3]) or (structDir == -1 and close > close[3])) ? 'RETRACEMENT' : (crtBull or crtBear) ? 'REVERSAL' : 'RANGE'
+bool profileOk = not useProfile or profile == 'EXPANSION' or profile == 'REVERSAL' or profile == 'MANIPULATION'
+
+// ----------------------------------------------------------------------------
+// Killzone
+//
+// CRT is a time idea before it is a price idea. The purge is expected in
+// particular hours and everything outside them is a lower grade of the same
+// pattern.
+// ----------------------------------------------------------------------------
+inKillzone() =>
+    bool hit = false
+    if not useKz
+        hit := true
+    else
+        int h = hour(time, 'America/New_York')
+        array<string> parts = str.split(kzHours, ',')
+        if array.size(parts) > 0
+            for i = 0 to array.size(parts) - 1
+                if int(math.round(str.tonumber(str.replace_all(array.get(parts, i), ' ', '')))) == h
+                    hit := true
+    hit
+
+bool kzOk = inKillzone()
+
+// ----------------------------------------------------------------------------
 // Signal engine
 //
 // A pullback arms the setup: in an uptrend price has to trade down into the
@@ -257,39 +386,66 @@ float swpLo = ta.lowest(low, swpLen)[1]
 bool revLong = allowRev and low < swpLo and close > swpLo and close > open and rsi < 45
 bool revShort = allowRev and high > swpHi and close < swpHi and close < open and rsi > 55
 
+// The third candle, confirmed. Conformational CRT is the version the notes tell
+// you to trade: never the sweep itself, only the candle after it, and only once
+// it has shown its hand.
+bool crtSigL = useCrt and crtBull and not crtUsed and close > high[1] and close > open
+bool crtSigS = useCrt and crtBear and not crtUsed and close < low[1] and close < open
+
 bool blocked = useChop and chop
-bool rawLong = (trigLong or revLong) and not blocked
-bool rawShort = (trigShort or revShort) and not blocked
-bool isRevL = revLong and not trigLong
-bool isRevS = revShort and not trigShort
+bool pdOkL = not usePd or inDiscount
+bool pdOkS = not usePd or inPremium
+bool rawLong = (((trigLong or revLong) and not blocked) or crtSigL) and profileOk and kzOk and pdOkL
+bool rawShort = (((trigShort or revShort) and not blocked) or crtSigS) and profileOk and kzOk and pdOkS
+bool isCrtL = crtSigL
+bool isCrtS = crtSigS
+bool isRevL = revLong and not trigLong and not crtSigL
+bool isRevS = revShort and not trigShort and not crtSigS
 
 // Quality is what separates a signal you size up from one you leave alone.
 // Alignment with the timeframe above carries the most, then how much trend
 // there is to work with, then momentum, whether the entry is off a zone, and
 // whether anyone traded it.
-score(int dir, bool rev) =>
-    float s = rev ? 15.0 : (dir == 1 ? htfUp : htfDn) ? 30.0 : (dir == 1 ? htfDn : htfUp) ? 0.0 : 15.0
+score(int dir, bool rev, bool crt) =>
+    float s = crt ? (closedIn ? 30.0 : 18.0) : rev ? 15.0 : (dir == 1 ? htfUp : htfDn) ? 30.0 : (dir == 1 ? htfDn : htfUp) ? 0.0 : 15.0
     s += math.min(25.0, adx / 40.0 * 25.0)
     float m = dir == 1 ? rsi - 50.0 : 50.0 - rsi
     s += math.min(20.0, math.max(0.0, m))
     s += (dir == 1 ? atDemand : atSupply) ? 15.0 : 0.0
     s += volume > volAvg ? 10.0 : 0.0
     s += structDir == dir ? 5.0 : 0.0
+    s += crt and (dir == 1 ? inDiscount : inPremium) ? 8.0 : 0.0
+    s += crt and kzOk and useKz ? 5.0 : 0.0
     math.max(0.0, math.min(100.0, s))
 
 grade(float s) => s >= 75 ? 'A' : s >= 55 ? 'B' : s >= 35 ? 'C' : 'D'
 
-float qLong = score(1, isRevL)
-float qShort = score(-1, isRevS)
+float qLong = score(1, isRevL, isCrtL)
+float qShort = score(-1, isRevS, isCrtS)
 
 // The stop goes beyond recent structure, not a fixed distance, and a signal
 // that needs too much room is not taken.
+// A CRT trade takes its stop from the wick that did the sweeping and its targets
+// from the range that was swept. Nothing here is an R multiple.
+float crtStopL = crtReady ? tick(c2L - atr * stopBuf) : na
+float crtStopS = crtReady ? tick(c2H + atr * stopBuf) : na
+float crtFarL = c1H
+float crtFarS = c1L
+
 float loN = ta.lowest(low, structLen)
 float hiN = ta.highest(high, structLen)
 float stopLong = tick(math.min(loN, low) - atr * stopBuf)
 float stopShort = tick(math.max(hiN, high) + atr * stopBuf)
-bool riskOkL = close - stopLong > syminfo.mintick and close - stopLong <= atr * maxRiskAtr
-bool riskOkS = stopShort - close > syminfo.mintick and stopShort - close <= atr * maxRiskAtr
+float useStopL = isCrtL and not na(crtStopL) ? crtStopL : stopLong
+float useStopS = isCrtS and not na(crtStopS) ? crtStopS : stopShort
+bool riskOkL = close - useStopL > syminfo.mintick and close - useStopL <= atr * maxRiskAtr
+bool riskOkS = useStopS - close > syminfo.mintick and useStopS - close <= atr * maxRiskAtr
+
+// A range whose far end does not pay for the sweep is not worth the trade.
+float crtRl = close - useStopL
+float crtRs = useStopS - close
+bool crtRokL = not isCrtL or (not na(crtFarL) and crtRl > 0 and (crtFarL - close) / crtRl >= crtMinR)
+bool crtRokS = not isCrtS or (not na(crtFarS) and crtRs > 0 and (close - crtFarS) / crtRs >= crtMinR)
 
 // ----------------------------------------------------------------------------
 // Trade
@@ -314,8 +470,8 @@ var int losses = 0
 var string lastSig = 'none yet'
 
 bool canOpen = not oneAtATime or tDir == 0
-bool longSig = rawLong and canOpen and riskOkL and qLong >= minQual
-bool shortSig = rawShort and canOpen and riskOkS and qShort >= minQual
+bool longSig = rawLong and canOpen and riskOkL and crtRokL and qLong >= minQual
+bool shortSig = rawShort and canOpen and riskOkS and crtRokS and qShort >= minQual
 
 // Management runs on the bars after entry. The entry bar itself is left alone,
 // because a target and a stop both touched on the bar you got filled is not a
@@ -355,17 +511,32 @@ if evStop or evT3
 if longSig or shortSig
     tDir := longSig ? 1 : -1
     tEntry := tick(close)
-    tStop := longSig ? stopLong : stopShort
+    bool crtTrade = longSig ? isCrtL : isCrtS
+    tStop := longSig ? useStopL : useStopS
     tRisk := math.abs(tEntry - tStop)
-    tT1 := tick(tEntry + tDir * tRisk * r1)
-    tT2 := tick(tEntry + tDir * tRisk * r2)
-    tT3 := tick(tEntry + tDir * tRisk * r3)
+    if crtTrade
+        // The range supplies the levels. Midpoint, far end, and a runner half a
+        // range beyond it for the third.
+        float far = longSig ? crtFarL : crtFarS
+        float mid = crtMid
+        float span = math.abs(c1H - c1L)
+        tT1 := tick(crtT1 and not na(mid) ? mid : far)
+        tT2 := tick(far)
+        tT3 := tick(far + tDir * span * 0.5)
+        // A midpoint already behind price is not a target.
+        if (tDir == 1 and tT1 <= tEntry) or (tDir == -1 and tT1 >= tEntry)
+            tT1 := tick(far)
+        crtUsed := true
+    else
+        tT1 := tick(tEntry + tDir * tRisk * r1)
+        tT2 := tick(tEntry + tDir * tRisk * r2)
+        tT3 := tick(tEntry + tDir * tRisk * r3)
     tB1 := false
     tB2 := false
     tB3 := false
     tBe := false
     tBar := bar_index
-    tKind := (longSig ? isRevL : isRevS) ? 'reversal' : 'continuation'
+    tKind := (longSig ? isCrtL : isCrtS) ? 'CRT' : (longSig ? isRevL : isRevS) ? 'reversal' : 'continuation'
     tGrade := grade(longSig ? qLong : qShort)
     lastSig := (longSig ? 'BUY ' : 'SELL ') + tGrade + '  ' + str.tostring(longSig ? qLong : qShort, '#') + '  ' + tKind
 
@@ -431,6 +602,12 @@ if (tDir != 0 or evStop or evT3) and drawTrade and not na(lnE)
     if evStop or evT3
         label.set_text(lbE, label.get_text(lbE) + '  -  ' + str.tostring(lastR, '#.##') + 'R')
 
+// The range itself, so the targets on the chart can be checked against the
+// candle they came from.
+plot(drawAll and crtReady and (crtBull or crtBear) ? c1H : na, title='CRT High', color=color.new(#ffb300, 30), style=plot.style_linebr, linewidth=1)
+plot(drawAll and crtReady and (crtBull or crtBear) ? c1L : na, title='CRT Low', color=color.new(#ffb300, 30), style=plot.style_linebr, linewidth=1)
+plot(drawAll and crtReady and (crtBull or crtBear) ? crtMid : na, title='CRT Mid', color=color.new(#ffb300, 55), style=plot.style_linebr, linewidth=1)
+
 plot(drawAll ? emaFast : na, title='Fast EMA', color=color.new(#42a5f5, 20), linewidth=1)
 plot(drawAll ? emaSlow : na, title='Slow EMA', color=color.new(colFlat, 20), linewidth=1)
 
@@ -446,7 +623,7 @@ meter(float v, float cap) =>
     int n = int(math.round(math.min(1.0, math.max(0.0, v / cap)) * 10))
     str.repeat('=', n, '') + str.repeat('.', 10 - n, '')
 
-var table dash = table.new(dashPos == 'Top Left' ? position.top_left : dashPos == 'Bottom Right' ? position.bottom_right : dashPos == 'Bottom Left' ? position.bottom_left : dashPos == 'Middle Right' ? position.middle_right : position.top_right, 2, 9, bgcolor=color.new(#131722, 12), frame_color=color.new(colFlat, 55), frame_width=1, border_color=color.new(colFlat, 80), border_width=1)
+var table dash = table.new(dashPos == 'Top Left' ? position.top_left : dashPos == 'Bottom Right' ? position.bottom_right : dashPos == 'Bottom Left' ? position.bottom_left : dashPos == 'Middle Right' ? position.middle_right : position.top_right, 2, 11, bgcolor=color.new(#131722, 12), frame_color=color.new(colFlat, 55), frame_width=1, border_color=color.new(colFlat, 80), border_width=1)
 
 row(int r, string k, string v, color c) =>
     table.cell(dash, 0, r, k, text_color=color.new(colFlat, 15), text_size=size.small, text_halign=text.align_left)
@@ -456,6 +633,7 @@ if barstate.islast and showDash
     float openR = tDir == 0 or na(tRisk) or tRisk <= 0 ? na : (close - tEntry) / tRisk * tDir
     string manage = tDir == 0 ? (na(lastR) ? 'flat' : 'flat  -  last ' + str.tostring(lastR, '#.##') + 'R') : tB3 ? 'TP3 hit  -  done' : tB2 ? 'TP2 hit  -  running to TP3' : tB1 ? (tBe ? 'TP1 hit  -  stop at breakeven' : 'TP1 hit') : tBe ? 'stop at breakeven' : 'working to TP1'
     string tradeTxt = tDir == 0 ? 'FLAT' : (tDir == 1 ? 'LONG ' : 'SHORT ') + fmt(tEntry) + '  ' + str.tostring(openR, '#.##') + 'R'
+    string crtTxt = not crtReady ? 'forming' : crtBull ? 'SWEPT LOW  ' + fmt(c1L) : crtBear ? 'SWEPT HIGH  ' + fmt(c1H) : 'intact  ' + fmt(c1L) + ' - ' + fmt(c1H)
 
     table.cell(dash, 0, 0, ' SAINTTRADES PULSE ', text_color=color.new(color.white, 0), text_size=size.small, text_halign=text.align_left, bgcolor=color.new(#42a5f5, 60))
     table.cell(dash, 1, 0, syminfo.ticker + '  ' + timeframe.period, text_color=color.new(color.white, 20), text_size=size.small, text_halign=text.align_right, bgcolor=color.new(#42a5f5, 60))
@@ -464,10 +642,12 @@ if barstate.islast and showDash
     row(2, ' ' + htf + ' Trend', htfUp ? 'UP' : htfDn ? 'DOWN' : 'FLAT', htfUp ? colUp : htfDn ? colDn : colFlat)
     row(3, ' Strength', meter(adx, 40) + '  ' + str.tostring(adx, '#'), adx >= 30 ? colUp : adx >= adxMin ? #ffb300 : colFlat)
     row(4, ' Condition', cond, chop ? #ffb300 : colUp)
-    row(5, ' Structure', structTxt, structDir == 1 ? colUp : structDir == -1 ? colDn : colFlat)
-    row(6, ' Last Signal', lastSig, str.startswith(lastSig, 'BUY') ? colUp : str.startswith(lastSig, 'SELL') ? colDn : colFlat)
-    row(7, ' Trade', tradeTxt, tDir == 1 ? colUp : tDir == -1 ? colDn : colFlat)
-    row(8, ' Management', manage + (wins + losses > 0 ? '  -  ' + str.tostring(wins) + 'W ' + str.tostring(losses) + 'L' : ''), color.new(color.white, 25))
+    row(5, ' Profile', profile, profile == 'EXPANSION' or profile == 'REVERSAL' ? colUp : profile == 'MANIPULATION' ? #ffb300 : colFlat)
+    row(6, ' ' + crtTf + ' Range', crtTxt, crtBull ? colUp : crtBear ? colDn : colFlat)
+    row(7, ' Zone', na(drEql) ? '-' : inDiscount ? 'DISCOUNT' : 'PREMIUM', inDiscount ? colUp : colDn)
+    row(8, ' Structure', structTxt, structDir == 1 ? colUp : structDir == -1 ? colDn : colFlat)
+    row(9, ' Last Signal', lastSig, str.startswith(lastSig, 'BUY') ? colUp : str.startswith(lastSig, 'SELL') ? colDn : colFlat)
+    row(10, ' Trade', tradeTxt + '   ' + manage, tDir == 1 ? colUp : tDir == -1 ? colDn : colFlat)
 
 // ----------------------------------------------------------------------------
 // Alerts
@@ -479,6 +659,8 @@ alertcondition(evT2, title='TP2 Hit', message='ST Pulse TP2 hit')
 alertcondition(evT3, title='TP3 Hit', message='ST Pulse TP3 hit - trade closed')
 alertcondition(evStop, title='Stopped', message='ST Pulse stop hit')
 alertcondition(longSig or shortSig, title='Any Signal', message='ST Pulse signal')
+alertcondition(crtSigL, title='CRT Buy', message='ST Pulse CRT BUY - range low swept and reclaimed')
+alertcondition(crtSigS, title='CRT Sell', message='ST Pulse CRT SELL - range high swept and reclaimed')
 
 if longSig or shortSig
     alert('ST Pulse ' + (tDir == 1 ? 'BUY' : 'SELL') + ' ' + syminfo.ticker + ' ' + timeframe.period + ' @ ' + fmt(tEntry) + '  SL ' + fmt(tStop) + '  TP1 ' + fmt(tT1) + '  TP2 ' + fmt(tT2) + '  TP3 ' + fmt(tT3) + '  grade ' + tGrade + ' (' + tKind + ')', alert.freq_once_per_bar_close)
