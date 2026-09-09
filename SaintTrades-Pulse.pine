@@ -538,44 +538,36 @@ bool isRevS = revShort and not trigShort and not crtSigS
 // Alignment with the timeframe above carries the most, then how much trend
 // there is to work with, then momentum, whether the entry is off a zone, and
 // whether anyone traded it.
-// Quality, rebuilt from measured outcomes.
+// Quality, rebuilt again - this time only from what held up.
 //
-// Every weight below is the component's average R minus the average R of the
-// whole book, times a hundred, measured over MNQ 5m. Fifty is a trade that is
-// exactly average; above fifty the components present have historically done
-// better than the book, below fifty worse.
+// The first rebuild fitted weights to one sample of fifty five trades on MNQ
+// 5m. Out of sample it fell apart: NQ 15m went to 0.58 profit factor. So the
+// components were measured again on three independent samples and only the ones
+// that kept their sign in all three were kept.
 //
-// What the measurement said, and it is not what the notes say:
+//   component          MNQ 5m   MNQ 15m   GC 15m    verdict
+//   CRT signal          +0.34    +2.82    +0.05     stable, positive
+//   Discount/Premium    +0.05    +0.17    +0.12     stable, positive
+//   S/D zone            -0.17    -1.39    -1.05     stable, negative
+//   HTF aligned          0.00    -0.64    -0.02     never positive
+//   Sweep closed in     -0.18    +0.49    -0.04     flips
+//   Profile exp/rev     -1.14    +2.76    +0.55     flips
+//   ADX over 25         +0.09    -0.01    +0.11     flips
+//   Momentum            +0.12    -0.58    -0.11     flips
+//   Orderblock          -0.05    +2.81    +0.22     flips
+//   Fair value gap      -0.20    -0.42    +0.15     flips
+//   Volume              -0.12    -0.81    +0.29     flips
 //
-//   CRT signal          +34   the one component that clearly pays
-//   Momentum            +12
-//   ADX over 25          +9
-//   Discount/Premium     +5
-//   HTF aligned           0   true on all 55 trades - it filters nothing
-//   Orderblock           -5
-//   Volume              -12
-//   S/D zone            -17
-//   Sweep closed inside -18   fifteen points in the old score, and it loses
-//   Killzone hour       -18
-//   Fair value gap      -20
-//   Structure           -25
+// Eight of eleven flip sign between samples, which means their edges were noise
+// at these sample sizes and no weight fitted to them will survive. Three
+// components remain and they are all the score is allowed to use.
 //
-// The old score gave forty of its hundred points to HTF alignment and the sweep
-// closing back inside. One filters nothing and the other is negative, which is
-// why raising Minimum Quality made results worse instead of better.
+// Fifty is an average trade.
 score(int dir, bool rev, bool crt) =>
     float s = 50.0
-    s += crt ? 34.0 : 0.0
-    s += (dir == 1 ? rsi - 50.0 : 50.0 - rsi) > 10 ? 12.0 : 0.0
-    s += adx > 25 ? 9.0 : 0.0
-    s += (dir == 1 ? inDiscount : inPremium) ? 5.0 : 0.0
-    s += (dir == 1 ? atObL : atObS) ? -5.0 : 0.0
-    s += volume > volAvg ? -12.0 : 0.0
-    s += (dir == 1 ? atDemand : atSupply) ? -17.0 : 0.0
-    s += crt and closedIn ? -18.0 : 0.0
-    s += kzRaw ? -18.0 : 0.0
-    s += (dir == 1 ? atFvgL : atFvgS) ? -20.0 : 0.0
-    s += structDir == dir ? -25.0 : 0.0
+    s += crt ? 25.0 : 0.0
+    s += (dir == 1 ? inDiscount : inPremium) ? 15.0 : 0.0
+    s += (dir == 1 ? atDemand : atSupply) ? -20.0 : 0.0
     math.max(0.0, math.min(100.0, s))
 
 float qLong = score(1, isRevL, isCrtL)
