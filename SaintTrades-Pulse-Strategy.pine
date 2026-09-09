@@ -551,6 +551,8 @@ score(int dir, bool rev, bool crt) =>
     s += (dir == 1 ? atDemand : atSupply) ? -20.0 : 0.0
     math.max(0.0, math.min(100.0, s))
 
+grade(float s) => s >= 75 ? 'A' : s >= 60 ? 'B' : s >= 45 ? 'C' : 'D'
+
 float qLong = score(1, isRevL, isCrtL)
 float qShort = score(-1, isRevS, isCrtS)
 

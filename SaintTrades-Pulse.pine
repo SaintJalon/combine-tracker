@@ -86,8 +86,8 @@ maxRiskAtr = input.float(2.5, title='Maximum Risk (ATR)', minval=0.5, maxval=10,
 grpDisp = 'Display'
 mode = input.string('Trade', title='Mode', options=['Trade', 'Full'], group=grpDisp, tooltip='Trade is the default and it draws one thing: the trade. An arrow, the entry, the stop and the targets, each carrying its price. Full adds the EMAs, the zones, the range and the dashboard for when you want to look at the reasoning rather than act on it.')
 showDash = input.bool(false, title='Dashboard', group=grpDisp, tooltip='Off by default. It is eleven rows of reasoning and none of it is something you put an order against.')
-planLen = input.int(20, title='Line Length (bars)', minval=5, maxval=200, group=grpDisp)
-maxSets = input.int(5, title='Trades Kept On Chart', minval=1, maxval=40, group=grpDisp, tooltip='Older trades are removed as new ones print, so the chart never fills up.')
+planLen = input.int(12, title='Line Length (bars)', minval=5, maxval=200, group=grpDisp)
+maxSets = input.int(20, title='Trades Kept On Chart', minval=1, maxval=60, group=grpDisp, tooltip='Older trades are removed as new ones print, so the chart never fills up.')
 showT2 = input.bool(false, title='Show Second Target', group=grpDisp, tooltip='One target on the chart by default. The trade still manages all three behind it.')
 showT3 = input.bool(false, title='Show Third Target', group=grpDisp)
 dashPos = input.string('Top Right', title='Dashboard Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpDisp)
@@ -569,6 +569,8 @@ score(int dir, bool rev, bool crt) =>
     s += (dir == 1 ? inDiscount : inPremium) ? 15.0 : 0.0
     s += (dir == 1 ? atDemand : atSupply) ? -20.0 : 0.0
     math.max(0.0, math.min(100.0, s))
+
+grade(float s) => s >= 75 ? 'A' : s >= 60 ? 'B' : s >= 45 ? 'C' : 'D'
 
 float qLong = score(1, isRevL, isCrtL)
 float qShort = score(-1, isRevS, isCrtS)
