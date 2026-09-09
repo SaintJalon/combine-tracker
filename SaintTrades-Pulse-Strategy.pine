@@ -86,10 +86,10 @@ showZones = input.bool(false, title='Plot Zones', group=grpZone, tooltip='The zo
 grpTrade = 'Trade'
 structLen = input.int(10, title='Stop Structure (bars)', minval=3, maxval=60, group=grpTrade, tooltip='The stop goes beyond the low or high of this many bars, plus a buffer.')
 stopBuf = input.float(0.35, title='Stop Buffer (ATR)', minval=0, maxval=3, step=0.05, group=grpTrade)
-r1 = input.float(1.0, title='TP1 (R)', minval=0.25, step=0.25, inline='r', group=grpTrade)
+r1 = input.float(0.25, title='TP1 (R)', minval=0.25, step=0.25, inline='r', group=grpTrade)
 r2 = input.float(2.0, title='TP2 (R)', minval=0.5, step=0.25, inline='r', group=grpTrade)
 r3 = input.float(3.0, title='TP3 (R)', minval=0.75, step=0.25, inline='r', group=grpTrade)
-p1 = input.int(50, title='% Off At TP1', minval=0, maxval=100, inline='p', group=grpTrade)
+p1 = input.int(100, title='% Off At TP1', minval=0, maxval=100, inline='p', group=grpTrade)
 p2 = input.int(25, title='% Off At TP2', minval=0, maxval=100, inline='p', group=grpTrade, tooltip='What is left runs to TP3. On a single contract nothing can be split, so the whole thing comes off at TP1.')
 beAtTp1 = input.bool(true, title='Stop to Breakeven at TP1', group=grpTrade, tooltip='Breakeven is the price you were actually filled at, not the price the signal printed.')
 maxRiskAtr = input.float(2.5, title='Maximum Risk (ATR)', minval=0.5, maxval=10, step=0.1, group=grpTrade, tooltip='A signal whose stop sits further away than this is skipped. A wide stop is a bad price, not a bigger edge.')

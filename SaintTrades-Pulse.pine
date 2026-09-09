@@ -77,7 +77,7 @@ htfZones = input.bool(true, title='Higher Timeframe Zones', group=grpZone, toolt
 grpTrade = 'Trade'
 structLen = input.int(10, title='Stop Structure (bars)', minval=3, maxval=60, group=grpTrade, tooltip='The stop goes beyond the low or high of this many bars, plus a buffer.')
 stopBuf = input.float(0.35, title='Stop Buffer (ATR)', minval=0, maxval=3, step=0.05, group=grpTrade)
-r1 = input.float(1.0, title='TP1 (R)', minval=0.25, step=0.25, group=grpTrade)
+r1 = input.float(0.25, title='TP1 (R)', minval=0.25, step=0.25, group=grpTrade)
 r2 = input.float(2.0, title='TP2 (R)', minval=0.5, step=0.25, group=grpTrade)
 r3 = input.float(3.0, title='TP3 (R)', minval=0.75, step=0.25, group=grpTrade)
 beAtTp1 = input.bool(true, title='Stop to Breakeven at TP1', group=grpTrade)
