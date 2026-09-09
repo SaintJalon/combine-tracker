@@ -81,15 +81,16 @@ beAtTp1 = input.bool(true, title='Stop to Breakeven at TP1', group=grpTrade)
 maxRiskAtr = input.float(2.5, title='Maximum Risk (ATR)', minval=0.5, maxval=10, step=0.1, group=grpTrade, tooltip='A signal whose stop sits further away than this is skipped. A wide stop is a bad price, not a bigger edge.')
 
 grpDisp = 'Display'
-mode = input.string('Full', title='Mode', options=['Full', 'Trade Only', 'Minimal'], group=grpDisp, tooltip='Full draws the EMAs, the zones and the trade. Trade Only drops the zones and the EMAs. Minimal is signal markers and alerts, nothing else on the chart.')
-showDash = input.bool(true, title='Dashboard', group=grpDisp)
+mode = input.string('Trade', title='Mode', options=['Trade', 'Full'], group=grpDisp, tooltip='Trade is the default and it draws one thing: the trade. An arrow, the entry, the stop and the targets, each carrying its price. Full adds the EMAs, the zones, the range and the dashboard for when you want to look at the reasoning rather than act on it.')
+showDash = input.bool(false, title='Dashboard', group=grpDisp, tooltip='Off by default. It is eleven rows of reasoning and none of it is something you put an order against.')
+showT3 = input.bool(false, title='Show Third Target', group=grpDisp, tooltip='Two targets is usually enough on the chart. The trade still manages all three.')
 dashPos = input.string('Top Right', title='Dashboard Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpDisp)
 colUp = input.color(#26a69a, title='Up', inline='c', group=grpDisp)
 colDn = input.color(#ef5350, title='Down', inline='c', group=grpDisp)
 colFlat = input.color(#787b86, title='Flat', inline='c', group=grpDisp)
 
 bool drawAll = mode == 'Full'
-bool drawTrade = mode != 'Minimal'
+bool drawTrade = true
 
 fmt(float p) => str.tostring(p, format.mintick)
 tick(float p) => math.round(p / syminfo.mintick) * syminfo.mintick
@@ -576,12 +577,12 @@ if (longSig or shortSig) and drawTrade
     lnS := line.new(bar_index, tStop, bar_index + 1, tStop, xloc=xloc.bar_index, color=colDn, width=1, style=line.style_dashed)
     lnT1 := line.new(bar_index, tT1, bar_index + 1, tT1, xloc=xloc.bar_index, color=colUp, width=1)
     lnT2 := line.new(bar_index, tT2, bar_index + 1, tT2, xloc=xloc.bar_index, color=color.new(colUp, 25), width=1)
-    lnT3 := line.new(bar_index, tT3, bar_index + 1, tT3, xloc=xloc.bar_index, color=color.new(colUp, 45), width=1)
+    lnT3 := showT3 ? line.new(bar_index, tT3, bar_index + 1, tT3, xloc=xloc.bar_index, color=color.new(colUp, 45), width=1) : na
     lbE := label.new(bar_index + 1, tEntry, (tDir == 1 ? ' BUY ' : ' SELL ') + fmt(tEntry) + '  ' + tGrade, xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=cd, size=size.normal)
     lbS := label.new(bar_index + 1, tStop, ' SL ' + fmt(tStop), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colDn, size=size.small)
     lb1 := label.new(bar_index + 1, tT1, ' TP1 ' + fmt(tT1), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colUp, size=size.small)
     lb2 := label.new(bar_index + 1, tT2, ' TP2 ' + fmt(tT2), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colUp, size=size.small)
-    lb3 := label.new(bar_index + 1, tT3, ' TP3 ' + fmt(tT3), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colUp, size=size.small)
+    lb3 := showT3 ? label.new(bar_index + 1, tT3, ' TP3 ' + fmt(tT3), xloc=xloc.bar_index, style=label.style_label_left, color=color.new(color.black, 100), textcolor=colUp, size=size.small) : na
 
 if (tDir != 0 or evStop or evT3) and drawTrade and not na(lnE)
     int x = bar_index + 1
@@ -589,19 +590,22 @@ if (tDir != 0 or evStop or evT3) and drawTrade and not na(lnE)
     line.set_x2(lnS, x)
     line.set_x2(lnT1, x)
     line.set_x2(lnT2, x)
-    line.set_x2(lnT3, x)
+    if not na(lnT3)
+        line.set_x2(lnT3, x)
     line.set_y1(lnS, tStop)
     line.set_y2(lnS, tStop)
     label.set_x(lbE, x)
     label.set_x(lbS, x)
     label.set_x(lb1, x)
     label.set_x(lb2, x)
-    label.set_x(lb3, x)
+    if not na(lb3)
+        label.set_x(lb3, x)
     label.set_y(lbS, tStop)
     label.set_text(lbS, (tBe ? ' BE ' : ' SL ') + fmt(tStop))
     label.set_text(lb1, (tB1 ? ' TP1 HIT ' : ' TP1 ') + fmt(tT1))
     label.set_text(lb2, (tB2 ? ' TP2 HIT ' : ' TP2 ') + fmt(tT2))
-    label.set_text(lb3, (tB3 ? ' TP3 HIT ' : ' TP3 ') + fmt(tT3))
+    if not na(lb3)
+        label.set_text(lb3, (tB3 ? ' TP3 HIT ' : ' TP3 ') + fmt(tT3))
     if evStop or evT3
         label.set_text(lbE, label.get_text(lbE) + '  -  ' + str.tostring(lastR, '#.##') + 'R')
 
