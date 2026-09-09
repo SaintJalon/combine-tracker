@@ -77,6 +77,9 @@ erMin = input.float(0.28, title='Minimum Efficiency', minval=0, maxval=1, step=0
 grpZone = 'Supply & Demand'
 pivLen = input.int(5, title='Pivot Length', minval=2, maxval=25, group=grpZone)
 maxZones = input.int(6, title='Zones Per Side', minval=1, maxval=15, group=grpZone)
+obLook = input.int(20, title='Liquidity Lookback (bars)', minval=5, maxval=100, group=grpZone, tooltip='How far back an orderblock candle has to reach to count as having purged liquidity.')
+obConfirm = input.int(10, title='Engulf Within (bars)', minval=1, maxval=50, group=grpZone, tooltip='An orderblock candidate that is not closed through inside this many bars is dropped.')
+maxLvls = input.int(12, title='Levels Kept Per Type', minval=2, maxval=50, group=grpZone)
 htfZones = input.bool(true, title='Higher Timeframe Zones', group=grpZone)
 showZones = input.bool(false, title='Plot Zones', group=grpZone, tooltip='The zones are always computed, because entering off one is worth points in the quality score. This only decides whether they are drawn.')
 
@@ -108,6 +111,7 @@ maxHold = input.int(40, title='Max Bars In Trade', minval=0, group=grpWhen, tool
 grpDisp = 'Display'
 showPlan = input.bool(true, title='Plot The Bracket', group=grpDisp)
 showStats = input.bool(true, title='R Stats Table', group=grpDisp)
+showAttr = input.bool(true, title='Attribution Table', group=grpDisp, tooltip='Average R per component against the average R of the whole book. This is what the score should be weighted from.')
 dashPos = input.string('Bottom Left', title='Table Position', options=['Top Right', 'Top Left', 'Bottom Right', 'Bottom Left', 'Middle Right'], group=grpDisp, tooltip='Bottom left by default because the indicator puts its own dashboard top right, and with both on one chart they sit on top of each other.')
 colUp = input.color(#26a69a, title='Up', inline='c', group=grpDisp)
 colDn = input.color(#ef5350, title='Down', inline='c', group=grpDisp)
@@ -241,6 +245,130 @@ bool atDemand = inZone(dZones, low, atr * 0.15)
 bool atSupply = inZone(sZones, high, atr * 0.15)
 
 // ----------------------------------------------------------------------------
+// Key levels: orderblocks, fair value gaps, breakers
+//
+// The notes are specific about what an orderblock is and my pivot boxes were not
+// it. An orderblock is a candle that took liquidity - dug below a low or above a
+// high - and was then engulfed by a close through it. Body or wick depends on
+// which is bigger: a small wick against a big body means use the body, a wick
+// larger than the body means use the wick.
+//
+// A fair value gap is the imbalance a displacement leaves behind: three candles
+// where the first candle's high never meets the third candle's low. Price comes
+// back to fill it.
+//
+// A breaker is a level that failed. A swing low is swept, price closes back
+// above it, and that broken low becomes support on the retest.
+// ----------------------------------------------------------------------------
+var array<float> obTop = array.new<float>()
+var array<float> obBot = array.new<float>()
+var array<int> obDir = array.new<int>()
+var array<float> fvgTop = array.new<float>()
+var array<float> fvgBot = array.new<float>()
+var array<int> fvgDir = array.new<int>()
+var array<float> brkLvl = array.new<float>()
+var array<int> brkDir = array.new<int>()
+
+pushLvl(array<float> a, array<float> b, array<int> d, float top, float bot, int dir, int cap) =>
+    array.push(a, top)
+    array.push(b, bot)
+    array.push(d, dir)
+    while array.size(a) > cap
+        array.shift(a)
+        array.shift(b)
+        array.shift(d)
+
+// An orderblock candidate is the candle that purged. It becomes an orderblock
+// only once a later close engulfs it.
+float purgeLo = ta.lowest(low, obLook)[1]
+float purgeHi = ta.highest(high, obLook)[1]
+bool downPurge = close < open and low < purgeLo
+bool upPurge = close > open and high > purgeHi
+
+var float obcBullTop = na
+var float obcBullBot = na
+var float obcBearTop = na
+var float obcBearBot = na
+var int obcBullBar = 0
+var int obcBearBar = 0
+
+obZone(bool useWick, float o, float c, float h, float l) =>
+    float top = useWick ? h : math.max(o, c)
+    float bot = useWick ? l : math.min(o, c)
+    [top, bot]
+
+if downPurge
+    float body = math.abs(close - open)
+    float wick = (high - low) - body
+    [t, b] = obZone(wick > body, open, close, high, low)
+    obcBullTop := t
+    obcBullBot := b
+    obcBullBar := bar_index
+
+if upPurge
+    float body = math.abs(close - open)
+    float wick = (high - low) - body
+    [t, b] = obZone(wick > body, open, close, high, low)
+    obcBearTop := t
+    obcBearBot := b
+    obcBearBar := bar_index
+
+// Engulfed - a close through the candidate confirms it.
+if not na(obcBullTop) and close > obcBullTop and bar_index > obcBullBar and bar_index - obcBullBar <= obConfirm
+    pushLvl(obTop, obBot, obDir, obcBullTop, obcBullBot, 1, maxLvls)
+    obcBullTop := na
+if not na(obcBearBot) and close < obcBearBot and bar_index > obcBearBar and bar_index - obcBearBar <= obConfirm
+    pushLvl(obTop, obBot, obDir, obcBearTop, obcBearBot, -1, maxLvls)
+    obcBearBot := na
+
+// Fair value gaps. Three candles, the middle one displacing far enough that the
+// outer two never touch.
+bool fvgUp = low > high[2] and close[1] > open[1]
+bool fvgDn = high < low[2] and close[1] < open[1]
+if fvgUp
+    pushLvl(fvgTop, fvgBot, fvgDir, low, high[2], 1, maxLvls)
+if fvgDn
+    pushLvl(fvgTop, fvgBot, fvgDir, low[2], high, -1, maxLvls)
+
+// Breakers. A swept low that price reclaims becomes support; the mirror becomes
+// resistance.
+if not na(pl) and low < pl and close > pl
+    pushLvl(brkLvl, brkLvl, brkDir, pl, pl, 1, maxLvls)
+if not na(ph) and high > ph and close < ph
+    pushLvl(brkLvl, brkLvl, brkDir, ph, ph, -1, maxLvls)
+
+// Mitigation. A level closed through is spent.
+dropUsed(array<float> a, array<float> b, array<int> d) =>
+    if array.size(a) > 0
+        for i = array.size(a) - 1 to 0
+            int dir = array.get(d, i)
+            bool gone = dir == 1 ? close < array.get(b, i) : close > array.get(a, i)
+            if gone
+                array.remove(a, i)
+                array.remove(b, i)
+                array.remove(d, i)
+
+dropUsed(obTop, obBot, obDir)
+dropUsed(fvgTop, fvgBot, fvgDir)
+
+atLvl(array<float> a, array<float> b, array<int> d, int dir, float px, float tol) =>
+    bool hit = false
+    if array.size(a) > 0
+        for i = 0 to array.size(a) - 1
+            if array.get(d, i) == dir and px >= array.get(b, i) - tol and px <= array.get(a, i) + tol
+                hit := true
+    hit
+
+float lvlTol = atr * 0.15
+bool atObL = atLvl(obTop, obBot, obDir, 1, low, lvlTol)
+bool atObS = atLvl(obTop, obBot, obDir, -1, high, lvlTol)
+bool atFvgL = atLvl(fvgTop, fvgBot, fvgDir, 1, low, lvlTol)
+bool atFvgS = atLvl(fvgTop, fvgBot, fvgDir, -1, high, lvlTol)
+bool atBrkL = atLvl(brkLvl, brkLvl, brkDir, 1, low, lvlTol)
+bool atBrkS = atLvl(brkLvl, brkLvl, brkDir, -1, high, lvlTol)
+
+
+// ----------------------------------------------------------------------------
 // Candle Range Theory
 //
 // Three candles on the timeframe above. The first is the range and nothing about
@@ -330,18 +458,16 @@ bool profileOk = not useProfile or profile == 'EXPANSION' or profile == 'REVERSA
 // ----------------------------------------------------------------------------
 inKillzone() =>
     bool hit = false
-    if not useKz
-        hit := true
-    else
-        int h = hour(time, 'America/New_York')
-        array<string> parts = str.split(kzHours, ',')
-        if array.size(parts) > 0
-            for i = 0 to array.size(parts) - 1
-                if int(math.round(str.tonumber(str.replace_all(array.get(parts, i), ' ', '')))) == h
-                    hit := true
+    int h = hour(time, 'America/New_York')
+    array<string> parts = str.split(kzHours, ',')
+    if array.size(parts) > 0
+        for i = 0 to array.size(parts) - 1
+            if int(math.round(str.tonumber(str.replace_all(array.get(parts, i), ' ', '')))) == h
+                hit := true
     hit
 
-bool kzOk = inKillzone()
+bool kzRaw = inKillzone()
+bool kzOk = not useKz or kzRaw
 
 // ----------------------------------------------------------------------------
 // Signal engine
@@ -393,37 +519,45 @@ bool isCrtS = crtSigS
 bool isRevL = revLong and not trigLong and not crtSigL
 bool isRevS = revShort and not trigShort and not crtSigS
 
-// Quality is the accuracy dial, and everything the CRT notes ask of a setup is
-// asked here rather than used to delete the signal. A filter that throws a trade
-// away tells you nothing; a score tells you how much of the framework agreed,
-// and then one number decides what you are willing to take.
+// Quality, rebuilt from measured outcomes.
 //
-//   higher timeframe alignment   25    the draw on liquidity agrees
-//   sweep closed back inside     15    the high odds version of a CRT
-//   discount for longs           12    premium is how a good setup gets a bad price
-//   profile is expansion         12    only expansion and reversal are traded
-//   trend strength               12
-//   momentum                     10
-//   entry off a zone              8
-//   structure agrees              6
-//   volume                        5
-//   killzone hour                 5
+// Every weight below is the component's average R minus the average R of the
+// whole book, times a hundred, measured over MNQ 5m. Fifty is a trade that is
+// exactly average; above fifty the components present have historically done
+// better than the book, below fifty worse.
+//
+// What the measurement said, and it is not what the notes say:
+//
+//   CRT signal          +34   the one component that clearly pays
+//   Momentum            +12
+//   ADX over 25          +9
+//   Discount/Premium     +5
+//   HTF aligned           0   true on all 55 trades - it filters nothing
+//   Orderblock           -5
+//   Volume              -12
+//   S/D zone            -17
+//   Sweep closed inside -18   fifteen points in the old score, and it loses
+//   Killzone hour       -18
+//   Fair value gap      -20
+//   Structure           -25
+//
+// The old score gave forty of its hundred points to HTF alignment and the sweep
+// closing back inside. One filters nothing and the other is negative, which is
+// why raising Minimum Quality made results worse instead of better.
 score(int dir, bool rev, bool crt) =>
-    float s = 0.0
-    s += (dir == 1 ? htfUp : htfDn) ? 25.0 : (dir == 1 ? htfDn : htfUp) ? 0.0 : 12.0
-    s += crt ? (closedIn ? 15.0 : 6.0) : rev ? 6.0 : 8.0
-    s += (dir == 1 ? inDiscount : inPremium) ? 12.0 : 0.0
-    s += profile == 'EXPANSION' or profile == 'REVERSAL' ? 12.0 : profile == 'MANIPULATION' ? 6.0 : 0.0
-    s += math.min(12.0, adx / 40.0 * 12.0)
-    float m = dir == 1 ? rsi - 50.0 : 50.0 - rsi
-    s += math.min(10.0, math.max(0.0, m / 2.0))
-    s += (dir == 1 ? atDemand : atSupply) ? 8.0 : 0.0
-    s += structDir == dir ? 6.0 : 0.0
-    s += volume > volAvg ? 5.0 : 0.0
-    s += kzOk and useKz ? 5.0 : 0.0
+    float s = 50.0
+    s += crt ? 34.0 : 0.0
+    s += (dir == 1 ? rsi - 50.0 : 50.0 - rsi) > 10 ? 12.0 : 0.0
+    s += adx > 25 ? 9.0 : 0.0
+    s += (dir == 1 ? inDiscount : inPremium) ? 5.0 : 0.0
+    s += (dir == 1 ? atObL : atObS) ? -5.0 : 0.0
+    s += volume > volAvg ? -12.0 : 0.0
+    s += (dir == 1 ? atDemand : atSupply) ? -17.0 : 0.0
+    s += crt and closedIn ? -18.0 : 0.0
+    s += kzRaw ? -18.0 : 0.0
+    s += (dir == 1 ? atFvgL : atFvgS) ? -20.0 : 0.0
+    s += structDir == dir ? -25.0 : 0.0
     math.max(0.0, math.min(100.0, s))
-
-grade(float s) => s >= 75 ? 'A' : s >= 55 ? 'B' : s >= 35 ? 'C' : 'D'
 
 float qLong = score(1, isRevL, isCrtL)
 float qShort = score(-1, isRevS, isCrtS)
@@ -502,6 +636,18 @@ var float lastR = na
 var int sigCount = 0
 var int takenAll = 0
 
+// ----------------------------------------------------------------------------
+// Attribution
+//
+// Every component the score uses, recorded at entry and credited with the R the
+// trade actually returned. This is the only honest way to weight them: one that
+// shows a better average R than the book as a whole is earning its points, one
+// that shows worse is costing them, whatever the notes say it ought to do.
+// ----------------------------------------------------------------------------
+var array<float> fR = array.new<float>(14, 0.0)
+var array<int> fN = array.new<int>(14, 0)
+var array<bool> fCur = array.new<bool>(14, false)
+
 // A finished position, booked. Net profit is realised and includes commission,
 // so this is the number that actually landed in the account divided by the
 // number that was actually at risk.
@@ -525,6 +671,10 @@ if booked
             rWin += 1
         rBest := na(rBest) ? r : math.max(rBest, r)
         rWorst := na(rWorst) ? r : math.min(rWorst, r)
+        for fi = 0 to 13
+            if array.get(fCur, fi)
+                array.set(fR, fi, array.get(fR, fi) + r)
+                array.set(fN, fi, array.get(fN, fi) + 1)
     bStop := na
     bStopInit := na
     bT1 := na
@@ -576,6 +726,20 @@ if armed
     bQty := qty
     inPlay := true
     openBar := bar_index
+    array.set(fCur, 0, dir == 1 ? htfUp : htfDn)
+    array.set(fCur, 1, dir == 1 ? isCrtL : isCrtS)
+    array.set(fCur, 2, closedIn)
+    array.set(fCur, 3, dir == 1 ? inDiscount : inPremium)
+    array.set(fCur, 4, profile == 'EXPANSION' or profile == 'REVERSAL')
+    array.set(fCur, 5, adx > 25)
+    array.set(fCur, 6, (dir == 1 ? rsi - 50.0 : 50.0 - rsi) > 10)
+    array.set(fCur, 7, dir == 1 ? atDemand : atSupply)
+    array.set(fCur, 8, dir == 1 ? atObL : atObS)
+    array.set(fCur, 9, dir == 1 ? atFvgL : atFvgS)
+    array.set(fCur, 10, dir == 1 ? atBrkL : atBrkS)
+    array.set(fCur, 11, structDir == dir)
+    array.set(fCur, 12, volume > volAvg)
+    array.set(fCur, 13, kzRaw)
     tradesToday += 1
     takenAll += 1
     tk1 := false
@@ -670,3 +834,50 @@ if barstate.islast and showStats
     srow(8, ' Profile', profile, profile == 'EXPANSION' or profile == 'REVERSAL' ? colUp : profile == 'MANIPULATION' ? #ffb300 : colFlat)
     srow(9, ' ' + crtTf + ' Range', not crtReady ? 'forming' : crtBull ? 'SWEPT LOW' : crtBear ? 'SWEPT HIGH' : 'intact', crtBull ? colUp : crtBear ? colDn : colFlat)
     srow(10, ' Position', posTxt, strategy.position_size > 0 ? colUp : strategy.position_size < 0 ? colDn : colFlat)
+
+// ----------------------------------------------------------------------------
+// Attribution table
+//
+// Average R per component against the average R of every trade. Anything above
+// the book line is earning its weight; anything below is not.
+// ----------------------------------------------------------------------------
+featName(int i) =>
+    i == 0 ? 'HTF aligned' : i == 1 ? 'CRT signal' : i == 2 ? 'Sweep closed in' : i == 3 ? 'Discount/Prem' : i == 4 ? 'Profile exp/rev' : i == 5 ? 'ADX over 25' : i == 6 ? 'Momentum' : i == 7 ? 'S/D zone' : i == 8 ? 'Orderblock' : i == 9 ? 'Fair value gap' : i == 10 ? 'Breaker' : i == 11 ? 'Structure' : i == 12 ? 'Volume' : 'Killzone hour'
+
+var table attr = table.new(position.bottom_right, 4, 16, bgcolor=color.new(#131722, 10), frame_color=color.new(colFlat, 55), frame_width=1, border_color=color.new(colFlat, 80), border_width=1)
+
+if barstate.islast and showAttr
+    float bookAvg = rN > 0 ? rSum / rN : na
+    table.cell(attr, 0, 0, ' COMPONENT ', text_color=color.new(color.white, 0), text_size=size.tiny, text_halign=text.align_left, bgcolor=color.new(#42a5f5, 60))
+    table.cell(attr, 1, 0, ' N ', text_color=color.new(color.white, 0), text_size=size.tiny, bgcolor=color.new(#42a5f5, 60))
+    table.cell(attr, 2, 0, ' AVG R ', text_color=color.new(color.white, 0), text_size=size.tiny, bgcolor=color.new(#42a5f5, 60))
+    table.cell(attr, 3, 0, ' EDGE ', text_color=color.new(color.white, 0), text_size=size.tiny, bgcolor=color.new(#42a5f5, 60))
+    for fi = 0 to 13
+        int n = array.get(fN, fi)
+        float avg = n > 0 ? array.get(fR, fi) / n : na
+        float edge = n > 0 and not na(bookAvg) ? avg - bookAvg : na
+        table.cell(attr, 0, fi + 1, ' ' + featName(fi), text_color=color.new(colFlat, 10), text_size=size.tiny, text_halign=text.align_left)
+        table.cell(attr, 1, fi + 1, str.tostring(n), text_color=color.new(color.white, 30), text_size=size.tiny)
+        table.cell(attr, 2, fi + 1, n > 0 ? str.tostring(avg, '#.###') : '-', text_color=na(avg) ? colFlat : avg > 0 ? colUp : colDn, text_size=size.tiny)
+        table.cell(attr, 3, fi + 1, na(edge) ? '-' : str.tostring(edge, '#.###'), text_color=na(edge) ? colFlat : edge > 0 ? colUp : colDn, text_size=size.tiny)
+    table.cell(attr, 0, 15, ' ALL TRADES ', text_color=color.new(color.white, 0), text_size=size.tiny, text_halign=text.align_left)
+    table.cell(attr, 1, 15, str.tostring(rN), text_color=color.new(color.white, 10), text_size=size.tiny)
+    table.cell(attr, 2, 15, na(bookAvg) ? '-' : str.tostring(bookAvg, '#.###'), text_color=na(bookAvg) ? colFlat : bookAvg > 0 ? colUp : colDn, text_size=size.tiny)
+    table.cell(attr, 3, 15, '', text_color=colFlat, text_size=size.tiny)
+
+// The same numbers as text, packed into a few lines because Pine throttles how
+// many log messages one bar may emit.
+if barstate.islastconfirmedhistory and showAttr
+    float bookAvg2 = rN > 0 ? rSum / rN : na
+    string l1 = ''
+    string l2 = ''
+    for fi = 0 to 13
+        int n2 = array.get(fN, fi)
+        float avg2 = n2 > 0 ? array.get(fR, fi) / n2 : na
+        string piece = featName(fi) + '(n' + str.tostring(n2) + ' e' + (n2 > 0 and not na(bookAvg2) ? str.tostring(avg2 - bookAvg2, '#.###') : 'na') + ') '
+        if fi < 7
+            l1 := l1 + piece
+        else
+            l2 := l2 + piece
+    log.info('ATTR1 ' + syminfo.ticker + ' ' + timeframe.period + ' n=' + str.tostring(rN) + ' book=' + str.tostring(bookAvg2, '#.####') + ' :: ' + l1)
+    log.info('ATTR2 ' + l2)
