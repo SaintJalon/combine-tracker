@@ -55,8 +55,8 @@ grpSig = 'Signals'
 armLen = input.int(12, title='Pullback Window (bars)', minval=2, maxval=60, group=grpSig, tooltip='How long a pullback stays live. Price has to touch the fast EMA and then push off it inside this many bars, or the setup is dropped.')
 allowRev = input.bool(true, title='Reversal Trades', group=grpSig, tooltip='Takes a sweep of a recent high or low that closes straight back inside. Off means continuation only.')
 swpLen = input.int(20, title='Sweep Lookback (bars)', minval=5, maxval=100, group=grpSig)
-minQual = input.int(50, title='Minimum Quality', minval=0, maxval=100, group=grpSig, tooltip='This is the accuracy dial. Every rule the CRT notes ask for feeds the score rather than deleting the signal, so raising this gives you fewer and better trades instead of none. 65 and up is strict, 35 is loose.')
-oneAtATime = input.bool(true, title='One Trade at a Time', group=grpSig, tooltip='On, nothing new prints until the trade on the chart is done. Off, signals keep coming and the tracker follows the newest one.')
+minQual = input.int(30, title='Minimum Quality', minval=0, maxval=100, group=grpSig, tooltip='This is the accuracy dial. Every rule the CRT notes ask for feeds the score rather than deleting the signal, so raising this gives you fewer and better trades instead of none. 65 and up is strict, 35 is loose.')
+oneAtATime = input.bool(false, title='One Trade at a Time', group=grpSig, tooltip='On, nothing new prints until the trade on the chart is done. Off, signals keep coming and the tracker follows the newest one.')
 
 grpChop = 'Chop Filter'
 useChop = input.bool(true, title='Hold Signals in Chop', group=grpChop)
