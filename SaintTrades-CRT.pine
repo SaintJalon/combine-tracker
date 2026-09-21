@@ -112,7 +112,7 @@ G_VIS = "7 · Visuals"
 G_STAT = "8 · Stats"
 
 // --- Section 1: CRT detection ---
-crtTfMode = input.string("4H", "CRT timeframe", options=["1H", "4H", "Daily", "Weekly"], group=G_CRT)
+crtTfMode = input.string("1H", "CRT timeframe", options=["1H", "4H", "Daily", "Weekly"], group=G_CRT)
 mode      = input.string("Conformational", "Signal mode", options=["Conformational", "Advanced"], tooltip="Advanced adds a live UNCONFIRMED marker the moment C2 sweeps C1; removed if C2 closes outside.", group=G_CRT)
 showLow   = input.bool(false, "Show Low-Odds CRTs (closed outside range)", group=G_CRT)
 insideOn  = input.bool(false, "Inside CRT (range valid for N HTF candles)", group=G_CRT)
