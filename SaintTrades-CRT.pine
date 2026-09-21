@@ -1,0 +1,852 @@
+//@version=6
+// =============================================================================
+// CRT – Candle Range Theory (Sham/CPI)                                 INDICATOR
+// -----------------------------------------------------------------------------
+// A single non-repainting indicator implementing the 3-candle CRT model
+// (ShamSpeculator / CPI notes). Every rule is tagged with the spec section it
+// implements (Section 1 .. Section 9).
+//
+// ------------------------------- ASSUMPTIONS ---------------------------------
+// (Listed at top per request; conservative interpretation chosen where the
+//  spec was ambiguous.)
+//  A1. HTF access is non-repainting: request.security(..., src[1],
+//      lookahead=barmerge.lookahead_on). Offset [1] = the most-recently CLOSED
+//      HTF candle, so only closed candles are ever read. C1 (the candle before
+//      C2, i.e. the [2] candle in the default case) is retained in state when
+//      it closes rather than re-fetched, which also lets "Inside CRT" hold C1
+//      for N candles back. Only CLOSED candle values are ever stored, so this
+//      stays non-repainting (Section 1 / 10).
+//  A2. C1 & C2 must be a clean single-side sweep. If C2 sweeps BOTH ends of C1
+//      (outside/engulfing bar) it is not a valid CRT and the range candidate is
+//      rolled forward (Section 1).
+//  A3. "Low-Odds" = swept one end but the C2 CLOSE finished outside the C1
+//      range (either side). Hidden by default (Section 1).
+//  A4. Section 2a formation-hour checkboxes DEFINE the "key-time formation" set
+//      used by grading (Section 4). They are NOT a hard display filter, because
+//      grading treats key-time formation as a variable (A vs A+); non-key-time
+//      CRTs are still shown and simply grade lower. Day-of-week (2c) IS a hard
+//      display filter.
+//  A5. Purge time (2b) = first chart-bar time price exceeds the C1 high/low
+//      while the C1 candidate is live (covers the C2 formation window, and the
+//      inside-CRT window when enabled). Key-time match ignores midnight wrap.
+//  A6. FVG "fully mitigated" = price trades through the FAR edge (bull FVG: low
+//      <= gap bottom; bear FVG: high >= gap top) (Section 3).
+//  A7. Key-level confluence = the C2 sweep-wick price range overlaps the level
+//      / unmitigated FVG zone (Section 3).
+//  A8. OB candle = the last up-close (bear) / down-close (bull) chart candle
+//      that traded beyond C1 during the sweep, before displacement. Entry =
+//      proximal zone edge; Stop = chart sweep extreme (Section 5).
+//  A9. Stats "N" per grade = RESOLVED CRTs (outcome known). Percentages are
+//      over resolved count. Same-bar TP+invalidation = LOSS (conservative)
+//      (Section 8).
+// A10. OB "AvgR" is realized: TP2 => rr2, TP1-only => rr1, stopped => -1R.
+// =============================================================================
+
+indicator("CRT – Candle Range Theory (Sham/CPI)", "CRT Sham/CPI", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ============================ USER-DEFINED TYPE ==============================
+// Section 10: use a UDT + arrays to manage active CRTs.
+type CRT
+    bool   bull
+    bool   lowOdds
+    float  c1H
+    float  c1L
+    float  c1Mid
+    float  c1Open
+    int    c1Time
+    float  c2H
+    float  c2L
+    float  c2Close
+    int    c2Time
+    float  tp1
+    float  tp2
+    float  inval
+    string grade
+    bool   kForm
+    bool   kPurge
+    bool   kLevel
+    int    purgeTime
+    // resolution tracking (Section 8)
+    bool   tp1Done
+    bool   tp2Done
+    bool   invalidated
+    bool   resolved
+    int    barsCount
+    int    htfBarsSince
+    // OB entry (Section 5)
+    bool   obActive
+    bool   swept
+    bool   obArmed
+    float  obCandOpen
+    float  obCandHigh
+    float  obCandLow
+    float  obCandClose
+    float  sweepExt
+    bool   obConfirmed
+    float  obTop
+    float  obBot
+    float  obEntry
+    float  obStop
+    bool   obFilled
+    bool   obResolved
+    bool   obT1
+    bool   obT2
+    float  obR
+    // drawing handles (Section 7)
+    box    rangeBox
+    line   midLine
+    line   tp2Line
+    line   invLine
+    label  tag
+    label  purgeTag
+    box    obBox
+    label  obTag
+
+// =============================== INPUTS ======================================
+G_CRT = "1 · CRT Detection"
+G_TIME = "2 · Time Filters"
+G_KL = "3 · Key Levels"
+G_ENTRY = "5 · LTF Orderblock Entry"
+G_KZ = "6 · Killzones"
+G_VIS = "7 · Visuals"
+G_STAT = "8 · Stats"
+
+// --- Section 1: CRT detection ---
+crtTfMode = input.string("4H", "CRT timeframe", options=["1H", "4H", "Daily", "Weekly"], group=G_CRT)
+mode      = input.string("Conformational", "Signal mode", options=["Conformational", "Advanced"], tooltip="Advanced adds a live UNCONFIRMED marker the moment C2 sweeps C1; removed if C2 closes outside.", group=G_CRT)
+showLow   = input.bool(false, "Show Low-Odds CRTs (closed outside range)", group=G_CRT)
+insideOn  = input.bool(false, "Inside CRT (range valid for N HTF candles)", group=G_CRT)
+insideN   = input.int(3, "Inside CRT: max HTF candles", minval=1, maxval=20, group=G_CRT)
+resolveN  = input.int(3, "Stop extending range after N HTF candles", minval=1, maxval=50, group=G_CRT)
+minGrade  = input.string("B", "Minimum grade to display", options=["A+", "A", "B"], group=G_CRT)
+
+// --- Section 2a: formation hours (= key-time formation set) ---
+f01 = input.bool(true,  "C1 opens 01:00", inline="fa", group=G_TIME)
+f05 = input.bool(true,  "05:00",          inline="fa", group=G_TIME)
+f09 = input.bool(true,  "09:00",          inline="fa", group=G_TIME)
+f13 = input.bool(false, "13:00", inline="fb", group=G_TIME)
+f17 = input.bool(false, "17:00", inline="fb", group=G_TIME)
+f21 = input.bool(false, "21:00", inline="fb", group=G_TIME)
+// --- Section 2b: purge key-times ---
+purgeTol = input.int(30, "Purge ± minutes", minval=0, maxval=120, group=G_TIME)
+p01 = input.bool(true, "Purge 01:00", inline="pa", group=G_TIME)
+p03 = input.bool(true, "03:00",       inline="pa", group=G_TIME)
+p06 = input.bool(true, "06:00",       inline="pa", group=G_TIME)
+p08 = input.bool(true, "08:00", inline="pb", group=G_TIME)
+p09 = input.bool(true, "09:00", inline="pb", group=G_TIME)
+p11 = input.bool(true, "11:00", inline="pb", group=G_TIME)
+// --- Section 2c: day-of-week (hard display filter) ---
+dMon = input.bool(true, "Mon", inline="dow", group=G_TIME)
+dTue = input.bool(true, "Tue", inline="dow", group=G_TIME)
+dWed = input.bool(true, "Wed", inline="dow", group=G_TIME)
+dThu = input.bool(true, "Thu", inline="dow", group=G_TIME)
+dFri = input.bool(true, "Fri", inline="dow", group=G_TIME)
+
+// --- Section 3: key-level confluence ---
+kUsePD  = input.bool(true,  "Confluence: Previous Day H/L",  group=G_KL)
+kUsePW  = input.bool(true,  "Confluence: Previous Week H/L", group=G_KL)
+kUseFVG = input.bool(true,  "Confluence: unmitigated HTF FVG", group=G_KL)
+drawKL  = input.bool(false, "Draw key levels on chart", group=G_KL)
+
+// --- Section 5: OB entry ---
+useOB = input.bool(true, "Enable LTF orderblock entry", group=G_ENTRY)
+
+// --- Section 6: killzones ---
+kzAsia = input.bool(true,  "Asia 20:00–00:00",    inline="ka", group=G_KZ)
+colAsia = input.color(color.purple, "", inline="ka", group=G_KZ)
+kzLon  = input.bool(true,  "London 02:00–05:00",  inline="kl", group=G_KZ)
+colLon  = input.color(color.blue, "", inline="kl", group=G_KZ)
+kzAM   = input.bool(true,  "NY AM 08:30–11:00",   inline="kam", group=G_KZ)
+colAM   = input.color(color.green, "", inline="kam", group=G_KZ)
+kzPM   = input.bool(true,  "NY PM 13:30–16:00",   inline="kpm", group=G_KZ)
+colPM   = input.color(color.orange, "", inline="kpm", group=G_KZ)
+kzRef  = input.bool(false, "Refined 03-04 / 06-07 / 08:30-09:30 / 10-11", inline="kr", group=G_KZ)
+colRef  = input.color(color.red, "", inline="kr", group=G_KZ)
+kzTransp = input.int(90, "Killzone opacity", minval=50, maxval=100, group=G_KZ)
+
+// --- Section 7: visuals ---
+colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
+colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
+colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
+boxTransp = input.int(90, "Range box opacity", minval=50, maxval=100, group=G_VIS)
+maxKeep = input.int(30, "Max CRTs kept on chart", minval=5, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
+
+// --- Section 8: stats ---
+showStats = input.bool(true, "Show validation stats table", group=G_STAT)
+statsPos  = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Middle Right"], group=G_STAT)
+
+// =============================== HELPERS =====================================
+NY = "America/New_York"
+
+// Section 1: evaluate a candidate (C1,C2) pair -> [valid, isBull, isLowOdds].
+crtEval(float _c1H, float _c1L, float _c2H, float _c2L, float _c2C) =>
+    bool sH = _c2H > _c1H
+    bool sL = _c2L < _c1L
+    bool valid = false
+    bool bull  = false
+    bool lowO  = false
+    if sH and not sL
+        // swept the high -> bearish CRT
+        valid := true
+        bull  := false
+        bool inside = _c2C < _c1H and _c2C > _c1L
+        lowO := not inside
+    else if sL and not sH
+        // swept the low -> bullish CRT
+        valid := true
+        bull  := true
+        bool inside2 = _c2C > _c1L and _c2C < _c1H
+        lowO := not inside2
+    [valid, bull, lowO]
+
+// Section 4: grade ranking
+gRank(string g) =>
+    g == "A+" ? 3 : g == "A" ? 2 : g == "B" ? 1 : 0
+
+// Section 2b: purge key-time proximity
+nearMin(float _pmin, int _h, bool _en) =>
+    _en and math.abs(_pmin - _h * 60) <= purgeTol
+
+// Section 8: table formatting
+f_pct(int n, int d) =>
+    d > 0 ? str.tostring(int(math.round(100.0 * n / d))) + "%" : "-"
+avgB(int s, int n) =>
+    n > 0 ? str.tostring(int(math.round(s * 1.0 / n))) : "-"
+
+// Section 7: delete all drawings owned by a CRT (na handles are ignored)
+clearDraw(CRT c) =>
+    box.delete(c.rangeBox)
+    line.delete(c.midLine)
+    line.delete(c.tp2Line)
+    line.delete(c.invLine)
+    label.delete(c.tag)
+    label.delete(c.purgeTag)
+    box.delete(c.obBox)
+    label.delete(c.obTag)
+
+// Section 6: is the current bar inside a NY session string
+inS(string sess) =>
+    not na(time(timeframe.period, sess, NY))
+
+// ======================== NON-REPAINTING HTF ACCESS ==========================
+// Section 1 / 10: only CLOSED HTF candles (offset [1]) + lookahead_on.
+tfStr = switch crtTfMode
+    "1H"     => "60"
+    "4H"     => "240"
+    "Daily"  => "D"
+    "Weekly" => "W"
+    => "240"
+
+[o1, h1, l1, c1c, t1] = request.security(syminfo.tickerid, tfStr, [open[1], high[1], low[1], close[1], time[1]], lookahead=barmerge.lookahead_on)
+
+// Section 3: previous day / week levels (non-repainting)
+[pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+[pwh, pwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+// =============================== STATE =======================================
+var array<CRT> crts = array.new<CRT>()
+
+// Section 3: FVG store (parallel arrays)
+var array<float> fTop  = array.new<float>()
+var array<float> fBot  = array.new<float>()
+var array<bool>  fBull = array.new<bool>()
+var array<bool>  fAct  = array.new<bool>()
+var array<box>   fBox  = array.new<box>()
+var float fv_h0 = na
+var float fv_l0 = na
+var float fv_h1 = na
+var float fv_l1 = na
+var float fv_h2 = na
+var float fv_l2 = na
+
+// Section 1: rolling range candidate (C1) state machine
+var bool  haveC1     = false
+var float candC1H    = na
+var float candC1L    = na
+var float candC1Mid  = na
+var float candC1Open = na
+var int   candC1Time = na
+var int   candCount  = 0
+// Section 2b: live purge trackers (first exceed of candidate C1 high/low)
+var int formingPurgeUp   = na
+var int formingPurgeDown = na
+
+// Section 1 Advanced: single reusable UNCONFIRMED marker
+var label advLbl = na
+
+// Section 8: stat counters (resolved CRTs only)
+var int cntAp = 0
+var int tp1Ap = 0
+var int tp2Ap = 0
+var int barsAp = 0
+var int cntA = 0
+var int tp1A = 0
+var int tp2A = 0
+var int barsA = 0
+var int cntB = 0
+var int tp1B = 0
+var int tp2B = 0
+var int barsB = 0
+var int cntLo = 0
+var int tp1Lo = 0
+var int tp2Lo = 0
+var int barsLo = 0
+var int obCnt = 0
+var int obW1 = 0
+var int obW2 = 0
+var float obSumR = 0.0
+
+// Section 3: optional key-level drawings
+var line pdhL = na
+var line pdlL = na
+var line pwhL = na
+var line pwlL = na
+
+var table stat = na
+
+// Section 9: per-bar alert flags (recomputed each bar)
+bool fConfirm = false
+bool fPurge   = false
+bool fOB      = false
+bool fTp1     = false
+bool fTp2     = false
+bool fInval   = false
+
+int maxWin = insideOn ? insideN : 1
+
+// ===================== NEW CLOSED HTF CANDLE HANDLING ========================
+// Section 1/10: fires once per newly-closed HTF candle (values are stable).
+bool newClose = not na(t1) and ta.change(t1) != 0
+
+if newClose
+    // remove any live Advanced marker; it is resolved by this close (Section 1)
+    if not na(advLbl)
+        label.delete(advLbl)
+        advLbl := na
+
+    // ---- Section 3: FVG detection over 3 consecutive CLOSED HTF candles ----
+    fv_h2 := fv_h1
+    fv_l2 := fv_l1
+    fv_h1 := fv_h0
+    fv_l1 := fv_l0
+    fv_h0 := h1
+    fv_l0 := l1
+    if not na(fv_h2)
+        // bullish FVG: low[0] > high[2]  (gap fv_h2 .. fv_l0)
+        if fv_l0 > fv_h2
+            array.push(fTop, fv_l0)
+            array.push(fBot, fv_h2)
+            array.push(fBull, true)
+            array.push(fAct, true)
+            box bxb = na
+            if drawKL
+                bxb := box.new(t1, fv_l0, t1, fv_h2, xloc=xloc.bar_time, border_color=color.new(color.blue, 60), bgcolor=color.new(color.blue, 92))
+            array.push(fBox, bxb)
+        // bearish FVG: high[0] < low[2]  (gap fv_h0 .. fv_l2)
+        if fv_h0 < fv_l2
+            array.push(fTop, fv_l2)
+            array.push(fBot, fv_h0)
+            array.push(fBull, false)
+            array.push(fAct, true)
+            box bxs = na
+            if drawKL
+                bxs := box.new(t1, fv_l2, t1, fv_h0, xloc=xloc.bar_time, border_color=color.new(color.blue, 60), bgcolor=color.new(color.blue, 92))
+            array.push(fBox, bxs)
+    // cap FVG store, delete oldest first (Section 7 – bounded object count)
+    while array.size(fTop) > 60
+        array.shift(fTop)
+        array.shift(fBot)
+        array.shift(fBull)
+        array.shift(fAct)
+        box.delete(array.shift(fBox))
+
+    // ---- Section 1: range-candidate state machine ----
+    bool setCandCc = true      // default: candidate becomes the just-closed candle
+    bool emitNow  = false
+    bool emitBull = false
+    bool emitLow  = false
+    float e1H = na
+    float e1L = na
+    float e1Mid = na
+    float e1O = na
+    int   e1T = na
+    float e2H = na
+    float e2L = na
+    float e2C = na
+    int   e2T = na
+    int   ePurge = na
+
+    if not haveC1
+        setCandCc := true      // first range candle
+    else
+        candCount := candCount + 1
+        [v, bl, lo] = crtEval(candC1H, candC1L, h1, l1, c1c)
+        bool swH = h1 > candC1H
+        bool swL = l1 < candC1L
+        if v
+            // C2 confirmed -> capture the CRT (Section 1)
+            emitNow  := true
+            emitBull := bl
+            emitLow  := lo
+            e1H := candC1H
+            e1L := candC1L
+            e1Mid := candC1Mid
+            e1O := candC1Open
+            e1T := candC1Time
+            e2H := h1
+            e2L := l1
+            e2C := c1c
+            e2T := t1
+            ePurge := bl ? formingPurgeDown : formingPurgeUp
+            setCandCc := true  // C2 becomes the next range candidate
+        else
+            if swH and swL
+                setCandCc := true          // A2: outside bar, roll forward
+            else if candCount >= maxWin
+                setCandCc := true          // range expired, roll forward
+            else
+                setCandCc := false         // Inside CRT: keep waiting
+
+    // apply candidate change (resets purge trackers when C1 changes)
+    if setCandCc
+        candC1H := h1
+        candC1L := l1
+        candC1Mid := (h1 + l1) / 2.0
+        candC1Open := o1
+        candC1Time := t1
+        candCount := 0
+        haveC1 := true
+        formingPurgeUp := na
+        formingPurgeDown := na
+
+    // ---- Section 1/4/7: build & display the confirmed CRT ----
+    if emitNow
+        float tp1v  = e1Mid
+        float tp2v  = emitBull ? e1H : e1L
+        float invv  = emitBull ? e2L : e2H
+
+        // Section 4: key-time formation (2a set)
+        int fhH = hour(e1T, NY)
+        bool kForm = (fhH == 1 and f01) or (fhH == 5 and f05) or (fhH == 9 and f09) or (fhH == 13 and f13) or (fhH == 17 and f17) or (fhH == 21 and f21)
+
+        // Section 2b: key-time purge
+        bool kPurge = false
+        if not na(ePurge)
+            float pmin = hour(ePurge, NY) * 60 + minute(ePurge, NY)
+            kPurge := nearMin(pmin, 1, p01) or nearMin(pmin, 3, p03) or nearMin(pmin, 6, p06) or nearMin(pmin, 8, p08) or nearMin(pmin, 9, p09) or nearMin(pmin, 11, p11)
+
+        // Section 3: key-level confluence over the C2 sweep-wick range
+        float rLo = emitBull ? e2L : e1H
+        float rHi = emitBull ? e1L : e2H
+        if rLo > rHi
+            float tmp = rLo
+            rLo := rHi
+            rHi := tmp
+        bool kLevel = false
+        if kUsePD
+            kLevel := kLevel or (not na(pdh) and pdh >= rLo and pdh <= rHi) or (not na(pdl) and pdl >= rLo and pdl <= rHi)
+        if kUsePW
+            kLevel := kLevel or (not na(pwh) and pwh >= rLo and pwh <= rHi) or (not na(pwl) and pwl >= rLo and pwl <= rHi)
+        if kUseFVG and array.size(fTop) > 0
+            for fi = 0 to array.size(fTop) - 1
+                if array.get(fAct, fi)
+                    float ft = array.get(fTop, fi)
+                    float fb = array.get(fBot, fi)
+                    if rHi >= fb and rLo <= ft
+                        kLevel := true
+
+        // Section 4: grade
+        string grade = emitLow ? "LO" : (kForm and kPurge and kLevel ? "A+" : (kPurge and (kForm or kLevel) ? "A" : "B"))
+
+        // Section 2c: day-of-week filter (hard)
+        int dwv = dayofweek(e1T, NY)
+        bool dwOK = dwv == dayofweek.monday ? dMon : dwv == dayofweek.tuesday ? dTue : dwv == dayofweek.wednesday ? dWed : dwv == dayofweek.thursday ? dThu : dwv == dayofweek.friday ? dFri : true
+
+        // Section 1/4: display filter
+        bool passF = emitLow ? showLow : (gRank(grade) >= gRank(minGrade))
+
+        if passF and dwOK
+            color col = emitLow ? colLow : (emitBull ? colBull : colBear)
+            CRT c = CRT.new()
+            c.bull := emitBull
+            c.lowOdds := emitLow
+            c.c1H := e1H
+            c.c1L := e1L
+            c.c1Mid := e1Mid
+            c.c1Open := e1O
+            c.c1Time := e1T
+            c.c2H := e2H
+            c.c2L := e2L
+            c.c2Close := e2C
+            c.c2Time := e2T
+            c.tp1 := tp1v
+            c.tp2 := tp2v
+            c.inval := invv
+            c.grade := grade
+            c.kForm := kForm
+            c.kPurge := kPurge
+            c.kLevel := kLevel
+            c.purgeTime := ePurge
+            c.resolved := false
+            c.tp1Done := false
+            c.tp2Done := false
+            c.invalidated := false
+            c.barsCount := 0
+            c.htfBarsSince := 0
+            c.obActive := useOB and not emitLow
+            c.swept := false
+            c.obArmed := false
+            c.obConfirmed := false
+            c.obFilled := false
+            c.obResolved := false
+            c.obT1 := false
+            c.obT2 := false
+            c.sweepExt := na
+
+            // Section 7: range box (C1 open -> C2, extended later until resolve)
+            c.rangeBox := box.new(e1T, e1H, e2T, e1L, xloc=xloc.bar_time, border_color=color.new(col, 25), bgcolor=color.new(col, boxTransp), border_width=1)
+            // Section 7: dashed 50% line, solid TP2 & invalidation lines
+            c.midLine := line.new(e1T, e1Mid, e2T, e1Mid, xloc=xloc.bar_time, color=color.new(color.gray, 0), style=line.style_dashed, width=1)
+            c.tp2Line := line.new(e1T, tp2v, e2T, tp2v, xloc=xloc.bar_time, color=color.new(col, 0), style=line.style_solid, width=1)
+            c.invLine := line.new(e1T, invv, e2T, invv, xloc=xloc.bar_time, color=color.new(color.red, 0), style=line.style_solid, width=1)
+
+            // Section 4: label carries direction + grade + targets
+            string dirTxt = (emitLow ? "Low-Odds " : "") + (emitBull ? "Bull CRT" : "Bear CRT")
+            string lblTxt = dirTxt + " [" + grade + "]" + (kForm ? "  ⏱" : "") + (kLevel ? "  ✦" : "") + "\nTP1 " + str.tostring(tp1v, format.mintick) + "   TP2 " + str.tostring(tp2v, format.mintick) + "\nInval " + str.tostring(invv, format.mintick)
+            c.tag := label.new(e2T, emitBull ? e2L : e2H, lblTxt, xloc=xloc.bar_time, style=emitBull ? label.style_label_up : label.style_label_down, color=color.new(col, 10), textcolor=color.white, size=size.small)
+
+            // Section 7: purge marker with its time
+            if not na(ePurge)
+                int ph = hour(ePurge, NY)
+                int pm = minute(ePurge, NY)
+                string ptxt = "Purge " + str.tostring(ph) + ":" + (pm < 10 ? "0" : "") + str.tostring(pm)
+                c.purgeTag := label.new(ePurge, emitBull ? e1L : e1H, ptxt, xloc=xloc.bar_time, style=emitBull ? label.style_label_up : label.style_label_down, color=color.new(color.orange, 20), textcolor=color.white, size=size.tiny)
+
+            array.push(crts, c)
+
+            // Section 9: CRT confirmed alert (dynamic message)
+            fConfirm := true
+            alert(dirTxt + " [" + grade + "] confirmed. TP1 " + str.tostring(tp1v, format.mintick) + ", TP2 " + str.tostring(tp2v, format.mintick) + ", Inval " + str.tostring(invv, format.mintick), alert.freq_once_per_bar)
+
+            // Section 7: keep object count bounded (delete oldest first)
+            while array.size(crts) > maxKeep
+                CRT oldc = array.shift(crts)
+                clearDraw(oldc)
+
+// ============== Section 2b: LIVE PURGE TRACKING (chart bars) =================
+// First chart-bar time price exceeds the live C1 candidate high/low.
+if haveC1
+    bool setUp = false
+    bool setDn = false
+    if na(formingPurgeUp) and high > candC1H
+        formingPurgeUp := time
+        setUp := true
+    if na(formingPurgeDown) and low < candC1L
+        formingPurgeDown := time
+        setDn := true
+    // Section 9: key-time purge in progress alert
+    if setUp or setDn
+        float pmn = hour(time, NY) * 60 + minute(time, NY)
+        bool atKey = nearMin(pmn, 1, p01) or nearMin(pmn, 3, p03) or nearMin(pmn, 6, p06) or nearMin(pmn, 8, p08) or nearMin(pmn, 9, p09) or nearMin(pmn, 11, p11)
+        if atKey
+            fPurge := true
+            int hh = hour(time, NY)
+            int mm = minute(time, NY)
+            alert("Key-time purge in progress at " + str.tostring(hh) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm), alert.freq_once_per_bar)
+
+// ============== Section 1 (Advanced): live UNCONFIRMED marker ================
+if mode == "Advanced" and haveC1 and barstate.isconfirmed == false
+    bool liveBear = high > candC1H
+    bool liveBull = low < candC1L
+    if liveBear or liveBull
+        float yy = liveBear ? high : low
+        if na(advLbl)
+            advLbl := label.new(bar_index, yy, "CRT? UNCONFIRMED", style=liveBear ? label.style_label_down : label.style_label_up, color=color.new(color.yellow, 15), textcolor=color.black, size=size.tiny)
+        else
+            label.set_xy(advLbl, bar_index, yy)
+            label.set_style(advLbl, liveBear ? label.style_label_down : label.style_label_up)
+
+// ==================== ACTIVE CRT MANAGEMENT (per bar) =======================
+int nCrt = array.size(crts)
+if nCrt > 0
+    for i = 0 to nCrt - 1
+        CRT c = array.get(crts, i)
+
+        // Section 7: count HTF candles since confirmation
+        if newClose and not c.resolved
+            c.htfBarsSince := c.htfBarsSince + 1
+
+        // ---- Section 8: CRT resolution tracking (confirmed chart bars) ----
+        if barstate.isconfirmed and not c.resolved
+            bool prevTp1 = c.tp1Done
+            bool hitInval = c.bull ? low <= c.inval : high >= c.inval
+            bool hitTp1   = c.bull ? high >= c.tp1  : low <= c.tp1
+            bool hitTp2   = c.bull ? high >= c.tp2  : low <= c.tp2
+            c.barsCount := c.barsCount + 1
+            bool jr = false
+            if hitInval and (hitTp1 or hitTp2) and not c.tp1Done and not c.tp2Done
+                // A9: same-bar TP + invalidation with no prior TP = LOSS
+                c.invalidated := true
+                c.resolved := true
+                jr := true
+            else
+                if hitTp2 and not c.tp2Done and not hitInval
+                    c.tp1Done := true
+                    c.tp2Done := true
+                    c.resolved := true
+                    jr := true
+                else if hitTp1 and not c.tp1Done and not hitInval
+                    c.tp1Done := true
+                if hitInval and not c.resolved
+                    c.invalidated := true
+                    c.resolved := true
+                    jr := true
+            // Section 9: TP1 / TP2 / invalidation alerts
+            if c.tp1Done and not prevTp1
+                fTp1 := true
+                alert("CRT TP1 hit (" + (c.bull ? "Bull" : "Bear") + ") @ " + str.tostring(c.tp1, format.mintick), alert.freq_once_per_bar)
+            if jr and c.tp2Done
+                fTp2 := true
+                alert("CRT TP2 hit (" + (c.bull ? "Bull" : "Bear") + ") @ " + str.tostring(c.tp2, format.mintick), alert.freq_once_per_bar)
+            if jr and c.invalidated
+                fInval := true
+                alert("CRT invalidated (" + (c.bull ? "Bull" : "Bear") + ") @ " + str.tostring(c.inval, format.mintick), alert.freq_once_per_bar)
+            // Section 8: record resolved outcome by grade
+            if jr
+                if c.grade == "A+"
+                    cntAp := cntAp + 1
+                    tp1Ap := tp1Ap + (c.tp1Done ? 1 : 0)
+                    tp2Ap := tp2Ap + (c.tp2Done ? 1 : 0)
+                    barsAp := barsAp + c.barsCount
+                else if c.grade == "A"
+                    cntA := cntA + 1
+                    tp1A := tp1A + (c.tp1Done ? 1 : 0)
+                    tp2A := tp2A + (c.tp2Done ? 1 : 0)
+                    barsA := barsA + c.barsCount
+                else if c.grade == "B"
+                    cntB := cntB + 1
+                    tp1B := tp1B + (c.tp1Done ? 1 : 0)
+                    tp2B := tp2B + (c.tp2Done ? 1 : 0)
+                    barsB := barsB + c.barsCount
+                else
+                    cntLo := cntLo + 1
+                    tp1Lo := tp1Lo + (c.tp1Done ? 1 : 0)
+                    tp2Lo := tp2Lo + (c.tp2Done ? 1 : 0)
+                    barsLo := barsLo + c.barsCount
+
+        // ---- Section 5: LTF orderblock entry (confirmed chart bars) ----
+        if barstate.isconfirmed and useOB and not c.lowOdds and c.obActive and not c.obResolved
+            // sweep + OB-candidate identification
+            if c.bull
+                if low < c.c1L
+                    c.swept := true
+                    c.sweepExt := na(c.sweepExt) ? low : math.min(c.sweepExt, low)
+                if c.swept and close < open and low < c.c1L
+                    c.obCandOpen := open
+                    c.obCandHigh := high
+                    c.obCandLow := low
+                    c.obCandClose := close
+                    c.obArmed := true
+            else
+                if high > c.c1H
+                    c.swept := true
+                    c.sweepExt := na(c.sweepExt) ? high : math.max(c.sweepExt, high)
+                if c.swept and close > open and high > c.c1H
+                    c.obCandOpen := open
+                    c.obCandHigh := high
+                    c.obCandLow := low
+                    c.obCandClose := close
+                    c.obArmed := true
+
+            // cancel before confirmation if TP1 or invalidation is reached
+            if not c.obConfirmed
+                bool cT1 = c.bull ? high >= c.tp1 : low <= c.tp1
+                bool cIv = c.bull ? low <= c.inval : high >= c.inval
+                if cT1 or cIv
+                    c.obActive := false
+
+            // displacement / CSD confirmation
+            if c.obActive and c.obArmed and not c.obConfirmed
+                if c.bull and close > c.obCandOpen
+                    bool whole = close > c.obCandHigh
+                    c.obTop := whole ? c.obCandHigh : c.obCandOpen
+                    c.obBot := whole ? c.obCandLow : c.obCandClose
+                    c.obEntry := c.obTop
+                    c.obStop := c.sweepExt
+                    c.obConfirmed := true
+                if not c.bull and close < c.obCandOpen
+                    bool whole2 = close < c.obCandLow
+                    c.obTop := whole2 ? c.obCandHigh : c.obCandClose
+                    c.obBot := whole2 ? c.obCandLow : c.obCandOpen
+                    c.obEntry := c.obBot
+                    c.obStop := c.sweepExt
+                    c.obConfirmed := true
+                if c.obConfirmed
+                    float risk = math.abs(c.obEntry - c.obStop)
+                    float rr1 = risk > 0 ? math.abs(c.tp1 - c.obEntry) / risk : 0.0
+                    float rr2 = risk > 0 ? math.abs(c.tp2 - c.obEntry) / risk : 0.0
+                    color oc = c.bull ? colBull : colBear
+                    c.obBox := box.new(time, c.obTop, time, c.obBot, xloc=xloc.bar_time, border_color=color.new(oc, 0), bgcolor=color.new(oc, 78), border_width=1)
+                    string otxt = "OB " + (c.bull ? "Long" : "Short") + "\nE " + str.tostring(c.obEntry, format.mintick) + "  SL " + str.tostring(c.obStop, format.mintick) + "\nRR " + str.tostring(rr1, "#.##") + " / " + str.tostring(rr2, "#.##")
+                    c.obTag := label.new(time, c.obBot, otxt, xloc=xloc.bar_time, style=c.bull ? label.style_label_up : label.style_label_down, color=color.new(oc, 10), textcolor=color.white, size=size.tiny)
+                    fOB := true
+                    alert("OB entry confirmed " + (c.bull ? "Long" : "Short") + " @ " + str.tostring(c.obEntry, format.mintick) + " SL " + str.tostring(c.obStop, format.mintick) + " RR " + str.tostring(rr1, "#.##") + "/" + str.tostring(rr2, "#.##"), alert.freq_once_per_bar)
+
+            // fill: price returns to the proximal zone edge
+            if c.obConfirmed and not c.obFilled and c.obActive
+                bool fill = c.bull ? low <= c.obEntry : high >= c.obEntry
+                if fill
+                    c.obFilled := true
+
+            // OB outcome after fill (Section 5/8)
+            if c.obFilled and not c.obResolved
+                bool hStop = c.bull ? low <= c.obStop : high >= c.obStop
+                bool hf1 = c.bull ? high >= c.tp1 : low <= c.tp1
+                bool hf2 = c.bull ? high >= c.tp2 : low <= c.tp2
+                float rk = math.abs(c.obEntry - c.obStop)
+                float r1 = rk > 0 ? math.abs(c.tp1 - c.obEntry) / rk : 0.0
+                float r2 = rk > 0 ? math.abs(c.tp2 - c.obEntry) / rk : 0.0
+                if hf2 and not hStop and not c.obT2
+                    c.obT1 := true
+                    c.obT2 := true
+                if hf1 and not hStop and not c.obT1
+                    c.obT1 := true
+                if c.obT2 and not c.obResolved
+                    c.obResolved := true
+                    c.obR := r2
+                if hStop and not c.obResolved
+                    c.obResolved := true
+                    c.obR := c.obT1 ? r1 : -1.0
+                if c.obResolved
+                    obCnt := obCnt + 1
+                    obW1 := obW1 + (c.obT1 ? 1 : 0)
+                    obW2 := obW2 + (c.obT2 ? 1 : 0)
+                    obSumR := obSumR + c.obR
+
+        // ---- Section 7: extend range drawings until resolution / N candles ----
+        bool canExt = not c.resolved and c.htfBarsSince < resolveN
+        if canExt
+            box.set_right(c.rangeBox, time)
+            line.set_x2(c.midLine, time)
+            line.set_x2(c.tp2Line, time)
+            line.set_x2(c.invLine, time)
+        // OB zone extends right until touched
+        if c.obConfirmed and not c.obFilled
+            box.set_right(c.obBox, time)
+
+// =================== Section 3: FVG mitigation (per bar) =====================
+if barstate.isconfirmed and array.size(fTop) > 0
+    for fi = 0 to array.size(fTop) - 1
+        if array.get(fAct, fi)
+            float ft = array.get(fTop, fi)
+            float fb = array.get(fBot, fi)
+            bool isB = array.get(fBull, fi)
+            bool mit = isB ? low <= fb : high >= ft   // A6: traded through far edge
+            if mit
+                array.set(fAct, fi, false)
+                if drawKL
+                    box.delete(array.get(fBox, fi))
+
+// =================== Section 3: optional PD/PW drawing =======================
+if drawKL
+    if na(pdhL)
+        pdhL := line.new(bar_index, pdh, bar_index + 1, pdh, extend=extend.right, color=color.new(color.gray, 25), style=line.style_dotted)
+        pdlL := line.new(bar_index, pdl, bar_index + 1, pdl, extend=extend.right, color=color.new(color.gray, 25), style=line.style_dotted)
+        pwhL := line.new(bar_index, pwh, bar_index + 1, pwh, extend=extend.right, color=color.new(color.gray, 55), style=line.style_dashed)
+        pwlL := line.new(bar_index, pwl, bar_index + 1, pwl, extend=extend.right, color=color.new(color.gray, 55), style=line.style_dashed)
+    else
+        line.set_xy1(pdhL, bar_index, pdh)
+        line.set_xy2(pdhL, bar_index + 1, pdh)
+        line.set_xy1(pdlL, bar_index, pdl)
+        line.set_xy2(pdlL, bar_index + 1, pdl)
+        line.set_xy1(pwhL, bar_index, pwh)
+        line.set_xy2(pwhL, bar_index + 1, pwh)
+        line.set_xy1(pwlL, bar_index, pwl)
+        line.set_xy2(pwlL, bar_index + 1, pwl)
+
+// ========================= Section 6: killzone shading ======================
+bgcolor(kzAsia and inS("2000-0000") ? color.new(colAsia, kzTransp) : na, title="Asia KZ")
+bgcolor(kzLon and inS("0200-0500") ? color.new(colLon, kzTransp) : na, title="London KZ")
+bgcolor(kzAM and inS("0830-1100") ? color.new(colAM, kzTransp) : na, title="NY AM KZ")
+bgcolor(kzPM and inS("1330-1600") ? color.new(colPM, kzTransp) : na, title="NY PM KZ")
+bgcolor(kzRef and (inS("0300-0400") or inS("0600-0700") or inS("0830-0930") or inS("1000-1100")) ? color.new(colRef, kzTransp) : na, title="Refined KZ")
+
+// ========================= Section 9: alertconditions =======================
+alertcondition(fConfirm, "CRT confirmed", "CRT confirmed (see dynamic alert for direction/grade/targets)")
+alertcondition(fPurge,   "Key-time purge in progress", "Key-time purge in progress")
+alertcondition(fOB,      "OB entry confirmed", "Orderblock entry confirmed")
+alertcondition(fTp1,     "CRT TP1 hit", "CRT TP1 reached")
+alertcondition(fTp2,     "CRT TP2 hit", "CRT TP2 reached")
+alertcondition(fInval,   "CRT invalidated", "CRT invalidated")
+
+// ============================ Section 8: stats table ========================
+if barstate.islast and showStats
+    tblPos = switch statsPos
+        "Top Right"     => position.top_right
+        "Top Left"      => position.top_left
+        "Bottom Right"  => position.bottom_right
+        "Bottom Left"   => position.bottom_left
+        "Middle Right"  => position.middle_right
+        => position.top_right
+    if na(stat)
+        stat := table.new(tblPos, 5, 8, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+    else
+        table.set_position(stat, tblPos)
+
+    color hdrBg = color.new(color.gray, 20)
+    color rowBg = color.new(color.black, 55)
+    color txt   = color.white
+
+    // CRT header
+    table.cell(stat, 0, 0, "Grade", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 0, "N",     bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 0, "TP1%",  bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 0, "TP2%",  bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 0, "AvgBars", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+
+    // A+
+    table.cell(stat, 0, 1, "A+", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 1, str.tostring(cntAp), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 1, f_pct(tp1Ap, cntAp), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 1, f_pct(tp2Ap, cntAp), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 1, avgB(barsAp, cntAp), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    // A
+    table.cell(stat, 0, 2, "A", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 2, str.tostring(cntA), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 2, f_pct(tp1A, cntA), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 2, f_pct(tp2A, cntA), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 2, avgB(barsA, cntA), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    // B
+    table.cell(stat, 0, 3, "B", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 3, str.tostring(cntB), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 3, f_pct(tp1B, cntB), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 3, f_pct(tp2B, cntB), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 3, avgB(barsB, cntB), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    // LO
+    table.cell(stat, 0, 4, "LO", bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
+    table.cell(stat, 1, 4, str.tostring(cntLo), bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
+    table.cell(stat, 2, 4, f_pct(tp1Lo, cntLo), bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
+    table.cell(stat, 3, 4, f_pct(tp2Lo, cntLo), bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
+    table.cell(stat, 4, 4, avgB(barsLo, cntLo), bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
+    // Total
+    int totN = cntAp + cntA + cntB + cntLo
+    int totT1 = tp1Ap + tp1A + tp1B + tp1Lo
+    int totT2 = tp2Ap + tp2A + tp2B + tp2Lo
+    int totBars = barsAp + barsA + barsB + barsLo
+    table.cell(stat, 0, 5, "Total", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 5, str.tostring(totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 5, f_pct(totT1, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 5, f_pct(totT2, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 5, avgB(totBars, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
+
+    // OB header + row
+    table.cell(stat, 0, 6, "OB", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 6, "N", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 6, "TP1%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 6, "TP2%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 6, "AvgR", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 0, 7, "entry", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 7, str.tostring(obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 7, f_pct(obW1, obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 7, f_pct(obW2, obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 7, obCnt > 0 ? str.tostring(obSumR / obCnt, "#.##") + "R" : "-", bgcolor=rowBg, text_color=txt, text_size=size.small)
