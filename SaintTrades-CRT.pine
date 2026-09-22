@@ -173,7 +173,7 @@ kzTransp = input.int(90, "Killzone opacity", minval=50, maxval=100, group=G_KZ)
 colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
 colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
-maxKeep = input.int(30, "Max CRTs kept on chart", minval=5, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
+maxKeep = input.int(5, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
 
 // --- Section 8: stats ---
 showStats = input.bool(true, "Show validation stats table", group=G_STAT)
