@@ -101,6 +101,11 @@ type CRT
     label  purgeTag
     box    obBox
     label  obTag
+    label  lblTp1
+    label  lblTp2
+    label  lblStop
+    line   entryLine
+    label  lblEntry
 
 // =============================== INPUTS ======================================
 G_CRT = "1 · CRT Detection"
@@ -152,13 +157,13 @@ drawKL  = input.bool(false, "Draw key levels on chart", group=G_KL)
 useOB = input.bool(true, "Enable LTF orderblock entry", group=G_ENTRY)
 
 // --- Section 6: killzones ---
-kzAsia = input.bool(true,  "Asia 20:00–00:00",    inline="ka", group=G_KZ)
+kzAsia = input.bool(false, "Asia 20:00–00:00",    inline="ka", group=G_KZ)
 colAsia = input.color(color.purple, "", inline="ka", group=G_KZ)
-kzLon  = input.bool(true,  "London 02:00–05:00",  inline="kl", group=G_KZ)
+kzLon  = input.bool(false, "London 02:00–05:00",  inline="kl", group=G_KZ)
 colLon  = input.color(color.blue, "", inline="kl", group=G_KZ)
-kzAM   = input.bool(true,  "NY AM 08:30–11:00",   inline="kam", group=G_KZ)
+kzAM   = input.bool(false, "NY AM 08:30–11:00",   inline="kam", group=G_KZ)
 colAM   = input.color(color.green, "", inline="kam", group=G_KZ)
-kzPM   = input.bool(true,  "NY PM 13:30–16:00",   inline="kpm", group=G_KZ)
+kzPM   = input.bool(false, "NY PM 13:30–16:00",   inline="kpm", group=G_KZ)
 colPM   = input.color(color.orange, "", inline="kpm", group=G_KZ)
 kzRef  = input.bool(false, "Refined 03-04 / 06-07 / 08:30-09:30 / 10-11", inline="kr", group=G_KZ)
 colRef  = input.color(color.red, "", inline="kr", group=G_KZ)
@@ -168,7 +173,6 @@ kzTransp = input.int(90, "Killzone opacity", minval=50, maxval=100, group=G_KZ)
 colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
 colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
-boxTransp = input.int(90, "Range box opacity", minval=50, maxval=100, group=G_VIS)
 maxKeep = input.int(30, "Max CRTs kept on chart", minval=5, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
 
 // --- Section 8: stats ---
@@ -223,6 +227,11 @@ clearDraw(CRT c) =>
     label.delete(c.purgeTag)
     box.delete(c.obBox)
     label.delete(c.obTag)
+    label.delete(c.lblTp1)
+    label.delete(c.lblTp2)
+    label.delete(c.lblStop)
+    line.delete(c.entryLine)
+    label.delete(c.lblEntry)
 
 // Section 6: is the current bar inside a NY session string
 inS(string sess) =>
@@ -503,17 +512,22 @@ if newClose
             c.obT2 := false
             c.sweepExt := na
 
-            // Section 7: range box (C1 open -> C2, extended later until resolve)
-            c.rangeBox := box.new(e1T, e1H, e2T, e1L, xloc=xloc.bar_time, border_color=color.new(col, 25), bgcolor=color.new(col, boxTransp), border_width=1)
-            // Section 7: dashed 50% line, solid TP2 & invalidation lines
-            c.midLine := line.new(e1T, e1Mid, e2T, e1Mid, xloc=xloc.bar_time, color=color.new(color.gray, 0), style=line.style_dashed, width=1)
-            c.tp2Line := line.new(e1T, tp2v, e2T, tp2v, xloc=xloc.bar_time, color=color.new(col, 0), style=line.style_solid, width=1)
-            c.invLine := line.new(e1T, invv, e2T, invv, xloc=xloc.bar_time, color=color.new(color.red, 0), style=line.style_solid, width=1)
+            // Section 7: range box — OUTLINE ONLY, no background fill
+            c.rangeBox := box.new(e1T, e1H, e2T, e1L, xloc=xloc.bar_time, border_color=color.new(col, 20), bgcolor=na, border_width=1)
+            // Section 7: TP1 (50%) dashed green, TP2 solid green, STOP (invalidation) solid red
+            c.midLine := line.new(e1T, e1Mid, e2T, e1Mid, xloc=xloc.bar_time, color=colBull, style=line.style_dashed, width=1)
+            c.tp2Line := line.new(e1T, tp2v, e2T, tp2v, xloc=xloc.bar_time, color=colBull, style=line.style_solid, width=2)
+            c.invLine := line.new(e1T, invv, e2T, invv, xloc=xloc.bar_time, color=colBear, style=line.style_solid, width=2)
 
-            // Section 4: label carries direction + grade + targets
+            // Section 4: compact tag (direction + grade); prices live on the level labels
             string dirTxt = (emitLow ? "Low-Odds " : "") + (emitBull ? "Bull CRT" : "Bear CRT")
-            string lblTxt = dirTxt + " [" + grade + "]" + (kForm ? "  ⏱" : "") + (kLevel ? "  ✦" : "") + "\nTP1 " + str.tostring(tp1v, format.mintick) + "   TP2 " + str.tostring(tp2v, format.mintick) + "\nInval " + str.tostring(invv, format.mintick)
+            string lblTxt = dirTxt + " [" + grade + "]" + (kForm ? " ⏱" : "") + (kLevel ? " ✦" : "")
             c.tag := label.new(e2T, emitBull ? e2L : e2H, lblTxt, xloc=xloc.bar_time, style=emitBull ? label.style_label_up : label.style_label_down, color=color.new(col, 10), textcolor=color.white, size=size.small)
+
+            // Section 7: clear right-edge price labels for TP1 / TP2 / STOP
+            c.lblTp1 := label.new(e2T, e1Mid, "TP1 " + str.tostring(e1Mid, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=colBull, textcolor=color.white, size=size.small)
+            c.lblTp2 := label.new(e2T, tp2v, "TP2 " + str.tostring(tp2v, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=colBull, textcolor=color.white, size=size.small)
+            c.lblStop := label.new(e2T, invv, "STOP " + str.tostring(invv, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=colBear, textcolor=color.white, size=size.small)
 
             // Section 7: purge marker with its time
             if not na(ePurge)
@@ -685,10 +699,10 @@ if nCrt > 0
                     float risk = math.abs(c.obEntry - c.obStop)
                     float rr1 = risk > 0 ? math.abs(c.tp1 - c.obEntry) / risk : 0.0
                     float rr2 = risk > 0 ? math.abs(c.tp2 - c.obEntry) / risk : 0.0
-                    color oc = c.bull ? colBull : colBear
-                    c.obBox := box.new(time, c.obTop, time, c.obBot, xloc=xloc.bar_time, border_color=color.new(oc, 0), bgcolor=color.new(oc, 78), border_width=1)
-                    string otxt = "OB " + (c.bull ? "Long" : "Short") + "\nE " + str.tostring(c.obEntry, format.mintick) + "  SL " + str.tostring(c.obStop, format.mintick) + "\nRR " + str.tostring(rr1, "#.##") + " / " + str.tostring(rr2, "#.##")
-                    c.obTag := label.new(time, c.obBot, otxt, xloc=xloc.bar_time, style=c.bull ? label.style_label_up : label.style_label_down, color=color.new(oc, 10), textcolor=color.white, size=size.tiny)
+                    c.obBox := box.new(time, c.obTop, time, c.obBot, xloc=xloc.bar_time, border_color=color.new(#2962ff, 0), bgcolor=na, border_width=1)
+                    c.entryLine := line.new(time, c.obEntry, time, c.obEntry, xloc=xloc.bar_time, color=#2962ff, style=line.style_solid, width=2)
+                    string etxt = "ENTRY " + str.tostring(c.obEntry, format.mintick) + "  " + (c.bull ? "Long" : "Short") + "  RR " + str.tostring(rr1, "#.##") + "/" + str.tostring(rr2, "#.##")
+                    c.lblEntry := label.new(time, c.obEntry, etxt, xloc=xloc.bar_time, style=label.style_label_left, color=#2962ff, textcolor=color.white, size=size.small)
                     fOB := true
                     alert("OB entry confirmed " + (c.bull ? "Long" : "Short") + " @ " + str.tostring(c.obEntry, format.mintick) + " SL " + str.tostring(c.obStop, format.mintick) + " RR " + str.tostring(rr1, "#.##") + "/" + str.tostring(rr2, "#.##"), alert.freq_once_per_bar)
 
@@ -730,6 +744,12 @@ if nCrt > 0
             line.set_x2(c.midLine, time)
             line.set_x2(c.tp2Line, time)
             line.set_x2(c.invLine, time)
+            label.set_x(c.lblTp1, time)
+            label.set_x(c.lblTp2, time)
+            label.set_x(c.lblStop, time)
+            if not na(c.entryLine)
+                line.set_x2(c.entryLine, time)
+                label.set_x(c.lblEntry, time)
         // OB zone extends right until touched
         if c.obConfirmed and not c.obFilled
             box.set_right(c.obBox, time)
