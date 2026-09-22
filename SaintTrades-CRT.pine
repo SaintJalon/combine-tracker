@@ -124,7 +124,7 @@ showLow   = input.bool(false, "Show Low-Odds CRTs (closed outside range)", group
 insideOn  = input.bool(false, "Inside CRT (range valid for N HTF candles)", group=G_CRT)
 insideN   = input.int(3, "Inside CRT: max HTF candles", minval=1, maxval=20, group=G_CRT)
 resolveN  = input.int(3, "Stop extending range after N HTF candles", minval=1, maxval=50, group=G_CRT)
-minGrade  = input.string("B", "Minimum grade to display", options=["A+", "A", "B"], group=G_CRT)
+minGrade  = input.string("A", "Minimum grade to display", options=["A+", "A", "B"], group=G_CRT)
 
 // --- Section 2a: formation hours (= key-time formation set) ---
 f01 = input.bool(true,  "C1 opens 01:00", inline="fa", group=G_TIME)
