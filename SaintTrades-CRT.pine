@@ -71,6 +71,7 @@ type CRT
     bool   tp2Done
     bool   invalidated
     bool   resolved
+    bool   levelsCleared
     int    barsCount
     int    htfBarsSince
     // OB entry (Section 5)
@@ -174,6 +175,7 @@ colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
 colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
 maxKeep = input.int(5, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
+levelsMode = input.string("Live setups only", "Show entry/stop/TP levels for", options=["Live setups only", "All setups"], tooltip="Live setups only: once a setup hits TP2 or invalidates, its level lines and price labels are removed and just the dimmed range box remains. Stops labels from stacking up at the right edge.", group=G_VIS)
 
 // --- Section 8: stats ---
 showStats = input.bool(true, "Show validation stats table", group=G_STAT)
@@ -232,6 +234,28 @@ clearDraw(CRT c) =>
     label.delete(c.lblStop)
     line.delete(c.entryLine)
     label.delete(c.lblEntry)
+
+// Section 7: a finished setup drops its level lines + price labels so they stop
+// stacking up at the right edge; the dimmed range box stays as the footprint.
+clearLevels(CRT c) =>
+    line.delete(c.midLine)
+    c.midLine := na
+    line.delete(c.tp2Line)
+    c.tp2Line := na
+    line.delete(c.invLine)
+    c.invLine := na
+    line.delete(c.entryLine)
+    c.entryLine := na
+    label.delete(c.lblTp1)
+    c.lblTp1 := na
+    label.delete(c.lblTp2)
+    c.lblTp2 := na
+    label.delete(c.lblStop)
+    c.lblStop := na
+    label.delete(c.lblEntry)
+    c.lblEntry := na
+    box.delete(c.obBox)
+    c.obBox := na
 
 // Section 6: is the current bar inside a NY session string
 inS(string sess) =>
@@ -500,6 +524,7 @@ if newClose
             c.tp1Done := false
             c.tp2Done := false
             c.invalidated := false
+            c.levelsCleared := false
             c.barsCount := 0
             c.htfBarsSince := 0
             c.obActive := useOB and not emitLow
@@ -701,8 +726,9 @@ if nCrt > 0
                     float rr2 = risk > 0 ? math.abs(c.tp2 - c.obEntry) / risk : 0.0
                     c.obBox := box.new(time, c.obTop, time, c.obBot, xloc=xloc.bar_time, border_color=color.new(#2962ff, 0), bgcolor=na, border_width=1)
                     c.entryLine := line.new(time, c.obEntry, time, c.obEntry, xloc=xloc.bar_time, color=#2962ff, style=line.style_solid, width=2)
-                    string etxt = "ENTRY " + str.tostring(c.obEntry, format.mintick) + "  " + (c.bull ? "Long" : "Short") + "  RR " + str.tostring(rr1, "#.##") + "/" + str.tostring(rr2, "#.##")
-                    c.lblEntry := label.new(time, c.obEntry, etxt, xloc=xloc.bar_time, style=label.style_label_left, color=#2962ff, textcolor=color.white, size=size.small)
+                    c.lblEntry := label.new(time, c.obEntry, "ENTRY " + str.tostring(c.obEntry, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=#2962ff, textcolor=color.white, size=size.small)
+                    // direction + R:R ride on the CRT tag, where there is room for them
+                    label.set_text(c.tag, label.get_text(c.tag) + "  " + (c.bull ? "Long" : "Short") + " " + str.tostring(rr1, "#.#") + "R/" + str.tostring(rr2, "#.#") + "R")
                     fOB := true
                     alert("OB entry confirmed " + (c.bull ? "Long" : "Short") + " @ " + str.tostring(c.obEntry, format.mintick) + " SL " + str.tostring(c.obStop, format.mintick) + " RR " + str.tostring(rr1, "#.##") + "/" + str.tostring(rr2, "#.##"), alert.freq_once_per_bar)
 
@@ -737,6 +763,14 @@ if nCrt > 0
                     obW2 := obW2 + (c.obT2 ? 1 : 0)
                     obSumR := obSumR + c.obR
 
+        // ---- Section 7: a setup that has resolved OR gone stale (past the N-candle
+        // window) drops its level lines and price labels, so only the setup still in
+        // play carries entry/stop/TP prices. Keeps them from stacking up. ----
+        if levelsMode == "Live setups only" and not c.levelsCleared and (c.resolved or c.htfBarsSince >= resolveN)
+            clearLevels(c)
+            box.set_border_color(c.rangeBox, color.new(color.gray, 55))
+            c.levelsCleared := true
+
         // ---- Section 7: extend range drawings until resolution / N candles ----
         bool canExt = not c.resolved and c.htfBarsSince < resolveN
         if canExt
@@ -750,8 +784,8 @@ if nCrt > 0
             if not na(c.entryLine)
                 line.set_x2(c.entryLine, time)
                 label.set_x(c.lblEntry, time)
-        // OB zone extends right until touched
-        if c.obConfirmed and not c.obFilled
+        // OB zone extends right until touched (handle is na once the setup finished)
+        if c.obConfirmed and not c.obFilled and not na(c.obBox)
             box.set_right(c.obBox, time)
 
 // =================== Section 3: FVG mitigation (per bar) =====================
