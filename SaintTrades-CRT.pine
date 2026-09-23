@@ -58,12 +58,25 @@
 //      that NY hour" (01:00-01:59 etc.), so several C1s per key hour qualify.
 // A14. "Mkt" stats row = enter at C2's close (C3 open), stop at the C2 extreme,
 //      hold to one target. TP1 then stopped counts as a TP1 win but a TP2 loss.
+// A15. Pullback entries rest as limits from the C3 open: "C1 edge" = the swept C1
+//      high/low, "Wick 50%" = halfway along C2's sweep wick. Same stop (C2 extreme)
+//      and targets. A limit is cancelled if TP1 trades before it fills; after a fill,
+//      TPs count from the next bar and a stop on the fill bar counts (conservative).
 // =============================================================================
 
 indicator("CRT – Candle Range Theory (Sham/CPI)", "CRT Sham/CPI", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 // ============================ USER-DEFINED TYPE ==============================
 // Section 10: use a UDT + arrays to manage active CRTs.
+// Section 5: a resting limit entry on a pullback after confirmation
+type Lim
+    float price
+    bool  filled = false
+    bool  done   = false
+    int   fillBar
+    bool  t1     = false
+    bool  t2     = false
+
 type CRT
     bool   bull
     bool   lowOdds
@@ -131,12 +144,14 @@ type CRT
     line   c2EntLine
     label  lblC2Ent
     label  entMark
+    Lim    limEdge
+    Lim    limWick
 
 // =============================== INPUTS ======================================
 G_CRT = "1 · CRT Detection"
 G_TIME = "2 · Time Filters"
 G_KL = "3 · Key Levels"
-G_ENTRY = "5 · LTF Orderblock Entry"
+G_ENTRY = "5 · Entry"
 G_KZ = "6 · Killzones"
 G_VIS = "7 · Visuals"
 G_STAT = "8 · Stats"
@@ -180,6 +195,7 @@ drawKL  = input.bool(false, "Draw key levels on chart", group=G_KL)
 
 // --- Section 5: OB entry ---
 useOB = input.bool(true, "Enable LTF orderblock entry", group=G_ENTRY)
+entryMode = input.string("C2 close", "Entry shown on chart", options=["C2 close", "C1 edge retest", "C2 wick 50%"], tooltip="C2 close = market at the C3 open. C1 edge retest = limit back at the swept C1 high/low. C2 wick 50% = limit halfway along the C2 sweep wick. Limits are cancelled if TP1 trades first. The stats table measures all of them either way.", group=G_ENTRY)
 
 // --- Section 6: killzones ---
 kzAsia = input.bool(false, "Asia 20:00–00:00",    inline="ka", group=G_KZ)
@@ -243,6 +259,40 @@ f_pct(int n, int d) =>
     d > 0 ? str.tostring(int(math.round(100.0 * n / d))) + "%" : "-"
 avgB(int s, int n) =>
     n > 0 ? str.tostring(int(math.round(s * 1.0 / n))) : "-"
+// average R and win rate, e.g. "+0.42R · 89%"
+fR(float sum, int wins, int n) =>
+    n > 0 ? (sum / n >= 0 ? "+" : "") + str.tostring(sum / n, "0.00") + "R · " + str.tostring(int(math.round(100.0 * wins / n))) + "%" : "-"
+
+// Section 5/8: advance a resting limit by one confirmed bar. Cancelled if TP1 trades
+// before it fills. After a fill, TPs count from the next bar (order inside the fill
+// bar is unknown) while a stop on the fill bar counts — conservative.
+// Returns [resolvedNow, filledNow, cancelledNow].
+stepLim(Lim L, bool bull, float tp1, float tp2, float stop) =>
+    bool res = false
+    bool fillNow = false
+    bool cancelNow = false
+    if not na(L) and not L.done
+        if not L.filled
+            if bull ? low <= L.price : high >= L.price
+                L.filled := true
+                L.fillBar := bar_index
+                fillNow := true
+            else if bull ? high >= tp1 : low <= tp1
+                L.done := true
+                cancelNow := true
+        if L.filled and not L.done
+            if bull ? low <= stop : high >= stop
+                L.done := true
+                res := true
+            else if bar_index > L.fillBar
+                if bull ? high >= tp1 : low <= tp1
+                    L.t1 := true
+                if bull ? high >= tp2 : low <= tp2
+                    L.t1 := true
+                    L.t2 := true
+                    L.done := true
+                    res := true
+    [res, fillNow, cancelNow]
 
 // Section 7: a setup drops its level lines + price labels (entry/stop/TP) so they
 // never stack at the right edge. Handles are set to na so repeat calls are harmless.
@@ -383,6 +433,21 @@ var int   mkW1    = 0
 var int   mkW2    = 0
 var float mkSumR1 = 0.0
 var float mkSumR2 = 0.0
+// pullback limits (fills / resolved) and OB per target
+var int   edN = 0
+var int   edDone = 0
+var int   edW1 = 0
+var int   edW2 = 0
+var float edR1 = 0.0
+var float edR2 = 0.0
+var int   wkN = 0
+var int   wkDone = 0
+var int   wkW1 = 0
+var int   wkW2 = 0
+var float wkR1 = 0.0
+var float wkR2 = 0.0
+var float obSumR1 = 0.0
+var float obSumR2 = 0.0
 
 // Section 3: optional key-level drawings
 var line pdhL = na
@@ -399,6 +464,7 @@ bool fOB      = false
 bool fTp1     = false
 bool fTp2     = false
 bool fInval   = false
+bool fFill    = false
 
 int maxWin = insideOn ? insideN : 1
 
@@ -602,13 +668,22 @@ if newClose
             // Section 5: market entry = C2's close back inside C1, i.e. the open of C3
             // (this bar). Every setup gets one; the OB entry below is a better-price
             // refinement that only some setups produce.
+            // Section 5 (A15): pullback limits, tracked for every setup so the stats
+            // table can compare them with the market entry
+            c.limEdge := Lim.new(emitBull ? e1L : e1H)
+            c.limWick := Lim.new(emitBull ? (e1L + e2L) / 2 : (e1H + e2H) / 2)
+            float entPx = entryMode == "C1 edge retest" ? c.limEdge.price : entryMode == "C2 wick 50%" ? c.limWick.price : e2C
             if not emitLow
-                float ent = e2C
+                bool isMkt = entryMode == "C2 close"
+                float ent = entPx
                 float rk0 = math.abs(ent - invv)
                 string rrTxt = rk0 > 0 ? str.tostring(math.abs(tp1v - ent) / rk0, "#.#") + "R / " + str.tostring(math.abs(tp2v - ent) / rk0, "#.#") + "R" : ""
-                c.c2EntLine := line.new(time, ent, time, ent, xloc=xloc.bar_time, color=colEnt, style=line.style_solid, width=3)
-                c.lblC2Ent := label.new(time, ent, "ENTRY " + str.tostring(ent, format.mintick) + "   " + rrTxt, xloc=xloc.bar_time, style=label.style_label_left, color=colEnt, textcolor=color.white, size=size.small)
-                c.entMark := label.new(time, ent, (emitBull ? "▲ LONG " : "▼ SHORT ") + str.tostring(ent, format.mintick), xloc=xloc.bar_time, yloc=emitBull ? yloc.belowbar : yloc.abovebar, style=emitBull ? label.style_label_up : label.style_label_down, color=colEnt, textcolor=color.white, size=size.normal)
+                // a limit shows dashed as LIMIT until it fills; the LONG/SHORT marker
+                // goes on the candle that fills it
+                c.c2EntLine := line.new(time, ent, time, ent, xloc=xloc.bar_time, color=colEnt, style=isMkt ? line.style_solid : line.style_dashed, width=isMkt ? 3 : 2)
+                c.lblC2Ent := label.new(time, ent, (isMkt ? "ENTRY " : "LIMIT ") + str.tostring(ent, format.mintick) + "   " + rrTxt, xloc=xloc.bar_time, style=label.style_label_left, color=colEnt, textcolor=color.white, size=size.small)
+                if isMkt
+                    c.entMark := label.new(time, ent, (emitBull ? "▲ LONG " : "▼ SHORT ") + str.tostring(ent, format.mintick), xloc=xloc.bar_time, yloc=emitBull ? yloc.belowbar : yloc.abovebar, style=emitBull ? label.style_label_up : label.style_label_down, color=colEnt, textcolor=color.white, size=size.normal)
 
             // Section 7: purge marker with its time
             if not na(ePurge)
@@ -621,7 +696,7 @@ if newClose
 
             // Section 9: CRT confirmed alert (dynamic message)
             fConfirm := true
-            alert(dirTxt + " [" + grade + "] confirmed. Entry " + str.tostring(e2C, format.mintick) + ", TP1 " + str.tostring(tp1v, format.mintick) + ", TP2 " + str.tostring(tp2v, format.mintick) + ", Inval " + str.tostring(invv, format.mintick), alert.freq_once_per_bar)
+            alert(dirTxt + " [" + grade + "] confirmed. " + (entryMode == "C2 close" ? "Entry " : "Limit ") + str.tostring(entPx, format.mintick) + ", TP1 " + str.tostring(tp1v, format.mintick) + ", TP2 " + str.tostring(tp2v, format.mintick) + ", Inval " + str.tostring(invv, format.mintick), alert.freq_once_per_bar)
 
             // Section 7: only the newest maxKeep CRTs keep drawings. Older ones lose
             // their drawings but STAY TRACKED until they resolve, so the stats table
@@ -843,6 +918,47 @@ if nCrt > 0
                     tp2Lo := tp2Lo + (c.tp2Done ? 1 : 0)
                     barsLo := barsLo + c.barsCount
 
+        // ---- Section 5/8 (A15): pullback limit entries, measured on every setup.
+        // Runs even after the CRT resolved: a limit can fill on the resolving bar and
+        // still be open. ----
+        if barstate.isconfirmed and not c.lowOdds and not na(c.limEdge)
+            [eRes, eFill, eCan] = stepLim(c.limEdge, c.bull, c.tp1, c.tp2, c.inval)
+            [wRes, wFill, wCan] = stepLim(c.limWick, c.bull, c.tp1, c.tp2, c.inval)
+            if eRes or eCan
+                edDone := edDone + 1
+            if eRes
+                float eRk = math.abs(c.limEdge.price - c.inval)
+                edN := edN + 1
+                edW1 := edW1 + (c.limEdge.t1 ? 1 : 0)
+                edW2 := edW2 + (c.limEdge.t2 ? 1 : 0)
+                edR1 := edR1 + (c.limEdge.t1 ? math.abs(c.tp1 - c.limEdge.price) / eRk : -1.0)
+                edR2 := edR2 + (c.limEdge.t2 ? math.abs(c.tp2 - c.limEdge.price) / eRk : -1.0)
+            if wRes or wCan
+                wkDone := wkDone + 1
+            if wRes
+                float wRk = math.abs(c.limWick.price - c.inval)
+                wkN := wkN + 1
+                wkW1 := wkW1 + (c.limWick.t1 ? 1 : 0)
+                wkW2 := wkW2 + (c.limWick.t2 ? 1 : 0)
+                wkR1 := wkR1 + (c.limWick.t1 ? math.abs(c.tp1 - c.limWick.price) / wRk : -1.0)
+                wkR2 := wkR2 + (c.limWick.t2 ? math.abs(c.tp2 - c.limWick.price) / wRk : -1.0)
+            // the limit shown on the chart: marker on the fill candle, or "no fill"
+            bool edgeSel = entryMode == "C1 edge retest"
+            bool selFill = edgeSel ? eFill : entryMode == "C2 wick 50%" ? wFill : false
+            bool selCan  = edgeSel ? eCan  : entryMode == "C2 wick 50%" ? wCan  : false
+            float selPx  = edgeSel ? c.limEdge.price : c.limWick.price
+            if selFill
+                fFill := true
+                alert("CRT limit filled " + (c.bull ? "Long" : "Short") + " @ " + str.tostring(selPx, format.mintick) + " SL " + str.tostring(c.inval, format.mintick), alert.freq_once_per_bar)
+                if c.drawn
+                    line.set_style(c.c2EntLine, line.style_solid)
+                    line.set_width(c.c2EntLine, 3)
+                    label.set_text(c.lblC2Ent, str.replace(label.get_text(c.lblC2Ent), "LIMIT ", "ENTRY "))
+                    c.entMark := label.new(time, selPx, (c.bull ? "▲ LONG " : "▼ SHORT ") + str.tostring(selPx, format.mintick), xloc=xloc.bar_time, yloc=c.bull ? yloc.belowbar : yloc.abovebar, style=c.bull ? label.style_label_up : label.style_label_down, color=colEnt, textcolor=color.white, size=c.resolved ? size.tiny : size.normal)
+            if selCan and c.drawn
+                line.set_style(c.c2EntLine, line.style_dotted)
+                label.set_text(c.tag, label.get_text(c.tag) + "  · no fill")
+
         // ---- Section 5: LTF orderblock entry (confirmed chart bars) ----
         if barstate.isconfirmed and useOB and not c.lowOdds and c.obActive and not c.obResolved
             // sweep + OB-candidate identification
@@ -939,6 +1055,8 @@ if nCrt > 0
                     obW1 := obW1 + (c.obT1 ? 1 : 0)
                     obW2 := obW2 + (c.obT2 ? 1 : 0)
                     obSumR := obSumR + c.obR
+                    obSumR1 := obSumR1 + (c.obT1 ? r1 : -1.0)
+                    obSumR2 := obSumR2 + (c.obT2 ? r2 : -1.0)
 
         // ---- Section 7: only the newest N setups carry entry/stop/TP levels. Older
         // ones drop their lines/labels and keep a dimmed box, so labels never stack.
@@ -977,7 +1095,7 @@ if nCrt > 0
 if array.size(crts) > 0
     for j = array.size(crts) - 1 to 0
         CRT rc = array.get(crts, j)
-        if rc.resolved and not rc.drawn
+        if rc.resolved and not rc.drawn and (na(rc.limEdge) or (rc.limEdge.done and rc.limWick.done))
             array.remove(crts, j)
 
 // =================== Section 3: FVG mitigation (per bar) =====================
@@ -1025,6 +1143,7 @@ alertcondition(fOB,      "OB entry confirmed", "Orderblock entry confirmed")
 alertcondition(fTp1,     "CRT TP1 hit", "CRT TP1 reached")
 alertcondition(fTp2,     "CRT TP2 hit", "CRT TP2 reached")
 alertcondition(fInval,   "CRT invalidated", "CRT invalidated")
+alertcondition(fFill,    "CRT limit entry filled", "CRT pullback limit entry filled")
 
 // ============================ Section 8: stats table ========================
 if barstate.islast and showStats
@@ -1036,7 +1155,7 @@ if barstate.islast and showStats
         "Middle Right"  => position.middle_right
         => position.top_right
     if na(stat)
-        stat := table.new(tblPos, 5, 10, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+        stat := table.new(tblPos, 5, 11, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
     else
         table.set_position(stat, tblPos)
 
@@ -1086,26 +1205,30 @@ if barstate.islast and showStats
     table.cell(stat, 3, 5, f_pct(totT2, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
     table.cell(stat, 4, 5, avgB(totBars, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
 
-    // Entry header + rows: does taking the setups actually make money?
+    // Entry header + rows: does taking the setups actually make money? Each cell is
+    // average R and win rate holding to that target; ▶ marks the entry on the chart.
     table.cell(stat, 0, 6, "Entry", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 6, "N", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 6, "TP1%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 6, "TP2%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 6, "AvgR", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    color r1Col = mkN > 0 and mkSumR1 / mkN > 0 ? colBull : mkN > 0 ? colBear : txt
-    color r2Col = mkN > 0 and mkSumR2 / mkN > 0 ? colBull : mkN > 0 ? colBear : txt
-    table.cell(stat, 0, 7, "Mkt→TP1", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 7, str.tostring(mkN), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 7, f_pct(mkW1, mkN), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 7, "", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 7, mkN > 0 ? str.tostring(mkSumR1 / mkN, "#.##") + "R" : "-", bgcolor=rowBg, text_color=r1Col, text_size=size.small)
-    table.cell(stat, 0, 8, "Mkt→TP2", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 8, str.tostring(mkN), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 8, "", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 8, f_pct(mkW2, mkN), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 8, mkN > 0 ? str.tostring(mkSumR2 / mkN, "#.##") + "R" : "-", bgcolor=rowBg, text_color=r2Col, text_size=size.small)
-    table.cell(stat, 0, 9, "OB entry", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 9, str.tostring(obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 9, f_pct(obW1, obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 9, f_pct(obW2, obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 9, obCnt > 0 ? str.tostring(obSumR / obCnt, "#.##") + "R" : "-", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 6, "Fills", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 6, "Fill%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 6, "→TP1", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 6, "→TP2", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    array<string> eNames = array.from("C2 close", "C1 edge", "Wick 50%", "OB")
+    array<bool>   eSel   = array.from(entryMode == "C2 close", entryMode == "C1 edge retest", entryMode == "C2 wick 50%", false)
+    array<int>    eN     = array.from(mkN, edN, wkN, obCnt)
+    array<string> eFillP = array.from(mkN > 0 ? "100%" : "-", f_pct(edN, edDone), f_pct(wkN, wkDone), f_pct(obCnt, mkN))
+    array<float>  eS1    = array.from(mkSumR1, edR1, wkR1, obSumR1)
+    array<float>  eS2    = array.from(mkSumR2, edR2, wkR2, obSumR2)
+    array<int>    eW1    = array.from(mkW1, edW1, wkW1, obW1)
+    array<int>    eW2    = array.from(mkW2, edW2, wkW2, obW2)
+    for k = 0 to 3
+        int n = array.get(eN, k)
+        float s1 = array.get(eS1, k)
+        float s2 = array.get(eS2, k)
+        color c1 = n > 0 ? (s1 / n > 0 ? colBull : colBear) : txt
+        color c2 = n > 0 ? (s2 / n > 0 ? colBull : colBear) : txt
+        int row = 7 + k
+        table.cell(stat, 0, row, (array.get(eSel, k) ? "▶ " : "") + array.get(eNames, k), bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 1, row, str.tostring(n), bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, row, array.get(eFillP, k), bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 3, row, fR(s1, array.get(eW1, k), n), bgcolor=rowBg, text_color=c1, text_size=size.small)
+        table.cell(stat, 4, row, fR(s2, array.get(eW2, k), n), bgcolor=rowBg, text_color=c2, text_size=size.small)
