@@ -773,9 +773,28 @@ if nCrt > 0
                 if not na(c.c2EntLine)
                     line.set_x2(c.c2EntLine, time)
                     label.set_x(c.lblC2Ent, time)
+                // finished setups go compact so back-to-back setups don't pile up:
+                // small faded price labels, and the entry price lives on the candle
+                // marker only (the ENTRY line stays)
+                label.set_size(c.lblTp1, size.tiny)
+                label.set_size(c.lblTp2, size.tiny)
+                label.set_size(c.lblStop, size.tiny)
+                label.set_color(c.lblTp1, color.new(colBull, 45))
+                label.set_color(c.lblTp2, color.new(colBull, 45))
+                label.set_color(c.lblStop, color.new(colBear, 45))
+                label.delete(c.lblC2Ent)
+                c.lblC2Ent := na
+                label.delete(c.lblEntry)
+                c.lblEntry := na
             if jr and c.drawn
                 string outcome = c.tp2Done ? "  ✓ TP2" : c.tp1Done ? "  ✓ TP1, then stopped" : "  ✗ Stopped"
-                label.set_text(c.tag, label.get_text(c.tag) + outcome)
+                // the purge time folds into the tag, so a finished setup has one label, not two
+                string purgeTxt = na(c.purgeTag) ? "" : "  · " + label.get_text(c.purgeTag)
+                label.delete(c.purgeTag)
+                c.purgeTag := na
+                label.set_text(c.tag, label.get_text(c.tag) + outcome + purgeTxt)
+                label.set_size(c.tag, size.tiny)
+                label.set_size(c.entMark, size.tiny)
             // Section 8: record resolved outcome by grade
             if jr
                 if c.grade == "A+"
