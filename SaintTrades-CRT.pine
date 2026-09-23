@@ -31,15 +31,29 @@
 //      inside-CRT window when enabled). Key-time match ignores midnight wrap.
 //  A6. FVG "fully mitigated" = price trades through the FAR edge (bull FVG: low
 //      <= gap bottom; bear FVG: high >= gap top) (Section 3).
-//  A7. Key-level confluence = the C2 sweep-wick price range overlaps the level
-//      / unmitigated FVG zone (Section 3).
-//  A8. OB candle = the last up-close (bear) / down-close (bull) chart candle
-//      that traded beyond C1 during the sweep, before displacement. Entry =
-//      proximal zone edge; Stop = chart sweep extreme (Section 5).
-//  A9. Stats "N" per grade = RESOLVED CRTs (outcome known). Percentages are
-//      over resolved count. Same-bar TP+invalidation = LOSS (conservative)
-//      (Section 8).
+//  A7. Key-level confluence = the C2 sweep-wick price range overlaps a level or
+//      FVG that already existed BEFORE C2: previous day/week levels are read as
+//      of the bar before confirmation (so a new session cannot compare C2 with a
+//      day that contains C2 itself), FVGs created by the close of C2 are ignored,
+//      and an FVG that C2's own sweep mitigated still counts (Section 3).
+//  A8. OB candle = the last up-close (bear) / down-close (bull) chart candle that
+//      traded beyond C1 during the sweep, tracked DURING C2 (the sweep happens
+//      inside C2, before the CRT exists) and updated if C3 re-sweeps. Entry =
+//      proximal zone edge; Stop = sweep extreme (= C2 extreme) (Section 5).
+//  A9. Stats "N" per grade = RESOLVED CRTs (outcome known), over every displayed
+//      CRT. Setups beyond "Max CRTs kept" lose their drawings but keep being
+//      tracked until they resolve, so the table is not biased toward setups that
+//      resolve quickly. Same-bar TP+invalidation = LOSS (conservative) (Section 8).
 // A10. OB "AvgR" is realized: TP2 => rr2, TP1-only => rr1, stopped => -1R.
+// A11. OB sequencing is conservative: a fill only counts on a bar after the
+//      confirming close; TPs only count on a bar after the fill (a stop on the
+//      fill bar counts); the entry is cancelled if TP1 or invalidation trades
+//      before it fills. Displacement is checked on C3 bars, so if it already
+//      happened inside C2 the entry confirms on the first C3 close past the OB
+//      open (never earlier than the CRT itself is confirmed).
+// A12. Formation hours 01/05/09/13/17/21 NY come from the notes. On TradingView,
+//      CME futures 4H bars open at 18/22/02/06/10/14 NY, so on a 4H CRT timeframe
+//      no C1 ever lands on those hours and A+ is unreachable. They work on 1H.
 // =============================================================================
 
 indicator("CRT – Candle Range Theory (Sham/CPI)", "CRT Sham/CPI", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
@@ -72,6 +86,7 @@ type CRT
     bool   invalidated
     bool   resolved
     bool   levelsCleared
+    bool   drawn
     int    barsCount
     int    htfBarsSince
     // OB entry (Section 5)
@@ -93,6 +108,8 @@ type CRT
     bool   obT1
     bool   obT2
     float  obR
+    int    obConfBar
+    int    obFillBar
     // drawing handles (Section 7)
     box    rangeBox
     line   midLine
@@ -219,24 +236,8 @@ f_pct(int n, int d) =>
 avgB(int s, int n) =>
     n > 0 ? str.tostring(int(math.round(s * 1.0 / n))) : "-"
 
-// Section 7: delete all drawings owned by a CRT (na handles are ignored)
-clearDraw(CRT c) =>
-    box.delete(c.rangeBox)
-    line.delete(c.midLine)
-    line.delete(c.tp2Line)
-    line.delete(c.invLine)
-    label.delete(c.tag)
-    label.delete(c.purgeTag)
-    box.delete(c.obBox)
-    label.delete(c.obTag)
-    label.delete(c.lblTp1)
-    label.delete(c.lblTp2)
-    label.delete(c.lblStop)
-    line.delete(c.entryLine)
-    label.delete(c.lblEntry)
-
-// Section 7: a finished setup drops its level lines + price labels so they stop
-// stacking up at the right edge; the dimmed range box stays as the footprint.
+// Section 7: a setup drops its level lines + price labels (entry/stop/TP) so they
+// never stack at the right edge. Handles are set to na so repeat calls are harmless.
 clearLevels(CRT c) =>
     line.delete(c.midLine)
     c.midLine := na
@@ -257,6 +258,18 @@ clearLevels(CRT c) =>
     box.delete(c.obBox)
     c.obBox := na
 
+// Section 7: delete every drawing a CRT owns (idempotent — handles set to na)
+clearDraw(CRT c) =>
+    box.delete(c.rangeBox)
+    c.rangeBox := na
+    label.delete(c.tag)
+    c.tag := na
+    label.delete(c.purgeTag)
+    c.purgeTag := na
+    label.delete(c.obTag)
+    c.obTag := na
+    clearLevels(c)
+
 // Section 6: is the current bar inside a NY session string
 inS(string sess) =>
     not na(time(timeframe.period, sess, NY))
@@ -275,6 +288,12 @@ tfStr = switch crtTfMode
 // Section 3: previous day / week levels (non-repainting)
 [pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
 [pwh, pwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+// Read as of the bar BEFORE confirmation: the CRT is confirmed on the first bar of
+// C3, which may open a new session whose "previous day" already contains C2.
+float pdhPrev = pdh[1]
+float pdlPrev = pdl[1]
+float pwhPrev = pwh[1]
+float pwlPrev = pwl[1]
 
 // =============================== STATE =======================================
 var array<CRT> crts = array.new<CRT>()
@@ -285,6 +304,7 @@ var array<float> fBot  = array.new<float>()
 var array<bool>  fBull = array.new<bool>()
 var array<bool>  fAct  = array.new<bool>()
 var array<box>   fBox  = array.new<box>()
+var array<int>   fMitT = array.new<int>()   // bar time the FVG was mitigated (na = still open)
 var float fv_h0 = na
 var float fv_l0 = na
 var float fv_h1 = na
@@ -303,6 +323,16 @@ var int   candCount  = 0
 // Section 2b: live purge trackers (first exceed of candidate C1 high/low)
 var int formingPurgeUp   = na
 var int formingPurgeDown = na
+// Section 5: orderblock candidate tracked DURING C2 — the sweep that makes the OB
+// happens inside C2, before the CRT object exists. Latest qualifying candle wins.
+var float obSeedBearO = na
+var float obSeedBearH = na
+var float obSeedBearL = na
+var float obSeedBearC = na
+var float obSeedBullO = na
+var float obSeedBullH = na
+var float obSeedBullL = na
+var float obSeedBullC = na
 
 // Section 1 Advanced: single reusable UNCONFIRMED marker
 var label advLbl = na
@@ -357,42 +387,6 @@ if newClose
         label.delete(advLbl)
         advLbl := na
 
-    // ---- Section 3: FVG detection over 3 consecutive CLOSED HTF candles ----
-    fv_h2 := fv_h1
-    fv_l2 := fv_l1
-    fv_h1 := fv_h0
-    fv_l1 := fv_l0
-    fv_h0 := h1
-    fv_l0 := l1
-    if not na(fv_h2)
-        // bullish FVG: low[0] > high[2]  (gap fv_h2 .. fv_l0)
-        if fv_l0 > fv_h2
-            array.push(fTop, fv_l0)
-            array.push(fBot, fv_h2)
-            array.push(fBull, true)
-            array.push(fAct, true)
-            box bxb = na
-            if drawKL
-                bxb := box.new(t1, fv_l0, t1, fv_h2, xloc=xloc.bar_time, border_color=color.new(color.blue, 60), bgcolor=color.new(color.blue, 92))
-            array.push(fBox, bxb)
-        // bearish FVG: high[0] < low[2]  (gap fv_h0 .. fv_l2)
-        if fv_h0 < fv_l2
-            array.push(fTop, fv_l2)
-            array.push(fBot, fv_h0)
-            array.push(fBull, false)
-            array.push(fAct, true)
-            box bxs = na
-            if drawKL
-                bxs := box.new(t1, fv_l2, t1, fv_h0, xloc=xloc.bar_time, border_color=color.new(color.blue, 60), bgcolor=color.new(color.blue, 92))
-            array.push(fBox, bxs)
-    // cap FVG store, delete oldest first (Section 7 – bounded object count)
-    while array.size(fTop) > 60
-        array.shift(fTop)
-        array.shift(fBot)
-        array.shift(fBull)
-        array.shift(fAct)
-        box.delete(array.shift(fBox))
-
     // ---- Section 1: range-candidate state machine ----
     bool setCandCc = true      // default: candidate becomes the just-closed candle
     bool emitNow  = false
@@ -408,6 +402,10 @@ if newClose
     float e2C = na
     int   e2T = na
     int   ePurge = na
+    float eObO = na
+    float eObH = na
+    float eObL = na
+    float eObC = na
 
     if not haveC1
         setCandCc := true      // first range candle
@@ -431,6 +429,10 @@ if newClose
             e2C := c1c
             e2T := t1
             ePurge := bl ? formingPurgeDown : formingPurgeUp
+            eObO := bl ? obSeedBullO : obSeedBearO
+            eObH := bl ? obSeedBullH : obSeedBearH
+            eObL := bl ? obSeedBullL : obSeedBearL
+            eObC := bl ? obSeedBullC : obSeedBearC
             setCandCc := true  // C2 becomes the next range candidate
         else
             if swH and swL
@@ -451,6 +453,14 @@ if newClose
         haveC1 := true
         formingPurgeUp := na
         formingPurgeDown := na
+        obSeedBearO := na
+        obSeedBearH := na
+        obSeedBearL := na
+        obSeedBearC := na
+        obSeedBullO := na
+        obSeedBullH := na
+        obSeedBullL := na
+        obSeedBullC := na
 
     // ---- Section 1/4/7: build & display the confirmed CRT ----
     if emitNow
@@ -477,12 +487,14 @@ if newClose
             rHi := tmp
         bool kLevel = false
         if kUsePD
-            kLevel := kLevel or (not na(pdh) and pdh >= rLo and pdh <= rHi) or (not na(pdl) and pdl >= rLo and pdl <= rHi)
+            kLevel := kLevel or (not na(pdhPrev) and pdhPrev >= rLo and pdhPrev <= rHi) or (not na(pdlPrev) and pdlPrev >= rLo and pdlPrev <= rHi)
         if kUsePW
-            kLevel := kLevel or (not na(pwh) and pwh >= rLo and pwh <= rHi) or (not na(pwl) and pwl >= rLo and pwl <= rHi)
+            kLevel := kLevel or (not na(pwhPrev) and pwhPrev >= rLo and pwhPrev <= rHi) or (not na(pwlPrev) and pwlPrev >= rLo and pwlPrev <= rHi)
         if kUseFVG and array.size(fTop) > 0
             for fi = 0 to array.size(fTop) - 1
-                if array.get(fAct, fi)
+                // open at the start of C2 = still open, or mitigated by C2's own sweep
+                int mt = array.get(fMitT, fi)
+                if array.get(fAct, fi) or (not na(mt) and mt >= e2T)
                     float ft = array.get(fTop, fi)
                     float fb = array.get(fBot, fi)
                     if rHi >= fb and rLo <= ft
@@ -525,17 +537,25 @@ if newClose
             c.tp2Done := false
             c.invalidated := false
             c.levelsCleared := false
+            c.drawn := true
+            c.obConfBar := na
+            c.obFillBar := na
             c.barsCount := 0
             c.htfBarsSince := 0
             c.obActive := useOB and not emitLow
-            c.swept := false
-            c.obArmed := false
+            // Section 5: C2 IS the sweep, so seed it and the OB candle tracked during C2
+            c.swept := true
+            c.obArmed := not na(eObO)
+            c.obCandOpen := eObO
+            c.obCandHigh := eObH
+            c.obCandLow := eObL
+            c.obCandClose := eObC
             c.obConfirmed := false
             c.obFilled := false
             c.obResolved := false
             c.obT1 := false
             c.obT2 := false
-            c.sweepExt := na
+            c.sweepExt := emitBull ? e2L : e2H
 
             // Section 7: range box — OUTLINE ONLY, no background fill
             c.rangeBox := box.new(e1T, e1H, e2T, e1L, xloc=xloc.bar_time, border_color=color.new(col, 20), bgcolor=na, border_width=1)
@@ -567,10 +587,63 @@ if newClose
             fConfirm := true
             alert(dirTxt + " [" + grade + "] confirmed. TP1 " + str.tostring(tp1v, format.mintick) + ", TP2 " + str.tostring(tp2v, format.mintick) + ", Inval " + str.tostring(invv, format.mintick), alert.freq_once_per_bar)
 
-            // Section 7: keep object count bounded (delete oldest first)
-            while array.size(crts) > maxKeep
+            // Section 7: only the newest maxKeep CRTs keep drawings. Older ones lose
+            // their drawings but STAY TRACKED until they resolve, so the stats table
+            // is not biased toward setups that happen to resolve quickly (Section 8).
+            int drawnSeen = 0
+            for j = array.size(crts) - 1 to 0
+                CRT dc = array.get(crts, j)
+                if dc.drawn
+                    drawnSeen := drawnSeen + 1
+                    if drawnSeen > maxKeep
+                        clearDraw(dc)
+                        dc.drawn := false
+            // hard cap on tracked setups (ones that never resolve)
+            while array.size(crts) > 300
                 CRT oldc = array.shift(crts)
                 clearDraw(oldc)
+
+    // ---- Section 3: FVG detection over 3 consecutive CLOSED HTF candles ----
+    // Runs AFTER the CRT check, so a gap created by C2's own close can never
+    // count as confluence for that same C2.
+    fv_h2 := fv_h1
+    fv_l2 := fv_l1
+    fv_h1 := fv_h0
+    fv_l1 := fv_l0
+    fv_h0 := h1
+    fv_l0 := l1
+    if not na(fv_h2)
+        // bullish FVG: low[0] > high[2]  (gap fv_h2 .. fv_l0)
+        if fv_l0 > fv_h2
+            array.push(fTop, fv_l0)
+            array.push(fBot, fv_h2)
+            array.push(fBull, true)
+            array.push(fAct, true)
+            array.push(fMitT, int(na))
+            box bxb = na
+            if drawKL
+                bxb := box.new(t1, fv_l0, t1, fv_h2, xloc=xloc.bar_time, border_color=color.new(color.blue, 60), bgcolor=color.new(color.blue, 92))
+            array.push(fBox, bxb)
+        // bearish FVG: high[0] < low[2]  (gap fv_h0 .. fv_l2)
+        if fv_h0 < fv_l2
+            array.push(fTop, fv_l2)
+            array.push(fBot, fv_h0)
+            array.push(fBull, false)
+            array.push(fAct, true)
+            array.push(fMitT, int(na))
+            box bxs = na
+            if drawKL
+                bxs := box.new(t1, fv_l2, t1, fv_h0, xloc=xloc.bar_time, border_color=color.new(color.blue, 60), bgcolor=color.new(color.blue, 92))
+            array.push(fBox, bxs)
+    // cap FVG store, delete oldest first (Section 7 – bounded object count)
+    while array.size(fTop) > 60
+        array.shift(fTop)
+        array.shift(fBot)
+        array.shift(fBull)
+        array.shift(fAct)
+        array.shift(fMitT)
+        box.delete(array.shift(fBox))
+
 
 // ============== Section 2b: LIVE PURGE TRACKING (chart bars) =================
 // First chart-bar time price exceeds the live C1 candidate high/low.
@@ -583,6 +656,19 @@ if haveC1
     if na(formingPurgeDown) and low < candC1L
         formingPurgeDown := time
         setDn := true
+    // Section 5: OB candidate while C2 forms — latest up-close candle trading above
+    // C1 (bear setup) / down-close candle trading below C1 (bull setup)
+    if barstate.isconfirmed
+        if close > open and high > candC1H
+            obSeedBearO := open
+            obSeedBearH := high
+            obSeedBearL := low
+            obSeedBearC := close
+        if close < open and low < candC1L
+            obSeedBullO := open
+            obSeedBullH := high
+            obSeedBullL := low
+            obSeedBullC := close
     // Section 9: key-time purge in progress alert
     if setUp or setDn
         float pmn = hour(time, NY) * 60 + minute(time, NY)
@@ -612,7 +698,8 @@ if nCrt > 0
         CRT c = array.get(crts, i)
 
         // Section 7: count HTF candles since confirmation
-        if newClose and not c.resolved
+        // (skip the bar the CRT was created on — that close is C2's, not a new candle)
+        if newClose and not c.resolved and c.c2Time != t1
             c.htfBarsSince := c.htfBarsSince + 1
 
         // ---- Section 8: CRT resolution tracking (confirmed chart bars) ----
@@ -697,8 +784,9 @@ if nCrt > 0
                     c.obCandClose := close
                     c.obArmed := true
 
-            // cancel before confirmation if TP1 or invalidation is reached
-            if not c.obConfirmed
+            // cancel if TP1 or invalidation trades before the entry FILLS — a fill after
+            // the setup already played out or broke is not a real trade
+            if not c.obFilled
                 bool cT1 = c.bull ? high >= c.tp1 : low <= c.tp1
                 bool cIv = c.bull ? low <= c.inval : high >= c.inval
                 if cT1 or cIv
@@ -721,28 +809,36 @@ if nCrt > 0
                     c.obStop := c.sweepExt
                     c.obConfirmed := true
                 if c.obConfirmed
+                    c.obConfBar := bar_index
                     float risk = math.abs(c.obEntry - c.obStop)
                     float rr1 = risk > 0 ? math.abs(c.tp1 - c.obEntry) / risk : 0.0
                     float rr2 = risk > 0 ? math.abs(c.tp2 - c.obEntry) / risk : 0.0
-                    c.obBox := box.new(time, c.obTop, time, c.obBot, xloc=xloc.bar_time, border_color=color.new(#2962ff, 0), bgcolor=na, border_width=1)
-                    c.entryLine := line.new(time, c.obEntry, time, c.obEntry, xloc=xloc.bar_time, color=#2962ff, style=line.style_solid, width=2)
-                    c.lblEntry := label.new(time, c.obEntry, "ENTRY " + str.tostring(c.obEntry, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=#2962ff, textcolor=color.white, size=size.small)
-                    // direction + R:R ride on the CRT tag, where there is room for them
-                    label.set_text(c.tag, label.get_text(c.tag) + "  " + (c.bull ? "Long" : "Short") + " " + str.tostring(rr1, "#.#") + "R/" + str.tostring(rr2, "#.#") + "R")
+                    // drawings only for a setup still on the chart and still showing levels
+                    if c.drawn and not c.levelsCleared
+                        c.obBox := box.new(time, c.obTop, time, c.obBot, xloc=xloc.bar_time, border_color=color.new(#2962ff, 0), bgcolor=na, border_width=1)
+                        c.entryLine := line.new(time, c.obEntry, time, c.obEntry, xloc=xloc.bar_time, color=#2962ff, style=line.style_solid, width=2)
+                        c.lblEntry := label.new(time, c.obEntry, "ENTRY " + str.tostring(c.obEntry, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=#2962ff, textcolor=color.white, size=size.small)
+                        // direction + R:R ride on the CRT tag, where there is room for them
+                        label.set_text(c.tag, label.get_text(c.tag) + "  " + (c.bull ? "Long" : "Short") + " " + str.tostring(rr1, "#.#") + "R/" + str.tostring(rr2, "#.#") + "R")
                     fOB := true
                     alert("OB entry confirmed " + (c.bull ? "Long" : "Short") + " @ " + str.tostring(c.obEntry, format.mintick) + " SL " + str.tostring(c.obStop, format.mintick) + " RR " + str.tostring(rr1, "#.##") + "/" + str.tostring(rr2, "#.##"), alert.freq_once_per_bar)
 
-            // fill: price returns to the proximal zone edge
-            if c.obConfirmed and not c.obFilled and c.obActive
+            // fill: price returns to the proximal zone edge, on a bar AFTER the confirming
+            // close (the confirm bar's range may have printed before its close)
+            if c.obConfirmed and not c.obFilled and c.obActive and bar_index > c.obConfBar
                 bool fill = c.bull ? low <= c.obEntry : high >= c.obEntry
                 if fill
                     c.obFilled := true
+                    c.obFillBar := bar_index
 
             // OB outcome after fill (Section 5/8)
             if c.obFilled and not c.obResolved
                 bool hStop = c.bull ? low <= c.obStop : high >= c.obStop
-                bool hf1 = c.bull ? high >= c.tp1 : low <= c.tp1
-                bool hf2 = c.bull ? high >= c.tp2 : low <= c.tp2
+                // TPs only count from the bar AFTER the fill (order inside the fill bar is
+                // unknown); a stop on the fill bar still counts — conservative
+                bool tpOk = bar_index > c.obFillBar
+                bool hf1 = tpOk and (c.bull ? high >= c.tp1 : low <= c.tp1)
+                bool hf2 = tpOk and (c.bull ? high >= c.tp2 : low <= c.tp2)
                 float rk = math.abs(c.obEntry - c.obStop)
                 float r1 = rk > 0 ? math.abs(c.tp1 - c.obEntry) / rk : 0.0
                 float r2 = rk > 0 ? math.abs(c.tp2 - c.obEntry) / rk : 0.0
@@ -769,16 +865,17 @@ if nCrt > 0
         bool showLevels = i >= nCrt - levelsCount
         if not showLevels and not c.levelsCleared
             clearLevels(c)
-            box.set_border_color(c.rangeBox, color.new(color.gray, 55))
+            if c.drawn
+                box.set_border_color(c.rangeBox, color.new(color.gray, 55))
             c.levelsCleared := true
 
         // ---- Section 7: range box extends until resolution / N HTF candles ----
-        if not c.resolved and c.htfBarsSince < resolveN
+        if c.drawn and not c.resolved and c.htfBarsSince < resolveN
             box.set_right(c.rangeBox, time)
         // Level lines + labels keep tracking the right edge for as long as this setup
         // is still showing them, so the prices sit next to current price and stay read-
         // able. They are not cut off by the N-candle box window.
-        if showLevels and not c.levelsCleared
+        if c.drawn and showLevels and not c.levelsCleared
             line.set_x2(c.midLine, time)
             line.set_x2(c.tp2Line, time)
             line.set_x2(c.invLine, time)
@@ -789,8 +886,15 @@ if nCrt > 0
                 line.set_x2(c.entryLine, time)
                 label.set_x(c.lblEntry, time)
         // OB zone extends right until touched (handle is na once the setup finished)
-        if c.obConfirmed and not c.obFilled and not na(c.obBox)
+        if c.drawn and c.obConfirmed and not c.obFilled and not na(c.obBox)
             box.set_right(c.obBox, time)
+
+// Section 7/8: forget setups that have resolved and are no longer drawn
+if array.size(crts) > 0
+    for j = array.size(crts) - 1 to 0
+        CRT rc = array.get(crts, j)
+        if rc.resolved and not rc.drawn
+            array.remove(crts, j)
 
 // =================== Section 3: FVG mitigation (per bar) =====================
 if barstate.isconfirmed and array.size(fTop) > 0
@@ -802,6 +906,7 @@ if barstate.isconfirmed and array.size(fTop) > 0
             bool mit = isB ? low <= fb : high >= ft   // A6: traded through far edge
             if mit
                 array.set(fAct, fi, false)
+                array.set(fMitT, fi, time)
                 if drawKL
                     box.delete(array.get(fBox, fi))
 
