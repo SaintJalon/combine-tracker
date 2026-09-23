@@ -191,8 +191,8 @@ kzTransp = input.int(90, "Killzone opacity", minval=50, maxval=100, group=G_KZ)
 colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
 colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
-maxKeep = input.int(1, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
-levelsCount = input.int(1, "Show entry/stop/TP levels for last N setups", minval=1, maxval=20, tooltip="Only the newest N setups draw entry/stop/TP lines and price labels; older ones keep a dimmed range box only, so labels never stack at the right edge. 1 = only the current setup. This is position-based, so the latest setup always shows its levels no matter how old it is.", group=G_VIS)
+maxKeep = input.int(3, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
+levelsCount = input.int(1, "Show entry/stop/TP levels for last N setups", minval=1, maxval=20, tooltip="Only the newest N setups draw entry/stop/TP lines and price labels; older ones keep a dimmed range box only, so labels never stack at the right edge. 1 = only the current setup. Levels follow price only while a setup is live; once it hits TP2 or the stop they freeze where it resolved.", group=G_VIS)
 
 // --- Section 8: stats ---
 showStats = input.bool(true, "Show validation stats table", group=G_STAT)
@@ -737,6 +737,21 @@ if nCrt > 0
             if jr and c.invalidated
                 fInval := true
                 alert("CRT invalidated (" + (c.bull ? "Bull" : "Bear") + ") @ " + str.tostring(c.inval, format.mintick), alert.freq_once_per_bar)
+            // Section 7: a finished setup freezes its levels on the resolving bar and
+            // says how it ended, instead of dragging stale prices to the right edge
+            if jr and c.drawn and not c.levelsCleared
+                line.set_x2(c.midLine, time)
+                line.set_x2(c.tp2Line, time)
+                line.set_x2(c.invLine, time)
+                label.set_x(c.lblTp1, time)
+                label.set_x(c.lblTp2, time)
+                label.set_x(c.lblStop, time)
+                if not na(c.entryLine)
+                    line.set_x2(c.entryLine, time)
+                    label.set_x(c.lblEntry, time)
+            if jr and c.drawn
+                string outcome = c.tp2Done ? "  ✓ TP2" : c.tp1Done ? "  ✓ TP1, then stopped" : "  ✗ Stopped"
+                label.set_text(c.tag, label.get_text(c.tag) + outcome)
             // Section 8: record resolved outcome by grade
             if jr
                 if c.grade == "A+"
@@ -872,10 +887,10 @@ if nCrt > 0
         // ---- Section 7: range box extends until resolution / N HTF candles ----
         if c.drawn and not c.resolved and c.htfBarsSince < resolveN
             box.set_right(c.rangeBox, time)
-        // Level lines + labels keep tracking the right edge for as long as this setup
-        // is still showing them, so the prices sit next to current price and stay read-
-        // able. They are not cut off by the N-candle box window.
-        if c.drawn and showLevels and not c.levelsCleared
+        // Level lines + labels track the right edge only while the setup is LIVE, so
+        // the prices sit next to current price. Once it hits TP2 or the stop they stay
+        // frozen where it resolved (see the resolution block above).
+        if c.drawn and showLevels and not c.levelsCleared and not c.resolved
             line.set_x2(c.midLine, time)
             line.set_x2(c.tp2Line, time)
             line.set_x2(c.invLine, time)
