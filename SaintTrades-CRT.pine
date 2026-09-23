@@ -195,7 +195,7 @@ colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
 colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
 colEnt  = input.color(#2962ff, "Entry", group=G_VIS)
-maxKeep = input.int(3, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
+maxKeep = input.int(5, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
 levelsCount = input.int(1, "Show entry/stop/TP levels for last N setups", minval=1, maxval=20, tooltip="Only the newest N setups draw entry/stop/TP lines and price labels; older ones keep a dimmed range box only, so labels never stack at the right edge. 1 = only the current setup. Levels follow price only while a setup is live; once it hits TP2 or the stop they freeze where it resolved.", group=G_VIS)
 
 // --- Section 8: stats ---
