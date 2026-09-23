@@ -54,6 +54,10 @@
 // A12. Formation hours 01/05/09/13/17/21 NY come from the notes. On TradingView,
 //      CME futures 4H bars open at 18/22/02/06/10/14 NY, so on a 4H CRT timeframe
 //      no C1 ever lands on those hours and A+ is unreachable. They work on 1H.
+// A13. On 5m/15m CRT timeframes the formation-hour set means "C1 opens inside
+//      that NY hour" (01:00-01:59 etc.), so several C1s per key hour qualify.
+// A14. "Mkt" stats row = enter at C2's close (C3 open), stop at the C2 extreme,
+//      hold to one target. TP1 then stopped counts as a TP1 win but a TP2 loss.
 // =============================================================================
 
 indicator("CRT – Candle Range Theory (Sham/CPI)", "CRT Sham/CPI", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
@@ -138,7 +142,7 @@ G_VIS = "7 · Visuals"
 G_STAT = "8 · Stats"
 
 // --- Section 1: CRT detection ---
-crtTfMode = input.string("1H", "CRT timeframe", options=["1H", "4H", "Daily", "Weekly"], group=G_CRT)
+crtTfMode = input.string("Auto", "CRT timeframe", options=["Auto", "5m", "15m", "1H", "4H", "Daily", "Weekly"], tooltip="Auto picks from the chart: 1m chart → 15m CRTs, up to 15m → 1H, up to 1H → 4H, up to 4H → Daily, else Weekly.", group=G_CRT)
 mode      = input.string("Conformational", "Signal mode", options=["Conformational", "Advanced"], tooltip="Advanced adds a live UNCONFIRMED marker the moment C2 sweeps C1; removed if C2 closes outside.", group=G_CRT)
 showLow   = input.bool(false, "Show Low-Odds CRTs (closed outside range)", group=G_CRT)
 insideOn  = input.bool(false, "Inside CRT (range valid for N HTF candles)", group=G_CRT)
@@ -286,7 +290,12 @@ inS(string sess) =>
 
 // ======================== NON-REPAINTING HTF ACCESS ==========================
 // Section 1 / 10: only CLOSED HTF candles (offset [1]) + lookahead_on.
+int chartSec = timeframe.in_seconds(timeframe.period)
+string autoTf = chartSec <= 60 ? "15" : chartSec <= 900 ? "60" : chartSec <= 3600 ? "240" : chartSec <= 14400 ? "D" : "W"
 tfStr = switch crtTfMode
+    "Auto"   => autoTf
+    "5m"     => "5"
+    "15m"    => "15"
     "1H"     => "60"
     "4H"     => "240"
     "Daily"  => "D"
@@ -368,6 +377,12 @@ var int obCnt = 0
 var int obW1 = 0
 var int obW2 = 0
 var float obSumR = 0.0
+// market entry (C2 close) held to one target with the stop at the C2 extreme
+var int   mkN     = 0
+var int   mkW1    = 0
+var int   mkW2    = 0
+var float mkSumR1 = 0.0
+var float mkSumR2 = 0.0
 
 // Section 3: optional key-level drawings
 var line pdhL = na
@@ -795,6 +810,16 @@ if nCrt > 0
                 label.set_text(c.tag, label.get_text(c.tag) + outcome + purgeTxt)
                 label.set_size(c.tag, size.tiny)
                 label.set_size(c.entMark, size.tiny)
+            // Section 8: realized R of the market entry (C2 close), one row per target.
+            // TP1 then stopped counts as a TP1 win but a TP2 loss.
+            if jr and not c.lowOdds
+                float mRisk = math.abs(c.c2Close - c.inval)
+                if mRisk > 0
+                    mkN := mkN + 1
+                    mkW1 := mkW1 + (c.tp1Done ? 1 : 0)
+                    mkW2 := mkW2 + (c.tp2Done ? 1 : 0)
+                    mkSumR1 := mkSumR1 + (c.tp1Done ? math.abs(c.tp1 - c.c2Close) / mRisk : -1.0)
+                    mkSumR2 := mkSumR2 + (c.tp2Done ? math.abs(c.tp2 - c.c2Close) / mRisk : -1.0)
             // Section 8: record resolved outcome by grade
             if jr
                 if c.grade == "A+"
@@ -1011,7 +1036,7 @@ if barstate.islast and showStats
         "Middle Right"  => position.middle_right
         => position.top_right
     if na(stat)
-        stat := table.new(tblPos, 5, 8, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+        stat := table.new(tblPos, 5, 10, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
     else
         table.set_position(stat, tblPos)
 
@@ -1061,14 +1086,26 @@ if barstate.islast and showStats
     table.cell(stat, 3, 5, f_pct(totT2, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
     table.cell(stat, 4, 5, avgB(totBars, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
 
-    // OB header + row
-    table.cell(stat, 0, 6, "OB", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    // Entry header + rows: does taking the setups actually make money?
+    table.cell(stat, 0, 6, "Entry", bgcolor=hdrBg, text_color=txt, text_size=size.small)
     table.cell(stat, 1, 6, "N", bgcolor=hdrBg, text_color=txt, text_size=size.small)
     table.cell(stat, 2, 6, "TP1%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
     table.cell(stat, 3, 6, "TP2%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
     table.cell(stat, 4, 6, "AvgR", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 0, 7, "entry", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 7, str.tostring(obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 7, f_pct(obW1, obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 7, f_pct(obW2, obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 7, obCnt > 0 ? str.tostring(obSumR / obCnt, "#.##") + "R" : "-", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    color r1Col = mkN > 0 and mkSumR1 / mkN > 0 ? colBull : mkN > 0 ? colBear : txt
+    color r2Col = mkN > 0 and mkSumR2 / mkN > 0 ? colBull : mkN > 0 ? colBear : txt
+    table.cell(stat, 0, 7, "Mkt→TP1", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 7, str.tostring(mkN), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 7, f_pct(mkW1, mkN), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 7, "", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 7, mkN > 0 ? str.tostring(mkSumR1 / mkN, "#.##") + "R" : "-", bgcolor=rowBg, text_color=r1Col, text_size=size.small)
+    table.cell(stat, 0, 8, "Mkt→TP2", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 8, str.tostring(mkN), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 8, "", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 8, f_pct(mkW2, mkN), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 8, mkN > 0 ? str.tostring(mkSumR2 / mkN, "#.##") + "R" : "-", bgcolor=rowBg, text_color=r2Col, text_size=size.small)
+    table.cell(stat, 0, 9, "OB entry", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 9, str.tostring(obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 9, f_pct(obW1, obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 9, f_pct(obW2, obCnt), bgcolor=rowBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 9, obCnt > 0 ? str.tostring(obSumR / obCnt, "#.##") + "R" : "-", bgcolor=rowBg, text_color=txt, text_size=size.small)
