@@ -124,6 +124,9 @@ type CRT
     label  lblStop
     line   entryLine
     label  lblEntry
+    line   c2EntLine
+    label  lblC2Ent
+    label  entMark
 
 // =============================== INPUTS ======================================
 G_CRT = "1 · CRT Detection"
@@ -191,6 +194,7 @@ kzTransp = input.int(90, "Killzone opacity", minval=50, maxval=100, group=G_KZ)
 colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
 colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
+colEnt  = input.color(#2962ff, "Entry", group=G_VIS)
 maxKeep = input.int(3, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
 levelsCount = input.int(1, "Show entry/stop/TP levels for last N setups", minval=1, maxval=20, tooltip="Only the newest N setups draw entry/stop/TP lines and price labels; older ones keep a dimmed range box only, so labels never stack at the right edge. 1 = only the current setup. Levels follow price only while a setup is live; once it hits TP2 or the stop they freeze where it resolved.", group=G_VIS)
 
@@ -255,6 +259,10 @@ clearLevels(CRT c) =>
     c.lblStop := na
     label.delete(c.lblEntry)
     c.lblEntry := na
+    line.delete(c.c2EntLine)
+    c.c2EntLine := na
+    label.delete(c.lblC2Ent)
+    c.lblC2Ent := na
     box.delete(c.obBox)
     c.obBox := na
 
@@ -268,6 +276,8 @@ clearDraw(CRT c) =>
     c.purgeTag := na
     label.delete(c.obTag)
     c.obTag := na
+    label.delete(c.entMark)
+    c.entMark := na
     clearLevels(c)
 
 // Section 6: is the current bar inside a NY session string
@@ -574,6 +584,17 @@ if newClose
             c.lblTp2 := label.new(e2T, tp2v, "TP2 " + str.tostring(tp2v, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=colBull, textcolor=color.white, size=size.small)
             c.lblStop := label.new(e2T, invv, "STOP " + str.tostring(invv, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=colBear, textcolor=color.white, size=size.small)
 
+            // Section 5: market entry = C2's close back inside C1, i.e. the open of C3
+            // (this bar). Every setup gets one; the OB entry below is a better-price
+            // refinement that only some setups produce.
+            if not emitLow
+                float ent = e2C
+                float rk0 = math.abs(ent - invv)
+                string rrTxt = rk0 > 0 ? str.tostring(math.abs(tp1v - ent) / rk0, "#.#") + "R / " + str.tostring(math.abs(tp2v - ent) / rk0, "#.#") + "R" : ""
+                c.c2EntLine := line.new(time, ent, time, ent, xloc=xloc.bar_time, color=colEnt, style=line.style_solid, width=3)
+                c.lblC2Ent := label.new(time, ent, "ENTRY " + str.tostring(ent, format.mintick) + "   " + rrTxt, xloc=xloc.bar_time, style=label.style_label_left, color=colEnt, textcolor=color.white, size=size.small)
+                c.entMark := label.new(time, ent, (emitBull ? "▲ LONG " : "▼ SHORT ") + str.tostring(ent, format.mintick), xloc=xloc.bar_time, yloc=emitBull ? yloc.belowbar : yloc.abovebar, style=emitBull ? label.style_label_up : label.style_label_down, color=colEnt, textcolor=color.white, size=size.normal)
+
             // Section 7: purge marker with its time
             if not na(ePurge)
                 int ph = hour(ePurge, NY)
@@ -585,7 +606,7 @@ if newClose
 
             // Section 9: CRT confirmed alert (dynamic message)
             fConfirm := true
-            alert(dirTxt + " [" + grade + "] confirmed. TP1 " + str.tostring(tp1v, format.mintick) + ", TP2 " + str.tostring(tp2v, format.mintick) + ", Inval " + str.tostring(invv, format.mintick), alert.freq_once_per_bar)
+            alert(dirTxt + " [" + grade + "] confirmed. Entry " + str.tostring(e2C, format.mintick) + ", TP1 " + str.tostring(tp1v, format.mintick) + ", TP2 " + str.tostring(tp2v, format.mintick) + ", Inval " + str.tostring(invv, format.mintick), alert.freq_once_per_bar)
 
             // Section 7: only the newest maxKeep CRTs keep drawings. Older ones lose
             // their drawings but STAY TRACKED until they resolve, so the stats table
@@ -749,6 +770,9 @@ if nCrt > 0
                 if not na(c.entryLine)
                     line.set_x2(c.entryLine, time)
                     label.set_x(c.lblEntry, time)
+                if not na(c.c2EntLine)
+                    line.set_x2(c.c2EntLine, time)
+                    label.set_x(c.lblC2Ent, time)
             if jr and c.drawn
                 string outcome = c.tp2Done ? "  ✓ TP2" : c.tp1Done ? "  ✓ TP1, then stopped" : "  ✗ Stopped"
                 label.set_text(c.tag, label.get_text(c.tag) + outcome)
@@ -830,11 +854,9 @@ if nCrt > 0
                     float rr2 = risk > 0 ? math.abs(c.tp2 - c.obEntry) / risk : 0.0
                     // drawings only for a setup still on the chart and still showing levels
                     if c.drawn and not c.levelsCleared
-                        c.obBox := box.new(time, c.obTop, time, c.obBot, xloc=xloc.bar_time, border_color=color.new(#2962ff, 0), bgcolor=na, border_width=1)
-                        c.entryLine := line.new(time, c.obEntry, time, c.obEntry, xloc=xloc.bar_time, color=#2962ff, style=line.style_solid, width=2)
-                        c.lblEntry := label.new(time, c.obEntry, "ENTRY " + str.tostring(c.obEntry, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=#2962ff, textcolor=color.white, size=size.small)
-                        // direction + R:R ride on the CRT tag, where there is room for them
-                        label.set_text(c.tag, label.get_text(c.tag) + "  " + (c.bull ? "Long" : "Short") + " " + str.tostring(rr1, "#.#") + "R/" + str.tostring(rr2, "#.#") + "R")
+                        c.obBox := box.new(time, c.obTop, time, c.obBot, xloc=xloc.bar_time, border_color=color.new(colEnt, 40), bgcolor=na, border_width=1)
+                        c.entryLine := line.new(time, c.obEntry, time, c.obEntry, xloc=xloc.bar_time, color=color.new(colEnt, 40), style=line.style_dashed, width=2)
+                        c.lblEntry := label.new(time, c.obEntry, "OB ENTRY " + str.tostring(c.obEntry, format.mintick) + "   " + str.tostring(rr1, "#.#") + "R / " + str.tostring(rr2, "#.#") + "R", xloc=xloc.bar_time, style=label.style_label_left, color=color.new(colEnt, 40), textcolor=color.white, size=size.small)
                     fOB := true
                     alert("OB entry confirmed " + (c.bull ? "Long" : "Short") + " @ " + str.tostring(c.obEntry, format.mintick) + " SL " + str.tostring(c.obStop, format.mintick) + " RR " + str.tostring(rr1, "#.##") + "/" + str.tostring(rr2, "#.##"), alert.freq_once_per_bar)
 
@@ -900,6 +922,9 @@ if nCrt > 0
             if not na(c.entryLine)
                 line.set_x2(c.entryLine, time)
                 label.set_x(c.lblEntry, time)
+            if not na(c.c2EntLine)
+                line.set_x2(c.c2EntLine, time)
+                label.set_x(c.lblC2Ent, time)
         // OB zone extends right until touched (handle is na once the setup finished)
         if c.drawn and c.obConfirmed and not c.obFilled and not na(c.obBox)
             box.set_right(c.obBox, time)
