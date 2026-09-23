@@ -175,7 +175,7 @@ colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
 colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
 maxKeep = input.int(5, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
-levelsMode = input.string("Live setups only", "Show entry/stop/TP levels for", options=["Live setups only", "All setups"], tooltip="Live setups only: once a setup hits TP2 or invalidates, its level lines and price labels are removed and just the dimmed range box remains. Stops labels from stacking up at the right edge.", group=G_VIS)
+levelsCount = input.int(1, "Show entry/stop/TP levels for last N setups", minval=1, maxval=20, tooltip="Only the newest N setups draw entry/stop/TP lines and price labels; older ones keep a dimmed range box only, so labels never stack at the right edge. 1 = only the current setup. This is position-based, so the latest setup always shows its levels no matter how old it is.", group=G_VIS)
 
 // --- Section 8: stats ---
 showStats = input.bool(true, "Show validation stats table", group=G_STAT)
@@ -763,18 +763,22 @@ if nCrt > 0
                     obW2 := obW2 + (c.obT2 ? 1 : 0)
                     obSumR := obSumR + c.obR
 
-        // ---- Section 7: a setup that has resolved OR gone stale (past the N-candle
-        // window) drops its level lines and price labels, so only the setup still in
-        // play carries entry/stop/TP prices. Keeps them from stacking up. ----
-        if levelsMode == "Live setups only" and not c.levelsCleared and (c.resolved or c.htfBarsSince >= resolveN)
+        // ---- Section 7: only the newest N setups carry entry/stop/TP levels. Older
+        // ones drop their lines/labels and keep a dimmed box, so labels never stack.
+        // Position-based, NOT time-based: the latest setup always shows its levels. ----
+        bool showLevels = i >= nCrt - levelsCount
+        if not showLevels and not c.levelsCleared
             clearLevels(c)
             box.set_border_color(c.rangeBox, color.new(color.gray, 55))
             c.levelsCleared := true
 
-        // ---- Section 7: extend range drawings until resolution / N candles ----
-        bool canExt = not c.resolved and c.htfBarsSince < resolveN
-        if canExt
+        // ---- Section 7: range box extends until resolution / N HTF candles ----
+        if not c.resolved and c.htfBarsSince < resolveN
             box.set_right(c.rangeBox, time)
+        // Level lines + labels keep tracking the right edge for as long as this setup
+        // is still showing them, so the prices sit next to current price and stay read-
+        // able. They are not cut off by the N-candle box window.
+        if showLevels and not c.levelsCleared
             line.set_x2(c.midLine, time)
             line.set_x2(c.tp2Line, time)
             line.set_x2(c.invLine, time)
