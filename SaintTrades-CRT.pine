@@ -62,6 +62,15 @@
 //      high/low, "Wick 50%" = halfway along C2's sweep wick. Same stop (C2 extreme)
 //      and targets. A limit is cancelled if TP1 trades before it fills; after a fill,
 //      TPs count from the next bar and a stop on the fill bar counts (conservative).
+// A16. ICT filters, judged on the C3-open (entry) bar:
+//      Killzone = entry inside London 02:00-05:00 or NY AM 08:30-11:00 NY time.
+//      Discount/premium = long entry below the 00:00 NY (midnight) open, short above.
+//      Daily bias = previous daily candle closed up for longs, down for shorts.
+//      SMT = the pair symbol's C2 did NOT take its own C1 extreme on the swept side
+//      (compares its last two closed CRT-timeframe candles; with Inside CRT on, C1
+//      may be older than that, so SMT is approximate there).
+//      The filter lab measures every filter on every displayed setup whether or not
+//      it is required, so each row shows what that filter alone would change.
 // =============================================================================
 
 indicator("CRT – Candle Range Theory (Sham/CPI)", "CRT Sham/CPI", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
@@ -146,6 +155,11 @@ type CRT
     label  entMark
     Lim    limEdge
     Lim    limWick
+    // ICT filters (A16)
+    bool   fKz
+    bool   fPd
+    bool   fBias
+    bool   fSmt
 
 // =============================== INPUTS ======================================
 G_CRT = "1 · CRT Detection"
@@ -155,6 +169,7 @@ G_ENTRY = "5 · Entry"
 G_KZ = "6 · Killzones"
 G_VIS = "7 · Visuals"
 G_STAT = "8 · Stats"
+G_ICT  = "9 · ICT Filters"
 
 // --- Section 1: CRT detection ---
 crtTfMode = input.string("Auto", "CRT timeframe", options=["Auto", "5m", "15m", "1H", "4H", "Daily", "Weekly"], tooltip="Auto picks from the chart: 1m chart → 15m CRTs, up to 15m → 1H, up to 1H → 4H, up to 4H → Daily, else Weekly.", group=G_CRT)
@@ -221,6 +236,16 @@ levelsCount = input.int(3, "Show entry/stop/TP levels for last N setups", minval
 // --- Section 8: stats ---
 showStats = input.bool(true, "Show validation stats table", group=G_STAT)
 statsPos  = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Middle Right"], group=G_STAT)
+showGradeSt = input.bool(true, "Table: grade rows", group=G_STAT)
+showEntrySt = input.bool(true, "Table: entry comparison", group=G_STAT)
+showLab     = input.bool(true, "Table: ICT filter lab", group=G_STAT)
+
+// --- Section 4b: ICT filters (A16). Off = measured only; on = setups must pass ---
+reqKz   = input.bool(false, "Require killzone (London 02-05 / NY AM 08:30-11)", group=G_ICT)
+reqPd   = input.bool(false, "Require discount (longs) / premium (shorts) vs midnight open", group=G_ICT)
+reqBias = input.bool(false, "Require daily bias (previous day candle direction)", group=G_ICT)
+reqSmt  = input.bool(false, "Require SMT divergence with the pair symbol", group=G_ICT)
+smtSym  = input.symbol("CME_MINI:ES1!", "SMT pair symbol", tooltip="Use ES1! when charting NQ, NQ1! when charting ES.", group=G_ICT)
 
 // =============================== HELPERS =====================================
 NY = "America/New_York"
@@ -356,6 +381,14 @@ tfStr = switch crtTfMode
 
 // Section 3: previous day / week levels (non-repainting)
 [pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+// Section 4b: previous daily candle (bias) and the SMT pair's last two closed CRT
+// candles, same non-repainting pattern
+[pdO, pdC] = request.security(syminfo.tickerid, "D", [open[1], close[1]], lookahead=barmerge.lookahead_on)
+[sH1, sL1, sH2, sL2, sT1] = request.security(smtSym, tfStr, [high[1], low[1], high[2], low[2], time[1]], lookahead=barmerge.lookahead_on)
+// ICT midnight (true day) open: first bar at/after 00:00 New York
+var float midOpen = na
+if hour(time, NY) == 0 and (na(time[1]) or hour(time[1], NY) != 0)
+    midOpen := open
 [pwh, pwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_on)
 // Read as of the bar BEFORE confirmation: the CRT is confirmed on the first bar of
 // C3, which may open a new session whose "previous day" already contains C2.
@@ -448,6 +481,13 @@ var float wkR1 = 0.0
 var float wkR2 = 0.0
 var float obSumR1 = 0.0
 var float obSumR2 = 0.0
+// Section 4b: ICT filter lab — market-entry results for setups passing each filter
+// rows: All, Killzone, Disc/Prem, Daily bias, SMT, KZ+PD, All 4
+var array<int>   labN  = array.new<int>(7, 0)
+var array<int>   labW1 = array.new<int>(7, 0)
+var array<int>   labW2 = array.new<int>(7, 0)
+var array<float> labR1 = array.new<float>(7, 0.0)
+var array<float> labR2 = array.new<float>(7, 0.0)
 
 // Section 3: optional key-level drawings
 var line pdhL = na
@@ -599,7 +639,14 @@ if newClose
         bool dwOK = dwv == dayofweek.monday ? dMon : dwv == dayofweek.tuesday ? dTue : dwv == dayofweek.wednesday ? dWed : dwv == dayofweek.thursday ? dThu : dwv == dayofweek.friday ? dFri : true
 
         // Section 1/4: display filter
-        bool passF = emitLow ? showLow : (gRank(grade) >= gRank(minGrade))
+        // Section 4b (A16): ICT filters on the entry bar (this bar = C3 open)
+        bool fKz   = inS("0200-0500") or inS("0830-1100")
+        bool fPd   = not na(midOpen) and (emitBull ? e2C < midOpen : e2C > midOpen)
+        bool fBias = not na(pdO) and (emitBull ? pdC > pdO : pdC < pdO)
+        bool fSmt  = not na(sT1) and sT1 == t1 and (emitBull ? sL1 >= sL2 : sH1 <= sH2)
+        bool ictOK = (not reqKz or fKz) and (not reqPd or fPd) and (not reqBias or fBias) and (not reqSmt or fSmt)
+        int  ictN  = (fKz ? 1 : 0) + (fPd ? 1 : 0) + (fBias ? 1 : 0) + (fSmt ? 1 : 0)
+        bool passF = emitLow ? showLow : (gRank(grade) >= gRank(minGrade) and ictOK)
 
         if passF and dwOK
             color col = emitLow ? colLow : (emitBull ? colBull : colBear)
@@ -623,6 +670,10 @@ if newClose
             c.kPurge := kPurge
             c.kLevel := kLevel
             c.purgeTime := ePurge
+            c.fKz := fKz
+            c.fPd := fPd
+            c.fBias := fBias
+            c.fSmt := fSmt
             c.resolved := false
             c.tp1Done := false
             c.tp2Done := false
@@ -657,7 +708,7 @@ if newClose
 
             // Section 4: compact tag (direction + grade); prices live on the level labels
             string dirTxt = (emitLow ? "Low-Odds " : "") + (emitBull ? "Bull CRT" : "Bear CRT")
-            string lblTxt = dirTxt + " [" + grade + "]" + (kForm ? " ⏱" : "") + (kLevel ? " ✦" : "")
+            string lblTxt = dirTxt + " [" + grade + "]" + (kForm ? " ⏱" : "") + (kLevel ? " ✦" : "") + (emitLow ? "" : "  ICT " + str.tostring(ictN) + "/4")
             c.tag := label.new(e2T, emitBull ? e2L : e2H, lblTxt, xloc=xloc.bar_time, style=emitBull ? label.style_label_up : label.style_label_down, color=color.new(col, 10), textcolor=color.white, size=size.small)
 
             // Section 7: clear right-edge price labels for TP1 / TP2 / STOP
@@ -895,6 +946,16 @@ if nCrt > 0
                     mkW2 := mkW2 + (c.tp2Done ? 1 : 0)
                     mkSumR1 := mkSumR1 + (c.tp1Done ? math.abs(c.tp1 - c.c2Close) / mRisk : -1.0)
                     mkSumR2 := mkSumR2 + (c.tp2Done ? math.abs(c.tp2 - c.c2Close) / mRisk : -1.0)
+                    float lr1 = c.tp1Done ? math.abs(c.tp1 - c.c2Close) / mRisk : -1.0
+                    float lr2 = c.tp2Done ? math.abs(c.tp2 - c.c2Close) / mRisk : -1.0
+                    array<bool> lp = array.from(true, c.fKz, c.fPd, c.fBias, c.fSmt, c.fKz and c.fPd, c.fKz and c.fPd and c.fBias and c.fSmt)
+                    for k = 0 to 6
+                        if array.get(lp, k)
+                            array.set(labN,  k, array.get(labN, k) + 1)
+                            array.set(labW1, k, array.get(labW1, k) + (c.tp1Done ? 1 : 0))
+                            array.set(labW2, k, array.get(labW2, k) + (c.tp2Done ? 1 : 0))
+                            array.set(labR1, k, array.get(labR1, k) + lr1)
+                            array.set(labR2, k, array.get(labR2, k) + lr2)
             // Section 8: record resolved outcome by grade
             if jr
                 if c.grade == "A+"
@@ -1155,80 +1216,86 @@ if barstate.islast and showStats
         "Middle Right"  => position.middle_right
         => position.top_right
     if na(stat)
-        stat := table.new(tblPos, 5, 11, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+        stat := table.new(tblPos, 5, 22, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
     else
         table.set_position(stat, tblPos)
 
     color hdrBg = color.new(color.gray, 20)
     color rowBg = color.new(color.black, 55)
     color txt   = color.white
+    table.clear(stat, 0, 0, 4, 21)
+    int row = 0
 
-    // CRT header
-    table.cell(stat, 0, 0, "Grade", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 0, "N",     bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 0, "TP1%",  bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 0, "TP2%",  bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 0, "AvgBars", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    // ---- grades: hit rates per grade (B / LO rows only when they can appear) ----
+    if showGradeSt
+        table.cell(stat, 0, row, "Grade", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 1, row, "N",     bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, row, "TP1%",  bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 3, row, "TP2%",  bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 4, row, "AvgBars", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        row += 1
+        array<string> gNames = array.from("A+", "A", "B", "LO")
+        array<int>    gN     = array.from(cntAp, cntA, cntB, cntLo)
+        array<int>    gT1    = array.from(tp1Ap, tp1A, tp1B, tp1Lo)
+        array<int>    gT2    = array.from(tp2Ap, tp2A, tp2B, tp2Lo)
+        array<int>    gBars  = array.from(barsAp, barsA, barsB, barsLo)
+        array<bool>   gShow  = array.from(true, minGrade != "A+", minGrade == "B" or cntB > 0, showLow or cntLo > 0)
+        for k = 0 to 3
+            if array.get(gShow, k)
+                color tc = k == 3 ? color.new(txt, 25) : txt
+                table.cell(stat, 0, row, array.get(gNames, k), bgcolor=rowBg, text_color=tc, text_size=size.small)
+                table.cell(stat, 1, row, str.tostring(array.get(gN, k)), bgcolor=rowBg, text_color=tc, text_size=size.small)
+                table.cell(stat, 2, row, f_pct(array.get(gT1, k), array.get(gN, k)), bgcolor=rowBg, text_color=tc, text_size=size.small)
+                table.cell(stat, 3, row, f_pct(array.get(gT2, k), array.get(gN, k)), bgcolor=rowBg, text_color=tc, text_size=size.small)
+                table.cell(stat, 4, row, avgB(array.get(gBars, k), array.get(gN, k)), bgcolor=rowBg, text_color=tc, text_size=size.small)
+                row += 1
 
-    // A+
-    table.cell(stat, 0, 1, "A+", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 1, str.tostring(cntAp), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 1, f_pct(tp1Ap, cntAp), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 1, f_pct(tp2Ap, cntAp), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 1, avgB(barsAp, cntAp), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    // A
-    table.cell(stat, 0, 2, "A", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 2, str.tostring(cntA), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 2, f_pct(tp1A, cntA), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 2, f_pct(tp2A, cntA), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 2, avgB(barsA, cntA), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    // B
-    table.cell(stat, 0, 3, "B", bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 3, str.tostring(cntB), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 3, f_pct(tp1B, cntB), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 3, f_pct(tp2B, cntB), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 3, avgB(barsB, cntB), bgcolor=rowBg, text_color=txt, text_size=size.small)
-    // LO
-    table.cell(stat, 0, 4, "LO", bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
-    table.cell(stat, 1, 4, str.tostring(cntLo), bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
-    table.cell(stat, 2, 4, f_pct(tp1Lo, cntLo), bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
-    table.cell(stat, 3, 4, f_pct(tp2Lo, cntLo), bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
-    table.cell(stat, 4, 4, avgB(barsLo, cntLo), bgcolor=rowBg, text_color=color.new(txt, 25), text_size=size.small)
-    // Total
-    int totN = cntAp + cntA + cntB + cntLo
-    int totT1 = tp1Ap + tp1A + tp1B + tp1Lo
-    int totT2 = tp2Ap + tp2A + tp2B + tp2Lo
-    int totBars = barsAp + barsA + barsB + barsLo
-    table.cell(stat, 0, 5, "Total", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 5, str.tostring(totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 5, f_pct(totT1, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 5, f_pct(totT2, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 5, avgB(totBars, totN), bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    // ---- entries: does taking the setups make money? avg R · win rate per target;
+    // ▶ marks the entry drawn on the chart ----
+    if showEntrySt
+        table.cell(stat, 0, row, "Entry", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 1, row, "Fills", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, row, "Fill%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 3, row, "→TP1", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 4, row, "→TP2", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        row += 1
+        array<string> eNames = array.from("C2 close", "C1 edge", "Wick 50%", "OB")
+        array<bool>   eSel   = array.from(entryMode == "C2 close", entryMode == "C1 edge retest", entryMode == "C2 wick 50%", false)
+        array<int>    eN     = array.from(mkN, edN, wkN, obCnt)
+        array<string> eFillP = array.from(mkN > 0 ? "100%" : "-", f_pct(edN, edDone), f_pct(wkN, wkDone), f_pct(obCnt, mkN))
+        array<float>  eS1    = array.from(mkSumR1, edR1, wkR1, obSumR1)
+        array<float>  eS2    = array.from(mkSumR2, edR2, wkR2, obSumR2)
+        array<int>    eW1    = array.from(mkW1, edW1, wkW1, obW1)
+        array<int>    eW2    = array.from(mkW2, edW2, wkW2, obW2)
+        for k = 0 to 3
+            int n = array.get(eN, k)
+            float s1 = array.get(eS1, k)
+            float s2 = array.get(eS2, k)
+            table.cell(stat, 0, row, (array.get(eSel, k) ? "▶ " : "") + array.get(eNames, k), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 1, row, str.tostring(n), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 2, row, array.get(eFillP, k), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 3, row, fR(s1, array.get(eW1, k), n), bgcolor=rowBg, text_color=n > 0 ? (s1 / n > 0 ? colBull : colBear) : txt, text_size=size.small)
+            table.cell(stat, 4, row, fR(s2, array.get(eW2, k), n), bgcolor=rowBg, text_color=n > 0 ? (s2 / n > 0 ? colBull : colBear) : txt, text_size=size.small)
+            row += 1
 
-    // Entry header + rows: does taking the setups actually make money? Each cell is
-    // average R and win rate holding to that target; ▶ marks the entry on the chart.
-    table.cell(stat, 0, 6, "Entry", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 1, 6, "Fills", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 6, "Fill%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 3, 6, "→TP1", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 6, "→TP2", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    array<string> eNames = array.from("C2 close", "C1 edge", "Wick 50%", "OB")
-    array<bool>   eSel   = array.from(entryMode == "C2 close", entryMode == "C1 edge retest", entryMode == "C2 wick 50%", false)
-    array<int>    eN     = array.from(mkN, edN, wkN, obCnt)
-    array<string> eFillP = array.from(mkN > 0 ? "100%" : "-", f_pct(edN, edDone), f_pct(wkN, wkDone), f_pct(obCnt, mkN))
-    array<float>  eS1    = array.from(mkSumR1, edR1, wkR1, obSumR1)
-    array<float>  eS2    = array.from(mkSumR2, edR2, wkR2, obSumR2)
-    array<int>    eW1    = array.from(mkW1, edW1, wkW1, obW1)
-    array<int>    eW2    = array.from(mkW2, edW2, wkW2, obW2)
-    for k = 0 to 3
-        int n = array.get(eN, k)
-        float s1 = array.get(eS1, k)
-        float s2 = array.get(eS2, k)
-        color c1 = n > 0 ? (s1 / n > 0 ? colBull : colBear) : txt
-        color c2 = n > 0 ? (s2 / n > 0 ? colBull : colBear) : txt
-        int row = 7 + k
-        table.cell(stat, 0, row, (array.get(eSel, k) ? "▶ " : "") + array.get(eNames, k), bgcolor=rowBg, text_color=txt, text_size=size.small)
-        table.cell(stat, 1, row, str.tostring(n), bgcolor=rowBg, text_color=txt, text_size=size.small)
-        table.cell(stat, 2, row, array.get(eFillP, k), bgcolor=rowBg, text_color=txt, text_size=size.small)
-        table.cell(stat, 3, row, fR(s1, array.get(eW1, k), n), bgcolor=rowBg, text_color=c1, text_size=size.small)
-        table.cell(stat, 4, row, fR(s2, array.get(eW2, k), n), bgcolor=rowBg, text_color=c2, text_size=size.small)
+    // ---- ICT filter lab: C2-close entry, setups that pass each filter; ✓ = required ----
+    if showLab
+        table.cell(stat, 0, row, "ICT filter", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 1, row, "N", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, row, "Keep%", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 3, row, "→TP1", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 4, row, "→TP2", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        row += 1
+        array<string> lNames = array.from("All setups", "Killzone", "Disc/Prem", "Daily bias", "SMT", "KZ + PD", "All 4")
+        array<bool>   lReq   = array.from(false, reqKz, reqPd, reqBias, reqSmt, false, false)
+        int allN = array.get(labN, 0)
+        for k = 0 to 6
+            int n = array.get(labN, k)
+            float s1 = array.get(labR1, k)
+            float s2 = array.get(labR2, k)
+            table.cell(stat, 0, row, array.get(lNames, k) + (array.get(lReq, k) ? " ✓" : ""), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 1, row, str.tostring(n), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 2, row, f_pct(n, allN), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 3, row, fR(s1, array.get(labW1, k), n), bgcolor=rowBg, text_color=n > 0 ? (s1 / n > 0 ? colBull : colBear) : txt, text_size=size.small)
+            table.cell(stat, 4, row, fR(s2, array.get(labW2, k), n), bgcolor=rowBg, text_color=n > 0 ? (s2 / n > 0 ? colBull : colBear) : txt, text_size=size.small)
+            row += 1
