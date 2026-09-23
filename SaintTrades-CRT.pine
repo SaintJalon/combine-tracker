@@ -191,7 +191,7 @@ kzTransp = input.int(90, "Killzone opacity", minval=50, maxval=100, group=G_KZ)
 colBull = input.color(#26a69a, "Bullish CRT", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish CRT", group=G_VIS)
 colLow  = input.color(#787b86, "Low-Odds CRT", group=G_VIS)
-maxKeep = input.int(5, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
+maxKeep = input.int(3, "Max CRTs kept on chart", minval=1, maxval=100, tooltip="Oldest CRT drawings are deleted first when exceeded (Section 7).", group=G_VIS)
 levelsCount = input.int(1, "Show entry/stop/TP levels for last N setups", minval=1, maxval=20, tooltip="Only the newest N setups draw entry/stop/TP lines and price labels; older ones keep a dimmed range box only, so labels never stack at the right edge. 1 = only the current setup. This is position-based, so the latest setup always shows its levels no matter how old it is.", group=G_VIS)
 
 // --- Section 8: stats ---
