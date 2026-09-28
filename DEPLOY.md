@@ -50,12 +50,32 @@ git add . && git commit -m "update" && git push
 
 ---
 
+## Finding your way around
+The app is split into six programs (bottom bar on a phone, top bar on desktop — or keys `1`–`6`):
+
+| Program | What's in it |
+|---|---|
+| **01 Core** | Coach Co, progress to target, buffer to floor, target / days / stop / max-loss, plan rules, firm · plan · size picker, copy trading |
+| **02 Log** | Month calendar and the day cards (net P&L, trades, notes, "followed my plan") |
+| **03 Intel** | Stats, equity curve, by-setup table, searchable trade log, R-distribution, weekday / week / month breakdowns |
+| **04 Protocol** | Pre-trade checklist, daily schedule, discipline score + trade cap + cooldown, your rules |
+| **05 Armory** | Position size, money management, risk lab |
+| **06 Path** | Attempts, funded / payout, planning & goals |
+
+The `>_` button (or key `0`) opens **System**: Matrix / Construct theme, accent, digital rain,
+CRT scanlines, animations, boot sequence, and Backup & Export. Those effect settings are per
+device and don't go into backups. The header clock shows CST, which block of your schedule
+you're in, and whether the Entry Guard is clear — tap either one to jump to it.
+
+The first launch plays the intro and asks red pill (full effects) or blue pill (calm mode, no effects).
+You can change that anytime in System.
+
 ## Daily routine
 1. **2:00 PM CST** — platform closes (your hard stop). Open the app.
-2. Pick the account you traded (100K / 50K / 25K → firm).
-3. Tap the day → enter net P&L → Save. Add a mental note: did I take only A+ setups?
-4. Glance at the buffer / consistency line. Done in under a minute.
-5. **Weekend** — open it, scan the week, find the one pattern to fix.
+2. Pick the account you traded from the account strip under the title.
+3. **Log** → tap the day (or its date on the calendar) → enter net P&L → Save. Add a mental note: did I take only A+ setups?
+4. **Core** → glance at the buffer / consistency line. Done in under a minute.
+5. **Weekend** — open **Intel**, scan the week, find the one pattern to fix.
 
 Each account keeps its own log, so running two at once won't mix them up.
-Tap the **Target** or **Max Loss** number to match your dashboard if a firm changes its rules.
+Tap the **Target** or **Max Loss** number on Core to match your dashboard if a firm changes its rules.
