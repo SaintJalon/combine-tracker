@@ -44,7 +44,9 @@ Pine Editor → paste the file → Save → **Add to chart**. After any code cha
 | Entry | FVG 50% | **FVG proximal edge**: limit at the near edge (most fills, worst price). **FVG 50%**: limit at the gap's midpoint (consequent encroachment). **CISD close**: market order at the close of the arming bar. |
 | Stop | Sweep wick | Stop goes beyond the sweep wick, or beyond the far edge of the FVG (tighter). The FVG option falls back to the wick when there is no FVG. |
 | Stop buffer (ticks) | 4 | Added beyond the stop reference. 4 ticks = 1 NQ point. |
-| Minimum R:R to TP2 | 2.0 | Setups below this are skipped and not drawn. |
+| Minimum R:R to TP2 | 2.0 | Setups below this are skipped and not drawn. This check runs before any TP1 check. |
+| If the entry is past the CRT 50% | TP1 at a fixed R | TP1 is normally the CRT 50%. If the entry is already beyond it, **Fixed R** puts TP1 at entry ± the R below instead, or **Skip** drops the setup. With the wick stop this never triggers. Buying above the 50% puts the stop more than half the range away and TP2 less than half the range away, so R:R is always under 1 and the R:R check rejects the setup first. It only matters with the FVG stop. |
+| TP1 fixed R | 1.0 | TP1 for those entries. |
 | Runner target | TP2 | Where the part left after TP1 exits: **TP2** (opposite CRT extreme) or **TP3** (entry ± N R). |
 | TP3 R multiple | 4.0 | Only used when the runner target is TP3. |
 | Cancel unfilled entry after (bars) | 30 | Time limit on a working limit order. 0 = no time limit. The entry is also cancelled if TP1 trades first, at 16:00, or if C2 closes outside the range. |
@@ -88,7 +90,7 @@ The strategy adds two inputs. **Sizing** chooses Fixed contracts (default **2**,
 | Setups found | Setups that armed and were drawn. |
 | Filled | Setups whose entry filled. |
 | Expired unfilled | Armed setups whose entry never filled. |
-| Skipped | Setups dropped before drawing, by reason: R:R, bias, caps, size, other. |
+| Skipped | Setups dropped before drawing, by reason: R:R, TP1 (entry past 50% with Skip set), bias, caps, size, other. |
 | Win rate → TP1 / → TP2 | Share of resolved trades that reached the level before the stop. |
 | Win rate (R > 0) | Share of trades that made money, including TP1 then breakeven. |
 | Avg R:R offered | Average planned R:R to TP2 at entry. It shows what the setups offered, not what they paid. |
@@ -98,6 +100,7 @@ The strategy adds two inputs. **Sizing** chooses Fixed contracts (default **2**,
 | Max consecutive losses | Longest losing streak. |
 | Avg win / avg loss | Average R of winning trades and of losing trades. |
 | By killzone / By direction | Trades, win rate and R per trade for each group. |
+| Entry past 50% | Trades that used the fixed-R TP1, measured separately so you can judge them on their own. |
 
 **Indicator rules are conservative.** Fills only count from the bar after arming. On the fill bar, only the stop counts. When one bar trades both a stop and a target, the stop wins. That includes the breakeven stop on the bar that hits TP1.
 

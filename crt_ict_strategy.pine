@@ -74,6 +74,10 @@ enum DirT
     longs  = "Longs only"
     shorts = "Shorts only"
 
+enum Tp1T
+    fixed = "TP1 at a fixed R"
+    skip  = "Skip the setup"
+
 enum SizeT
     fixed = "Fixed contracts"
     risk  = "Risk % of account"
@@ -102,6 +106,8 @@ entryType = input.enum(EntryT.ce, "Entry", group = G_ENT, tooltip = "FVG proxima
 stopMode  = input.enum(StopT.wick, "Stop", group = G_ENT, tooltip = "Beyond the sweep wick (the C2 extreme), or beyond the far edge of the entry FVG (tighter, stopped more often). Falls back to the wick when there is no FVG.")
 stopBuf   = input.int(4, "Stop buffer (ticks)", minval = 0, group = G_ENT, tooltip = "Ticks added beyond the stop reference. 4 ticks = 1 NQ point.")
 minRR     = input.float(2.0, "Minimum R:R to TP2", minval = 0.0, step = 0.25, group = G_ENT, tooltip = "Reward to TP2 (the opposite CRT extreme) divided by risk. Setups under this are skipped and not drawn.")
+tp1Past   = input.enum(Tp1T.fixed, "If the entry is past the CRT 50%", group = G_ENT, tooltip = "TP1 is the CRT 50%. When the entry is already beyond it (a long entered in the upper half of the range), the 50% sits behind the entry. Fixed R: TP1 = entry +/- the R multiple below instead, and the partial and breakeven work as usual. Skip: drop the setup. With the stop beyond the sweep wick such an entry can never reach 1R to TP2 (risk is more than half the range, reward less), so it fails the R:R minimum either way; this matters with the FVG stop. The table's 'Entry past 50%' row measures these trades on their own.")
+tp1FixR   = input.float(1.0, "TP1 fixed R (entry past 50%)", minval = 0.25, step = 0.25, group = G_ENT)
 runT      = input.enum(RunT.tp2, "Runner target", group = G_ENT, tooltip = "Where the part left after TP1 exits. TP2 = the opposite CRT extreme. TP3 = entry +/- the R multiple below.")
 tp3R      = input.float(4.0, "TP3 R multiple", minval = 1.0, step = 0.5, group = G_ENT)
 fillWin   = input.int(30, "Cancel unfilled entry after (bars)", minval = 0, group = G_ENT, tooltip = "A working limit is cancelled after this many chart bars. 0 = no time limit. It is always cancelled if TP1 trades before it fills, at 16:00, or if C2 closes outside the range.")
@@ -194,10 +200,11 @@ float atr     = ta.atr(14)
 array<bool>  ev   = array.new<bool>(6, false)
 array<float> evLv = array.new<float>(5, na)
 
-// ---- Breakdown accumulators: 0 London, 1 NY AM, 2 NY PM, 3 outside, 4 long, 5 short
-var array<int>   bkN = array.new<int>(6, 0)
-var array<int>   bkW = array.new<int>(6, 0)
-var array<float> bkR = array.new<float>(6, 0.0)
+// ---- Breakdown accumulators: 0 London, 1 NY AM, 2 NY PM, 3 outside, 4 long, 5 short,
+// 6 entries past the CRT 50% (TP1 at a fixed R)
+var array<int>   bkN = array.new<int>(7, 0)
+var array<int>   bkW = array.new<int>(7, 0)
+var array<float> bkR = array.new<float>(7, 0.0)
 
 // ================================ TYPES ======================================
 type Setup
@@ -228,6 +235,7 @@ type Setup
     float  tp3
     float  tgt
     float  rr
+    bool   t1Fixed = false
     int    nq = 0
     int    mnq = 0
     int    fillBar
@@ -268,6 +276,7 @@ type Stats
     int   filled = 0
     int   unfilled = 0
     int   skipRR = 0
+    int   skipTp1 = 0
     int   skipBias = 0
     int   skipCap = 0
     int   skipOther = 0
@@ -302,7 +311,7 @@ ended(Setup s) => not na(s) and (s.state == State.closed or s.state == State.exp
 stName(Setup s) => na(s) ? "idle" : s.state == State.swept ? "swept" : s.state == State.armed ? "armed" : s.state == State.filled ? "in trade" : "done"
 
 infoText(Setup s) =>
-    string t = dirName(s.dir) + " | E: " + px(s.entry) + " | SL: " + px(s.stop0) + " | TP1: " + px(s.tp1) + " | TP2: " + px(s.tp2) + " | R: " + str.tostring(s.rr, "0.0")
+    string t = dirName(s.dir) + " | E: " + px(s.entry) + " | SL: " + px(s.stop0) + " | TP1: " + px(s.tp1) + (s.t1Fixed ? " (" + str.tostring(tp1FixR) + "R)" : "") + " | TP2: " + px(s.tp2) + " | R: " + str.tostring(s.rr, "0.0")
     if runT == RunT.tp3
         t += " | TP3: " + px(s.tp3)
     t += "\nNQ " + str.tostring(s.nq) + " · MNQ " + str.tostring(s.mnq) + "  (" + str.tostring(riskPct) + "% = $" + str.tostring(acct * riskPct / 100, "#") + ")"
@@ -313,7 +322,7 @@ infoText(Setup s) =>
     t
 
 msg(Setup s, string what) =>
-    syminfo.ticker + " CRT-ICT " + dirName(s.dir) + " " + what + " | E: " + px(s.entry) + " | SL: " + px(s.stop0) + " | TP1: " + px(s.tp1) + " | TP2: " + px(s.tp2) + (runT == RunT.tp3 ? " | TP3: " + px(s.tp3) : "") + " | R: " + str.tostring(s.rr, "0.0")
+    syminfo.ticker + " CRT-ICT " + dirName(s.dir) + " " + what + " | E: " + px(s.entry) + " | SL: " + px(s.stop0) + " | TP1: " + px(s.tp1) + (s.t1Fixed ? " (" + str.tostring(tp1FixR) + "R)" : "") + " | TP2: " + px(s.tp2) + (runT == RunT.tp3 ? " | TP3: " + px(s.tp3) : "") + " | R: " + str.tostring(s.rr, "0.0")
 
 // record an event for this bar's alertconditions and fire the alert() message
 note(int d, float e, float sl, float t1, float t2) =>
@@ -412,6 +421,11 @@ closeTrade(Setup s, Stats st, float r, string why) =>
     array.set(bkN, dk, array.get(bkN, dk) + 1)
     array.set(bkR, k, array.get(bkR, k) + r)
     array.set(bkR, dk, array.get(bkR, dk) + r)
+    if s.t1Fixed
+        array.set(bkN, 6, array.get(bkN, 6) + 1)
+        array.set(bkR, 6, array.get(bkR, 6) + r)
+        if r > 0
+            array.set(bkW, 6, array.get(bkW, 6) + 1)
     if r > 0
         st.wins   += 1
         st.grossW += r
@@ -483,7 +497,9 @@ plan(Setup s) =>
     s.entry := e
     s.stop  := sl
     s.stop0 := sl
-    s.tp1   := s.crtM
+    // TP1 is the CRT 50%; an entry already past it takes a fixed-R TP1 instead (A8)
+    s.t1Fixed := risk > 0 and d * (s.crtM - e) <= 0 and tp1Past == Tp1T.fixed
+    s.tp1   := s.t1Fixed ? math.round_to_mintick(e + d * tp1FixR * risk) : s.crtM
     s.tp2   := d == 1 ? s.crtH : s.crtL
     s.tp3   := risk > 0 ? math.round_to_mintick(e + d * tp3R * risk) : na
     s.tgt   := runT == RunT.tp3 ? s.tp3 : s.tp2
@@ -493,7 +509,7 @@ plan(Setup s) =>
     s.qty   := sizeMode == SizeT.fixed ? qtyFixed : risk > 0 ? math.floor(usd / (risk * syminfo.pointvalue)) : 0
     s.q1    := math.min(s.qty, math.round(s.qty * partF))
     s.q2    := s.qty - s.q1
-    risk <= 0 or d * (s.tp1 - e) <= 0 ? "other" : s.rr < minRR ? "rr" : biasOn and not na(pdMid) and (d == 1 ? e >= pdMid : e <= pdMid) ? "bias" : s.qty < 1 ? "size" : ""
+    risk <= 0 ? "other" : s.rr < minRR ? "rr" : d * (s.tp1 - e) <= 0 or d * (s.tp2 - s.tp1) <= 0 ? "tp1" : biasOn and not na(pdMid) and (d == 1 ? e >= pdMid : e <= pdMid) ? "bias" : s.qty < 1 ? "size" : ""
 
 // SWEPT -> ARMED: the entry and its bracket go in together (S1)
 armSetup(Setup s, Setup opp, Stats st) =>
@@ -530,6 +546,8 @@ tryArm(Setup s, Setup opp, Stats st) =>
         else
             if why == "rr"
                 st.skipRR += 1
+            else if why == "tp1"
+                st.skipTp1 += 1
             else if why == "bias"
                 st.skipBias += 1
             else if why == "size"
@@ -807,7 +825,7 @@ var table tb = na
 if showTbl and barstate.islast
     string sz = tblTxt == "Tiny" ? size.tiny : tblTxt == "Normal" ? size.normal : size.small
     if na(tb)
-        tb := table.new(position.top_right, 2, 26, border_color = color.new(#434651, 0), border_width = 1, frame_color = color.new(#434651, 0), frame_width = 1)
+        tb := table.new(position.top_right, 2, 27, border_color = color.new(#434651, 0), border_width = 1, frame_color = color.new(#434651, 0), frame_width = 1)
         table.merge_cells(tb, 0, 0, 1, 0)
         table.merge_cells(tb, 0, 15, 1, 15)
         table.merge_cells(tb, 0, 20, 1, 20)
@@ -824,7 +842,7 @@ if showTbl and barstate.islast
     tRow(tb, 2, "Setups found (armed)", str.tostring(st.found) + (nLive > 0 ? "  (" + str.tostring(nLive) + " live)" : ""), cW, sz)
     tRow(tb, 3, "Filled", str.tostring(st.filled) + " · " + pct(st.filled, st.found), cW, sz)
     tRow(tb, 4, "Expired unfilled", str.tostring(st.unfilled), cW, sz)
-    tRow(tb, 5, "Skipped (not drawn)", "R:R " + str.tostring(st.skipRR) + " · bias " + str.tostring(st.skipBias) + " · caps " + str.tostring(st.skipCap) + " · size " + str.tostring(st.skipSize) + " · other " + str.tostring(st.skipOther), cW, sz)
+    tRow(tb, 5, "Skipped (not drawn)", "R:R " + str.tostring(st.skipRR) + " · TP1 " + str.tostring(st.skipTp1) + " · bias " + str.tostring(st.skipBias) + " · caps " + str.tostring(st.skipCap) + " · size " + str.tostring(st.skipSize) + " · other " + str.tostring(st.skipOther), cW, sz)
     tRow(tb, 6, "Win rate → TP1", pct(st.hit1, st.closed), cW, sz)
     tRow(tb, 7, "Win rate → TP2", pct(st.hit2, st.closed), cW, sz)
     tRow(tb, 8, "Win rate (R > 0)", pct(st.wins, st.closed) + "  of " + str.tostring(st.closed), cW, sz)
@@ -842,9 +860,10 @@ if showTbl and barstate.islast
     tHead(tb, 20, "By direction  (trades · win · R/trade)", sz)
     tRow(tb, 21, "Long", bkText(4), cW, sz)
     tRow(tb, 22, "Short", bkText(5), cW, sz)
-    tRow(tb, 23, "Today", str.tostring(st.dayN) + "/" + str.tostring(maxDay) + " trades · " + fR(st.dayR) + (limOn and st.dayR <= lossLim ? " · LIMIT" : ""), st.dayR < 0 ? cN : cW, sz)
-    tRow(tb, 24, "Size (latest setup)", na(st.lastRisk) ? "-" : "NQ " + str.tostring(st.lastNq) + " · MNQ " + str.tostring(st.lastMnq) + " · " + px(st.lastRisk) + " pt stop", cW, sz)
-    tRow(tb, 25, "Now", "long " + stName(sL) + " · short " + stName(sS), cW, sz)
+    tRow(tb, 23, "Entry past 50% (TP1 " + str.tostring(tp1FixR) + "R)", bkText(6), cW, sz)
+    tRow(tb, 24, "Today", str.tostring(st.dayN) + "/" + str.tostring(maxDay) + " trades · " + fR(st.dayR) + (limOn and st.dayR <= lossLim ? " · LIMIT" : ""), st.dayR < 0 ? cN : cW, sz)
+    tRow(tb, 25, "Size (latest setup)", na(st.lastRisk) ? "-" : "NQ " + str.tostring(st.lastNq) + " · MNQ " + str.tostring(st.lastMnq) + " · " + px(st.lastRisk) + " pt stop", cW, sz)
+    tRow(tb, 26, "Now", "long " + stName(sL) + " · short " + stName(sS), cW, sz)
 
 // ================================= ALERTS ====================================
 // Create one alert on this strategy with "alert() function calls only" (or
