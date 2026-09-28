@@ -173,7 +173,7 @@ lossLim = input.float(-2.0, "Daily loss limit (R)", maxval = 0.0, step = 0.5, gr
 acct    = input.float(50000, "Account size ($)", minval = 0, group = G_SIZE)
 riskPct = input.float(0.5, "Risk per trade (%)", minval = 0.01, maxval = 100, step = 0.05, group = G_SIZE, tooltip = "Contracts = floor(risk $ / (stop distance in points x $ per point)). NQ = $20 per point, MNQ = $2 per point.")
 
-keepN = input.int(8, "Setups kept on the chart", minval = 1, maxval = 40, group = G_VIS, tooltip = "Older setups' drawings are deleted. Their results stay in the table.")
+keepN = input.int(3, "Setups kept on the chart", minval = 1, maxval = 40, group = G_VIS, tooltip = "Older setups' drawings are deleted. Their results stay in the table.")
 colUp = input.color(#26a69a, "Long / target", inline = "col", group = G_VIS)
 colDn = input.color(#ef5350, "Short / stop", inline = "col", group = G_VIS)
 colE  = input.color(#2962ff, "Entry", inline = "col", group = G_VIS)
@@ -181,6 +181,7 @@ colR  = input.color(#9598a1, "Range", inline = "col", group = G_VIS)
 
 showTbl = input.bool(true, "Show the stats table", group = G_TBL)
 tblTxt  = input.string("Small", "Text size", options = ["Tiny", "Small", "Normal"], group = G_TBL)
+tblMode = input.string("Compact", "Table rows", options = ["Compact", "Full"], group = G_TBL, tooltip = "Compact: the 8 rows that judge the model. Full: adds skip reasons, killzone and direction breakdowns, entries past the 50%, size and live state.")
 
 // ============================ CONSTANTS & SERIES =============================
 NY     = "America/New_York"
@@ -349,6 +350,10 @@ infoText(Setup s) =>
         t += "\nnot filled · " + s.why
     t
 
+// finished setups shrink to one line; the full levels stay in the tooltip
+doneText(Setup s) =>
+    dirName(s.dir) + " " + (s.state == State.closed ? fR(s.r) : "not filled") + " · " + s.why
+
 msg(Setup s, string what) =>
     syminfo.ticker + " CRT-ICT " + dirName(s.dir) + " " + what + " | E: " + px(s.entry) + " | SL: " + px(s.stop0) + " | TP1: " + px(s.tp1) + (s.t1Fixed ? " (" + str.tostring(tp1FixR) + "R)" : "") + " | TP2: " + px(s.tp2) + (runT == RunT.tp3 ? " | TP3: " + px(s.tp3) : "") + " | R: " + str.tostring(s.rr, "0.0")
 
@@ -426,7 +431,9 @@ endSetup(Setup s, Stats st, State toState, string why) =>
         s.lbSweep := na
     else
         setRight(s, bar_index)
-        label.set_text(s.lbInfo, infoText(s))
+        label.set_text(s.lbInfo, doneText(s))
+        label.set_size(s.lbInfo, size.tiny)
+        label.set_tooltip(s.lbInfo, infoText(s))
         if toState == State.expired
             st.unfilled += 1
     true
@@ -798,11 +805,13 @@ tHead(table t, int r, string k, string sz) =>
 var table tb = na
 if showTbl and barstate.islast
     string sz = tblTxt == "Tiny" ? size.tiny : tblTxt == "Normal" ? size.normal : size.small
+    bool   full = tblMode == "Full"
     if na(tb)
-        tb := table.new(position.top_right, 2, 27, border_color = color.new(#434651, 0), border_width = 1, frame_color = color.new(#434651, 0), frame_width = 1)
+        tb := table.new(position.top_right, 2, full ? 27 : 8, border_color = color.new(#434651, 0), border_width = 1, frame_color = color.new(#434651, 0), frame_width = 1)
         table.merge_cells(tb, 0, 0, 1, 0)
-        table.merge_cells(tb, 0, 15, 1, 15)
-        table.merge_cells(tb, 0, 20, 1, 20)
+        if full
+            table.merge_cells(tb, 0, 15, 1, 15)
+            table.merge_cells(tb, 0, 20, 1, 20)
     color  cW    = #d1d4dc
     color  cP    = colUp
     color  cN    = colDn
@@ -811,33 +820,43 @@ if showTbl and barstate.islast
     float  expR  = st.closed > 0 ? st.sumR / st.closed : na
     float  pf    = st.grossL > 0 ? st.grossW / st.grossL : na
     int    nLive = (isLive(sL) ? 1 : 0) + (isLive(sS) ? 1 : 0)
-    tHead(tb, 0, "CRT-ICT · " + tfTxt + " CRT · " + enTxt + " · conservative fills", sz)
-    tRow(tb, 1, "Sweeps (" + (kzReq ? "in killzone" : "any hour") + ")", str.tostring(st.sweeps), cW, sz)
-    tRow(tb, 2, "Setups found (armed)", str.tostring(st.found) + (nLive > 0 ? "  (" + str.tostring(nLive) + " live)" : ""), cW, sz)
-    tRow(tb, 3, "Filled", str.tostring(st.filled) + " · " + pct(st.filled, st.found), cW, sz)
-    tRow(tb, 4, "Expired unfilled", str.tostring(st.unfilled), cW, sz)
-    tRow(tb, 5, "Skipped (not drawn)", "R:R " + str.tostring(st.skipRR) + " · TP1 " + str.tostring(st.skipTp1) + " · bias " + str.tostring(st.skipBias) + " · caps " + str.tostring(st.skipCap) + " · other " + str.tostring(st.skipOther), cW, sz)
-    tRow(tb, 6, "Win rate → TP1", pct(st.hit1, st.closed), cW, sz)
-    tRow(tb, 7, "Win rate → TP2", pct(st.hit2, st.closed), cW, sz)
-    tRow(tb, 8, "Win rate (R > 0)", pct(st.wins, st.closed) + "  of " + str.tostring(st.closed), cW, sz)
-    tRow(tb, 9, "Avg R:R offered (to TP2)", st.found > 0 ? str.tostring(st.sumRR / st.found, "0.0") : "-", cW, sz)
-    tRow(tb, 10, "Expectancy (R / trade)", na(expR) ? "-" : fR(expR), na(expR) ? cW : expR > 0 ? cP : cN, sz)
-    tRow(tb, 11, "Net R", st.closed > 0 ? fR(st.sumR) : "-", st.sumR > 0 ? cP : st.sumR < 0 ? cN : cW, sz)
-    tRow(tb, 12, "Profit factor", na(pf) ? (st.grossW > 0 ? "no losses" : "-") : str.tostring(pf, "0.00"), na(pf) ? cW : pf >= 1 ? cP : cN, sz)
-    tRow(tb, 13, "Max consecutive losses", str.tostring(st.maxStreak), cW, sz)
-    tRow(tb, 14, "Avg win / avg loss", (st.wins > 0 ? fR(st.grossW / st.wins) : "-") + " / " + (st.losses > 0 ? fR(-st.grossL / st.losses) : "-"), cW, sz)
-    tHead(tb, 15, "By killzone of the sweep  (trades · win · R/trade)", sz)
-    tRow(tb, 16, "London", bkText(0), cW, sz)
-    tRow(tb, 17, "NY AM", bkText(1), cW, sz)
-    tRow(tb, 18, "NY PM", bkText(2), cW, sz)
-    tRow(tb, 19, "Outside KZ", bkText(3), cW, sz)
-    tHead(tb, 20, "By direction  (trades · win · R/trade)", sz)
-    tRow(tb, 21, "Long", bkText(4), cW, sz)
-    tRow(tb, 22, "Short", bkText(5), cW, sz)
-    tRow(tb, 23, "Entry past 50% (TP1 " + str.tostring(tp1FixR) + "R)", bkText(6), cW, sz)
-    tRow(tb, 24, "Today", str.tostring(st.dayN) + "/" + str.tostring(maxDay) + " trades · " + fR(st.dayR) + (limOn and st.dayR <= lossLim ? " · LIMIT" : ""), st.dayR < 0 ? cN : cW, sz)
-    tRow(tb, 25, "Size (latest setup)", na(st.lastRisk) ? "-" : "NQ " + str.tostring(st.lastNq) + " · MNQ " + str.tostring(st.lastMnq) + " · " + px(st.lastRisk) + " pt stop", cW, sz)
-    tRow(tb, 26, "Now", "long " + stName(sL) + " · short " + stName(sS), cW, sz)
+    if full
+        tHead(tb, 0, "CRT-ICT · " + tfTxt + " CRT · " + enTxt + " · conservative fills", sz)
+        tRow(tb, 1, "Sweeps (" + (kzReq ? "in killzone" : "any hour") + ")", str.tostring(st.sweeps), cW, sz)
+        tRow(tb, 2, "Setups found (armed)", str.tostring(st.found) + (nLive > 0 ? "  (" + str.tostring(nLive) + " live)" : ""), cW, sz)
+        tRow(tb, 3, "Filled", str.tostring(st.filled) + " · " + pct(st.filled, st.found), cW, sz)
+        tRow(tb, 4, "Expired unfilled", str.tostring(st.unfilled), cW, sz)
+        tRow(tb, 5, "Skipped (not drawn)", "R:R " + str.tostring(st.skipRR) + " · TP1 " + str.tostring(st.skipTp1) + " · bias " + str.tostring(st.skipBias) + " · caps " + str.tostring(st.skipCap) + " · other " + str.tostring(st.skipOther), cW, sz)
+        tRow(tb, 6, "Win rate → TP1", pct(st.hit1, st.closed), cW, sz)
+        tRow(tb, 7, "Win rate → TP2", pct(st.hit2, st.closed), cW, sz)
+        tRow(tb, 8, "Win rate (R > 0)", pct(st.wins, st.closed) + "  of " + str.tostring(st.closed), cW, sz)
+        tRow(tb, 9, "Avg R:R offered (to TP2)", st.found > 0 ? str.tostring(st.sumRR / st.found, "0.0") : "-", cW, sz)
+        tRow(tb, 10, "Expectancy (R / trade)", na(expR) ? "-" : fR(expR), na(expR) ? cW : expR > 0 ? cP : cN, sz)
+        tRow(tb, 11, "Net R", st.closed > 0 ? fR(st.sumR) : "-", st.sumR > 0 ? cP : st.sumR < 0 ? cN : cW, sz)
+        tRow(tb, 12, "Profit factor", na(pf) ? (st.grossW > 0 ? "no losses" : "-") : str.tostring(pf, "0.00"), na(pf) ? cW : pf >= 1 ? cP : cN, sz)
+        tRow(tb, 13, "Max consecutive losses", str.tostring(st.maxStreak), cW, sz)
+        tRow(tb, 14, "Avg win / avg loss", (st.wins > 0 ? fR(st.grossW / st.wins) : "-") + " / " + (st.losses > 0 ? fR(-st.grossL / st.losses) : "-"), cW, sz)
+        tHead(tb, 15, "By killzone of the sweep  (trades · win · R/trade)", sz)
+        tRow(tb, 16, "London", bkText(0), cW, sz)
+        tRow(tb, 17, "NY AM", bkText(1), cW, sz)
+        tRow(tb, 18, "NY PM", bkText(2), cW, sz)
+        tRow(tb, 19, "Outside KZ", bkText(3), cW, sz)
+        tHead(tb, 20, "By direction  (trades · win · R/trade)", sz)
+        tRow(tb, 21, "Long", bkText(4), cW, sz)
+        tRow(tb, 22, "Short", bkText(5), cW, sz)
+        tRow(tb, 23, "Entry past 50% (TP1 " + str.tostring(tp1FixR) + "R)", bkText(6), cW, sz)
+        tRow(tb, 24, "Today", str.tostring(st.dayN) + "/" + str.tostring(maxDay) + " trades · " + fR(st.dayR) + (limOn and st.dayR <= lossLim ? " · LIMIT" : ""), st.dayR < 0 ? cN : cW, sz)
+        tRow(tb, 25, "Size (latest setup)", na(st.lastRisk) ? "-" : "NQ " + str.tostring(st.lastNq) + " · MNQ " + str.tostring(st.lastMnq) + " · " + px(st.lastRisk) + " pt stop", cW, sz)
+        tRow(tb, 26, "Now", "long " + stName(sL) + " · short " + stName(sS), cW, sz)
+    else
+        tHead(tb, 0, "CRT-ICT · " + tfTxt + " CRT · " + enTxt, sz)
+        tRow(tb, 1, "Setups · filled", str.tostring(st.found) + " · " + str.tostring(st.filled) + (nLive > 0 ? "  (" + str.tostring(nLive) + " live)" : ""), cW, sz)
+        tRow(tb, 2, "Win → TP1 / TP2", pct(st.hit1, st.closed) + " / " + pct(st.hit2, st.closed), cW, sz)
+        tRow(tb, 3, "Win (R > 0)", pct(st.wins, st.closed) + "  of " + str.tostring(st.closed), cW, sz)
+        tRow(tb, 4, "Expectancy / trade", na(expR) ? "-" : fR(expR), na(expR) ? cW : expR > 0 ? cP : cN, sz)
+        tRow(tb, 5, "Net R · PF", st.closed > 0 ? fR(st.sumR) + " · " + (na(pf) ? "-" : str.tostring(pf, "0.00")) : "-", st.sumR > 0 ? cP : st.sumR < 0 ? cN : cW, sz)
+        tRow(tb, 6, "Max losses in a row", str.tostring(st.maxStreak), cW, sz)
+        tRow(tb, 7, "Today", str.tostring(st.dayN) + "/" + str.tostring(maxDay) + " · " + fR(st.dayR) + (limOn and st.dayR <= lossLim ? " · LIMIT" : ""), st.dayR < 0 ? cN : cW, sz)
 
 // ================================= ALERTS ====================================
 // Recommended: one alert on "Any alert() function call" - it carries the full
