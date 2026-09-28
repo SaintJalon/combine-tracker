@@ -26,12 +26,15 @@
 //       (breakeven) at that bar's close. The flatten at 16:00 is a market close
 //       sent on the bar that ends at 16:00, filled at the next bar's open.
 //   S4  Whole contracts. TP1 takes round(qty x Close at TP1 %), the runner takes
-//       the rest, so 1 contract at 50% exits entirely at TP1. Default: 2 NQ.
-//   S5  Costs: commission $2.50 per contract per side and 1 tick of slippage on
-//       market and stop orders are set in the strategy() header below. Pine does
-//       not allow inputs there, so change them in Properties -> Commission and
-//       Slippage. Margin is 0 so the Tester does not reject NQ's notional against
-//       a $50k account (it otherwise fills nothing and says nothing).
+//       the rest, so 1 contract at 50% exits entirely at TP1. Default: auto,
+//       2 contracts on micros (MNQ) and 1 on full-size contracts (NQ).
+//   S5  Costs: commission $0.61 per contract per side (Topstep MNQ: $1.22 round
+//       turn) and 1 tick of slippage on market and stop orders are set in the
+//       strategy() header below. Pine does not allow inputs there, so change them
+//       in Properties -> Commission; Topstep NQ is $1.89 per side ($3.78 RT), a
+//       difference of about 0.004R per trade at 1 NQ. Margin is 0 so the Tester
+//       does not reject NQ's notional against a $50k account (it otherwise fills
+//       nothing and says nothing).
 //   S6  The table's R is from the broker's fills: (points x contracts - cost) /
 //       (planned risk x contracts). The Tester's own tabs report the same trades
 //       in dollars.
@@ -39,7 +42,7 @@
 //       placed on a bar's close work from the next bar, never at a price the
 //       signal bar itself created.
 // =============================================================================
-strategy("CRT + ICT CISD/FVG Strategy", "CRT-ICT St", overlay = true, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 2, commission_type = strategy.commission.cash_per_contract, commission_value = 2.5, slippage = 1, pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = false, margin_long = 0, margin_short = 0, max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
+strategy("CRT + ICT CISD/FVG Strategy", "CRT-ICT St", overlay = true, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 2, commission_type = strategy.commission.cash_per_contract, commission_value = 0.61, slippage = 1, pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = false, margin_long = 0, margin_short = 0, max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
 
 // ================================ ENUMS ======================================
 enum State
@@ -127,7 +130,7 @@ maxDay  = input.int(2, "Max trades per day", minval = 1, group = G_FLT, tooltip 
 lossLim = input.float(-2.0, "Daily loss limit (R)", maxval = 0.0, step = 0.5, group = G_FLT, tooltip = "When today's realised R reaches this, working entries are cancelled and nothing arms until the next session. 0 = off.")
 
 sizeMode = input.enum(SizeT.fixed, "Sizing", group = G_SIZE, tooltip = "Fixed: the same number of contracts every trade. Risk %: floor(account x risk % / (stop distance x the chart symbol's $ per point)); a setup that cannot carry one contract is skipped. On NQ at 0.5% of $50k that is most setups - use MNQ1! for risk sizing.")
-qtyFixed = input.int(2, "Contracts (fixed)", minval = 1, group = G_SIZE, tooltip = "2 lets the 50% partial at TP1 work. With 1 contract the whole position exits at TP1.")
+qtyFixed = input.int(0, "Contracts (fixed, 0 = auto)", minval = 0, group = G_SIZE, tooltip = "0 = auto: 2 on micros like MNQ, 1 on full-size contracts like NQ ($20+ per point). 2 lets the 50% partial at TP1 work; with 1 contract the whole position exits at TP1.")
 acct    = input.float(50000, "Account size ($)", minval = 0, group = G_SIZE)
 riskPct = input.float(0.5, "Risk per trade (%)", minval = 0.01, maxval = 100, step = 0.05, group = G_SIZE, tooltip = "Contracts = floor(risk $ / (stop distance in points x $ per point)). NQ = $20 per point, MNQ = $2 per point.")
 
@@ -148,6 +151,7 @@ NQ_PT  = 20.0
 MNQ_PT = 2.0
 partF  = partPct / 100.0
 limOn  = lossLim < 0
+qtyAuto = syminfo.pointvalue >= 20 ? 1 : 2
 
 if barstate.isfirst and timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds(crtTf)
     runtime.error("CRT-ICT: the chart timeframe must be lower than the CRT timeframe (" + crtTf + "). Use a 1-5 minute chart.")
@@ -513,7 +517,7 @@ plan(Setup s) =>
     s.rr    := risk > 0 ? d * (s.tp2 - e) / risk : 0.0
     s.nq    := risk > 0 ? math.floor(usd / (risk * NQ_PT)) : 0
     s.mnq   := risk > 0 ? math.floor(usd / (risk * MNQ_PT)) : 0
-    s.qty   := sizeMode == SizeT.fixed ? qtyFixed : risk > 0 ? math.floor(usd / (risk * syminfo.pointvalue)) : 0
+    s.qty   := sizeMode == SizeT.fixed ? (qtyFixed > 0 ? qtyFixed : qtyAuto) : risk > 0 ? math.floor(usd / (risk * syminfo.pointvalue)) : 0
     s.q1    := math.min(s.qty, math.round(s.qty * partF))
     s.q2    := s.qty - s.q1
     risk <= 0 ? "other" : s.rr < minRR ? "rr" : d * (s.tp1 - e) <= 0 or d * (s.tp2 - s.tp1) <= 0 ? "tp1" : biasOn and not na(pdMid) and (d == 1 ? e >= pdMid : e <= pdMid) ? "bias" : s.qty < 1 ? "size" : ""

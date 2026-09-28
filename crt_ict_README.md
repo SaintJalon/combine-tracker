@@ -76,13 +76,13 @@ Pine Editor → paste the file → Save → **Add to chart**. After any code cha
 
 In the indicator, **Account size** ($50k) and **Risk %** (0.5%) feed the NQ ($20/pt) and MNQ ($2/pt) contract counts shown on every setup label.
 
-The strategy adds two inputs. **Sizing** chooses Fixed contracts (default **2**, so the 50% partial works) or Risk % (a setup that can't carry one contract is skipped). **Contracts** sets the fixed size. At 0.5% of $50k, most NQ stops are too wide for even 1 contract. Use MNQ1! for risk-based sizing.
+The strategy adds two inputs. **Sizing** chooses Fixed contracts or Risk % (a setup that can't carry one contract is skipped). **Contracts** sets the fixed size. The default, 0, means auto: **2 on MNQ, 1 on NQ**, chosen from the chart symbol's point value. On 1 NQ the 50% partial can't split a contract, so the whole position exits at TP1. At 0.5% of $50k, most NQ stops are too wide for even 1 contract. Use MNQ1! for risk-based sizing.
 
 **8 · Visuals / 9 · Stats table**: how many past setups keep their drawings (default 3), colours, table on/off, and text size. **Table rows** is **Compact** by default: 8 rows covering setups and fills, win rates, expectancy, net R and profit factor, the longest losing streak, and today. **Full** shows every row listed below.
 
 A finished setup shrinks to a one-line result, for example `LONG +2.00R · TP2`. Hover over it to see its full entry, stop and target levels.
 
-**Strategy Properties tab**: commission is $2.50 per contract per side, slippage is 1 tick, and capital is $50,000. Margin is set to 0 on purpose: without that, the Tester rejects every NQ order and reports nothing. Pine doesn't allow inputs inside `strategy()`, so costs can only be changed in Properties.
+**Strategy Properties tab**: commission is $0.61 per contract per side (Topstep's MNQ rate, $1.22 per round turn), slippage is 1 tick, and capital is $50,000. On NQ, Topstep charges $1.89 per side. At 1 NQ that difference is about 0.004R per trade. Margin is set to 0 on purpose: without that, the Tester rejects every NQ order and reports nothing. Pine doesn't allow inputs inside `strategy()`, so costs can only be changed in Properties.
 
 ## The stats table
 
