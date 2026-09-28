@@ -1,0 +1,853 @@
+//@version=6
+// =============================================================================
+// CRT + ICT CISD / FVG  -  NQ / MNQ                                   STRATEGY
+// crt_ict_strategy.pine                 indicator twin: crt_ict_indicator.pine
+// -----------------------------------------------------------------------------
+// The indicator's rules wired into the Strategy Tester. Everything that decides
+// WHETHER and WHERE to trade is the indicator's code, copied unchanged: the CRT
+// range, the sweep, the CISD, the displacement filter, entry / stop / targets,
+// the killzones, the bias filter, the daily caps and every cancel rule. Read the
+// indicator's header for the model and assumptions A1-A15; they all apply here.
+//
+// What is different is WHO decides the fills:
+//   S1  Orders. On the arming bar's close the strategy places the entry (a limit
+//       at the FVG price, or a market order for "CISD close" that fills at the
+//       next bar's open) together with its bracket: exit T1 (TP1 limit + stop)
+//       for the partial and exit T2 (runner target + stop) for the rest. The
+//       bracket goes in with the entry, so a stop on the fill bar is honoured.
+//       Both sides' working entries share one OCA-cancel group (A9).
+//   S2  Fills, targets and stops come from TradingView's broker emulator, not
+//       from the indicator's bar logic. On a bar that trades both a stop and a
+//       target the emulator assumes a price path (open -> nearer extreme -> far
+//       extreme -> close); the indicator assumes the stop. So the Tester is the
+//       realistic number and the indicator's table is the conservative one.
+//       Enable "Bar Magnifier" in Properties if your plan has it.
+//   S3  When TP1 fills, the runner's stop is moved to the actual fill price
+//       (breakeven) at that bar's close. The flatten at 16:00 is a market close
+//       sent on the bar that ends at 16:00, filled at the next bar's open.
+//   S4  Whole contracts. TP1 takes round(qty x Close at TP1 %), the runner takes
+//       the rest, so 1 contract at 50% exits entirely at TP1. Default: 2 NQ.
+//   S5  Costs: commission $2.50 per contract per side and 1 tick of slippage on
+//       market and stop orders are set in the strategy() header below. Pine does
+//       not allow inputs there, so change them in Properties -> Commission and
+//       Slippage. Margin is 0 so the Tester does not reject NQ's notional against
+//       a $50k account (it otherwise fills nothing and says nothing).
+//   S6  The table's R is from the broker's fills: (points x contracts - cost) /
+//       (planned risk x contracts). The Tester's own tabs report the same trades
+//       in dollars.
+//   S7  process_orders_on_close = false and calc_on_every_tick = false: orders
+//       placed on a bar's close work from the next bar, never at a price the
+//       signal bar itself created.
+// =============================================================================
+strategy("CRT + ICT CISD/FVG Strategy", "CRT-ICT St", overlay = true, initial_capital = 50000, default_qty_type = strategy.fixed, default_qty_value = 2, commission_type = strategy.commission.cash_per_contract, commission_value = 2.5, slippage = 1, pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = false, margin_long = 0, margin_short = 0, max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
+
+// ================================ ENUMS ======================================
+enum State
+    idle    = "IDLE"
+    swept   = "SWEPT"
+    armed   = "ARMED"
+    filled  = "FILLED"
+    closed  = "CLOSED"
+    expired = "EXPIRED"
+
+enum EntryT
+    prox = "FVG proximal edge"
+    ce   = "FVG 50% (consequent encroachment)"
+    mkt  = "CISD close (market)"
+
+enum StopT
+    wick = "Beyond the sweep wick"
+    fvg  = "Beyond the FVG (far edge)"
+
+enum DispT
+    fvg    = "FVG"
+    body   = "Body ≥ ATR multiple"
+    either = "FVG or body"
+    both   = "FVG and body"
+
+enum RunT
+    tp2 = "TP2 · opposite CRT extreme"
+    tp3 = "TP3 · fixed R multiple"
+
+enum DirT
+    both   = "Both"
+    longs  = "Longs only"
+    shorts = "Shorts only"
+
+enum SizeT
+    fixed = "Fixed contracts"
+    risk  = "Risk % of account"
+
+// ================================ INPUTS =====================================
+G_CRT  = "1 · CRT range (higher timeframe)"
+G_CISD = "2 · Sweep & CISD (chart timeframe)"
+G_ENT  = "3 · Entry, stop & targets"
+G_MGT  = "4 · Trade management"
+G_KZ   = "5 · Killzones (New York time)"
+G_FLT  = "6 · Filters & daily limits"
+G_SIZE = "7 · Position size"
+G_VIS  = "8 · Visuals"
+G_TBL  = "9 · Stats table"
+
+crtTf     = input.timeframe("60", "CRT timeframe", options = ["15", "60", "240", "D"], group = G_CRT, tooltip = "C1 = the last CLOSED candle of this timeframe (CRT High, Low, 50%). C2 = the candle of this timeframe forming now, which has to sweep C1. Run it on a 1-5 minute chart. 4H and Daily ranges are often too wide for NQ to cross inside one session.")
+showRange = input.bool(true, "Draw the active CRT High / Low / 50%", group = G_CRT)
+
+minDepth = input.int(0, "Minimum sweep depth (ticks)", minval = 0, group = G_CISD, tooltip = "How far past CRT Low (longs) or CRT High (shorts) price must trade for the sweep to count. 0 = any trade through the level. 2-4 ignores one-tick pokes.")
+cisdWin  = input.int(20, "CISD window (bars after the sweep)", minval = 1, maxval = 300, group = G_CISD, tooltip = "The CISD and the arming both have to happen within this many chart bars of the first sweep bar, or the setup expires.")
+useDisp  = input.bool(true, "Displacement filter", group = G_CISD, tooltip = "The CISD leg must show displacement, not drift. The kind is set below.")
+dispMode = input.enum(DispT.fvg, "Displacement must show", group = G_CISD, tooltip = "FVG: the leg from the sweep extreme left a fair value gap (longs: candle[2] high < candle[0] low) that price has not traded back into. Body: a candle in the leg closed in the trade direction with a body of at least the ATR multiple below.")
+dispAtr  = input.float(1.0, "Body ≥ ATR(14) ×", minval = 0.1, step = 0.1, group = G_CISD)
+
+entryType = input.enum(EntryT.ce, "Entry", group = G_ENT, tooltip = "FVG proximal edge: limit at the near edge of the gap (most fills, worst price). FVG 50%: limit at the gap's midpoint. CISD close: market at the close of the arming bar. FVG entries always need an FVG, even with the displacement filter off.")
+stopMode  = input.enum(StopT.wick, "Stop", group = G_ENT, tooltip = "Beyond the sweep wick (the C2 extreme), or beyond the far edge of the entry FVG (tighter, stopped more often). Falls back to the wick when there is no FVG.")
+stopBuf   = input.int(4, "Stop buffer (ticks)", minval = 0, group = G_ENT, tooltip = "Ticks added beyond the stop reference. 4 ticks = 1 NQ point.")
+minRR     = input.float(2.0, "Minimum R:R to TP2", minval = 0.0, step = 0.25, group = G_ENT, tooltip = "Reward to TP2 (the opposite CRT extreme) divided by risk. Setups under this are skipped and not drawn.")
+runT      = input.enum(RunT.tp2, "Runner target", group = G_ENT, tooltip = "Where the part left after TP1 exits. TP2 = the opposite CRT extreme. TP3 = entry +/- the R multiple below.")
+tp3R      = input.float(4.0, "TP3 R multiple", minval = 1.0, step = 0.5, group = G_ENT)
+fillWin   = input.int(30, "Cancel unfilled entry after (bars)", minval = 0, group = G_ENT, tooltip = "A working limit is cancelled after this many chart bars. 0 = no time limit. It is always cancelled if TP1 trades before it fills, at 16:00, or if C2 closes outside the range.")
+
+partPct = input.float(50.0, "Close at TP1 (%)", minval = 0.0, maxval = 100.0, step = 5.0, group = G_MGT, tooltip = "Share of the position closed at TP1 (CRT 50%). The rest runs to the runner target. 100 = all out at TP1, 0 = no partial.")
+beOn    = input.bool(true, "Stop to breakeven after TP1", group = G_MGT)
+eodOn   = input.bool(true, "Flatten at 16:00 NY", group = G_MGT, tooltip = "Open trades close on the bar that ends at 16:00 New York, working entries are cancelled, and nothing arms again until the 18:00 session open. Matches prop-firm flat-by-close rules and keeps overnight gaps out of the stats.")
+
+kzReq = input.bool(true, "Sweep must be inside an enabled killzone", group = G_KZ, tooltip = "Checked on the first bar that trades through the CRT level. Off = sweeps at any hour count; they are reported as 'Outside KZ'.")
+kzLon = input.bool(false, "London  02:00-05:00", group = G_KZ)
+kzAm  = input.bool(true, "NY AM  08:30-11:00", group = G_KZ)
+kzPm  = input.bool(false, "NY PM  13:30-16:00", group = G_KZ)
+
+dirSel  = input.enum(DirT.both, "Direction", group = G_FLT)
+biasOn  = input.bool(false, "Daily bias (premium / discount)", group = G_FLT, tooltip = "Longs only when the entry is below the previous session's 50%, shorts only when it is above it.")
+maxDay  = input.int(2, "Max trades per day", minval = 1, group = G_FLT, tooltip = "Filled trades today plus any entry still working. The day is the CME session that opens at 18:00 New York.")
+lossLim = input.float(-2.0, "Daily loss limit (R)", maxval = 0.0, step = 0.5, group = G_FLT, tooltip = "When today's realised R reaches this, working entries are cancelled and nothing arms until the next session. 0 = off.")
+
+sizeMode = input.enum(SizeT.fixed, "Sizing", group = G_SIZE, tooltip = "Fixed: the same number of contracts every trade. Risk %: floor(account x risk % / (stop distance x the chart symbol's $ per point)); a setup that cannot carry one contract is skipped. On NQ at 0.5% of $50k that is most setups - use MNQ1! for risk sizing.")
+qtyFixed = input.int(2, "Contracts (fixed)", minval = 1, group = G_SIZE, tooltip = "2 lets the 50% partial at TP1 work. With 1 contract the whole position exits at TP1.")
+acct    = input.float(50000, "Account size ($)", minval = 0, group = G_SIZE)
+riskPct = input.float(0.5, "Risk per trade (%)", minval = 0.01, maxval = 100, step = 0.05, group = G_SIZE, tooltip = "Contracts = floor(risk $ / (stop distance in points x $ per point)). NQ = $20 per point, MNQ = $2 per point.")
+
+keepN = input.int(8, "Setups kept on the chart", minval = 1, maxval = 40, group = G_VIS, tooltip = "Older setups' drawings are deleted. Their results stay in the table.")
+colUp = input.color(#26a69a, "Long / target", inline = "col", group = G_VIS)
+colDn = input.color(#ef5350, "Short / stop", inline = "col", group = G_VIS)
+colE  = input.color(#2962ff, "Entry", inline = "col", group = G_VIS)
+colR  = input.color(#9598a1, "Range", inline = "col", group = G_VIS)
+
+showTbl = input.bool(true, "Show the stats table", group = G_TBL)
+tblTxt  = input.string("Small", "Text size", options = ["Tiny", "Small", "Normal"], group = G_TBL)
+
+// ============================ CONSTANTS & SERIES =============================
+NY     = "America/New_York"
+TICK   = syminfo.mintick
+NQ_PT  = 20.0
+MNQ_PT = 2.0
+partF  = partPct / 100.0
+limOn  = lossLim < 0
+
+if barstate.isfirst and timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds(crtTf)
+    runtime.error("CRT-ICT: the chart timeframe must be lower than the CRT timeframe (" + crtTf + "). Use a 1-5 minute chart.")
+
+// ---- Non-repainting higher-timeframe data (A1) -------------------------------
+// [1] = the last CLOSED candle only. lookahead_on puts that closed candle on the
+// first chart bar of the next candle, the moment it is known live.
+[hH, hL, hC] = request.security(syminfo.tickerid, crtTf, [high[1], low[1], close[1]], lookahead = barmerge.lookahead_on)
+[dH, dL]     = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+float crtM   = math.round_to_mintick((hH + hL) / 2)
+float pdMid  = (dH + dL) / 2
+bool  newCrt = timeframe.change(crtTf)
+bool  newDay = timeframe.change("D")
+int   htfOpen  = time(crtTf)
+int   htfPrev  = htfOpen[1]
+int   htfClose = time_close(crtTf)
+// Last chart bar of the CRT candle: its close IS the CRT candle's close, so C2 can
+// be judged here and any cancel takes effect from the very next bar.
+bool  c2Last = not na(htfClose) and time_close == htfClose
+
+// ---- New York clock (A10, A14) -----------------------------------------------
+nyMin(int t) => hour(t, NY) * 60 + minute(t, NY)
+int  mOpen  = nyMin(time)
+int  mClose = nyMin(time_close)
+bool eodBar = eodOn and mOpen < 960 and mClose >= 960
+bool quiet  = eodOn and (eodBar or (mOpen >= 960 and mOpen < 1080))
+bool inLon  = not na(time(timeframe.period, "0200-0500", NY))
+bool inAm   = not na(time(timeframe.period, "0830-1100", NY))
+bool inPm   = not na(time(timeframe.period, "1330-1600", NY))
+int  kzNow  = inLon ? 0 : inAm ? 1 : inPm ? 2 : 3
+bool kzOk   = not kzReq or (kzLon and inLon) or (kzAm and inAm) or (kzPm and inPm)
+
+// ---- CISD reference: open of the first candle of the latest down / up run (A4)
+var float dnRun = na
+var float upRun = na
+if close < open and not (close[1] < open[1])
+    dnRun := open
+if close > open and not (close[1] > open[1])
+    upRun := open
+
+// ---- FVG on the chart timeframe (A5). Candles t-2 and t, displacement at t-1 --
+bool  bullGap = low > high[2]
+bool  bearGap = high < low[2]
+float h2      = high[2]
+float l2      = low[2]
+float atr     = ta.atr(14)
+
+// ---- Per-bar alert channel, rebuilt every bar ---------------------------------
+// ev   = [sweep, armed, filled, tp1, tp2, stop]
+// evLv = [direction, entry, stop, tp1, tp2] for the alertcondition placeholders
+array<bool>  ev   = array.new<bool>(6, false)
+array<float> evLv = array.new<float>(5, na)
+
+// ---- Breakdown accumulators: 0 London, 1 NY AM, 2 NY PM, 3 outside, 4 long, 5 short
+var array<int>   bkN = array.new<int>(6, 0)
+var array<int>   bkW = array.new<int>(6, 0)
+var array<float> bkR = array.new<float>(6, 0.0)
+
+// ================================ TYPES ======================================
+type Setup
+    int    num
+    int    dir
+    State  state = State.swept
+    float  crtH
+    float  crtL
+    float  crtM
+    int    c2Time
+    bool   c2Done = false
+    int    kz = 3
+    int    sweepBar
+    float  ext
+    int    extBar
+    float  cisdRef
+    int    cisdBar
+    bool   bigBody = false
+    float  fvgTop
+    float  fvgBot
+    int    fvgBar
+    int    armBar
+    float  entry
+    float  stop
+    float  stop0
+    float  tp1
+    float  tp2
+    float  tp3
+    float  tgt
+    float  rr
+    int    nq = 0
+    int    mnq = 0
+    int    fillBar
+    bool   t1 = false
+    bool   t2 = false
+    float  banked = 0.0
+    float  r = 0.0
+    string why = ""
+    int    endBar
+    label  lbSweep
+    label  lbCisd
+    box    bxFvg
+    box    bxRisk
+    box    bxRew
+    line   lnE
+    line   lnSl
+    line   lnT1
+    line   lnT2
+    line   lnT3
+    label  lbInfo
+    // broker bridge (S1-S6)
+    string oid
+    string oca
+    int    qty = 0
+    int    q1 = 0
+    int    q2 = 0
+    bool   gotFill = false
+    float  fillPx
+    float  pts = 0.0
+    float  comm = 0.0
+    bool   beDone = false
+    bool   tgtHit = false
+    bool   eodOut = false
+
+type Stats
+    int   sweeps = 0
+    int   found = 0
+    int   filled = 0
+    int   unfilled = 0
+    int   skipRR = 0
+    int   skipBias = 0
+    int   skipCap = 0
+    int   skipOther = 0
+    int   skipSize = 0
+    int   closed = 0
+    int   hit1 = 0
+    int   hit2 = 0
+    int   wins = 0
+    int   losses = 0
+    float sumR = 0.0
+    float grossW = 0.0
+    float grossL = 0.0
+    float sumRR = 0.0
+    int   streak = 0
+    int   maxStreak = 0
+    float dayR = 0.0
+    int   dayN = 0
+    int   lastNq
+    int   lastMnq
+    float lastRisk
+
+// =============================== HELPERS =====================================
+px(float p) => str.tostring(math.round_to_mintick(p), format.mintick)
+fR(float r) => (r >= 0 ? "+" : "") + str.tostring(r, "0.00") + "R"
+pct(int n, int d) => d > 0 ? str.tostring(100.0 * n / d, "#") + "%" : "-"
+// price traded to a level on the favourable / adverse side of a trade in direction d
+favHit(int d, float lvl) => d == 1 ? high >= lvl : low <= lvl
+advHit(int d, float lvl) => d == 1 ? low <= lvl : high >= lvl
+dirName(int d) => d == 1 ? "LONG" : "SHORT"
+isLive(Setup s) => not na(s) and (s.state == State.armed or s.state == State.filled)
+ended(Setup s) => not na(s) and (s.state == State.closed or s.state == State.expired)
+stName(Setup s) => na(s) ? "idle" : s.state == State.swept ? "swept" : s.state == State.armed ? "armed" : s.state == State.filled ? "in trade" : "done"
+
+infoText(Setup s) =>
+    string t = dirName(s.dir) + " | E: " + px(s.entry) + " | SL: " + px(s.stop0) + " | TP1: " + px(s.tp1) + " | TP2: " + px(s.tp2) + " | R: " + str.tostring(s.rr, "0.0")
+    if runT == RunT.tp3
+        t += " | TP3: " + px(s.tp3)
+    t += "\nNQ " + str.tostring(s.nq) + " · MNQ " + str.tostring(s.mnq) + "  (" + str.tostring(riskPct) + "% = $" + str.tostring(acct * riskPct / 100, "#") + ")"
+    if s.state == State.closed
+        t += "\n" + fR(s.r) + " · " + s.why
+    else if s.state == State.expired
+        t += "\nnot filled · " + s.why
+    t
+
+msg(Setup s, string what) =>
+    syminfo.ticker + " CRT-ICT " + dirName(s.dir) + " " + what + " | E: " + px(s.entry) + " | SL: " + px(s.stop0) + " | TP1: " + px(s.tp1) + " | TP2: " + px(s.tp2) + (runT == RunT.tp3 ? " | TP3: " + px(s.tp3) : "") + " | R: " + str.tostring(s.rr, "0.0")
+
+// record an event for this bar's alertconditions and fire the alert() message
+note(int d, float e, float sl, float t1, float t2) =>
+    array.set(evLv, 0, d)
+    array.set(evLv, 1, e)
+    array.set(evLv, 2, sl)
+    array.set(evLv, 3, t1)
+    array.set(evLv, 4, t2)
+    true
+
+fire(Setup s, int idx, string what) =>
+    array.set(ev, idx, true)
+    note(s.dir, s.entry, s.stop0, s.tp1, s.tp2)
+    alert(msg(s, what), alert.freq_once_per_bar_close)
+    true
+
+// ============================== DRAWINGS =====================================
+setRight(Setup s, int x) =>
+    if not na(s.bxFvg)
+        box.set_right(s.bxFvg, x)
+    if not na(s.bxRisk)
+        box.set_right(s.bxRisk, x)
+        box.set_right(s.bxRew, x)
+        line.set_x2(s.lnE, x)
+        line.set_x2(s.lnSl, x)
+        line.set_x2(s.lnT1, x)
+        line.set_x2(s.lnT2, x)
+    if not na(s.lnT3)
+        line.set_x2(s.lnT3, x)
+    true
+
+deleteDraw(Setup s) =>
+    label.delete(s.lbSweep)
+    label.delete(s.lbCisd)
+    box.delete(s.bxFvg)
+    box.delete(s.bxRisk)
+    box.delete(s.bxRew)
+    line.delete(s.lnE)
+    line.delete(s.lnSl)
+    line.delete(s.lnT1)
+    line.delete(s.lnT2)
+    line.delete(s.lnT3)
+    label.delete(s.lbInfo)
+    true
+
+drawArm(Setup s) =>
+    int   d  = s.dir
+    color cD = d == 1 ? colUp : colDn
+    int   x2 = bar_index + 10
+    if not na(s.fvgBar)
+        s.bxFvg := box.new(s.fvgBar - 2, s.fvgTop, x2, s.fvgBot, border_color = color.new(cD, 40), bgcolor = color.new(cD, 82), text = "FVG", text_size = size.tiny, text_color = color.new(cD, 10), text_halign = text.align_left)
+    s.lbCisd := label.new(s.cisdBar, close, "CISD", yloc = d == 1 ? yloc.belowbar : yloc.abovebar, style = d == 1 ? label.style_label_up : label.style_label_down, color = color.new(cD, 25), textcolor = color.white, size = size.tiny)
+    s.bxRisk := box.new(s.armBar, math.max(s.entry, s.stop0), x2, math.min(s.entry, s.stop0), border_color = color.new(colDn, 70), bgcolor = color.new(colDn, 88))
+    s.bxRew  := box.new(s.armBar, math.max(s.entry, s.tgt), x2, math.min(s.entry, s.tgt), border_color = color.new(colUp, 70), bgcolor = color.new(colUp, 88))
+    s.lnE    := line.new(s.armBar, s.entry, x2, s.entry, color = colE, width = 2)
+    s.lnSl   := line.new(s.armBar, s.stop0, x2, s.stop0, color = colDn, width = 1)
+    s.lnT1   := line.new(s.armBar, s.tp1, x2, s.tp1, color = colUp, style = line.style_dashed, width = 1)
+    s.lnT2   := line.new(s.armBar, s.tp2, x2, s.tp2, color = colUp, width = 1)
+    if runT == RunT.tp3
+        s.lnT3 := line.new(s.armBar, s.tp3, x2, s.tp3, color = colUp, style = line.style_dotted, width = 1)
+    float yInfo = d == 1 ? math.max(s.tp2, s.tgt) : math.min(s.tp2, s.tgt)
+    s.lbInfo := label.new(s.armBar, yInfo, infoText(s), style = d == 1 ? label.style_label_lower_left : label.style_label_upper_left, color = color.new(cD, 15), textcolor = color.white, size = size.small, textalign = text.align_left)
+    true
+
+// ============================ STATE MACHINE ==================================
+endSetup(Setup s, Stats st, State toState, string why) =>
+    s.state  := toState
+    s.why    := why
+    s.endBar := bar_index
+    if na(s.armBar)
+        // never armed: nothing is kept on the chart (A8)
+        label.delete(s.lbSweep)
+        s.lbSweep := na
+    else
+        setRight(s, bar_index)
+        label.set_text(s.lbInfo, infoText(s))
+        if toState == State.expired
+            st.unfilled += 1
+            strategy.cancel(s.oid)
+            strategy.cancel("T1" + s.oid)
+            strategy.cancel("T2" + s.oid)
+    true
+
+closeTrade(Setup s, Stats st, float r, string why) =>
+    s.r := r
+    st.closed += 1
+    st.sumR += r
+    st.dayR += r
+    if s.t1
+        st.hit1 += 1
+    if s.t2
+        st.hit2 += 1
+    int k  = s.kz
+    int dk = s.dir == 1 ? 4 : 5
+    array.set(bkN, k, array.get(bkN, k) + 1)
+    array.set(bkN, dk, array.get(bkN, dk) + 1)
+    array.set(bkR, k, array.get(bkR, k) + r)
+    array.set(bkR, dk, array.get(bkR, dk) + r)
+    if r > 0
+        st.wins   += 1
+        st.grossW += r
+        st.streak := 0
+        array.set(bkW, k, array.get(bkW, k) + 1)
+        array.set(bkW, dk, array.get(bkW, dk) + 1)
+    else if r < 0
+        st.losses += 1
+        st.grossL -= r
+        st.streak += 1
+        st.maxStreak := math.max(st.maxStreak, st.streak)
+    else
+        st.streak := 0
+    endSetup(s, st, State.closed, why)
+    true
+
+// IDLE -> SWEPT on the first bar of C2 that trades through the level (A2)
+newSetup(int d, int n) =>
+    Setup s = Setup.new(num = n, dir = d, crtH = hH, crtL = hL, crtM = crtM, c2Time = htfOpen, kz = kzNow, sweepBar = bar_index, ext = d == 1 ? low : high, extBar = bar_index, cisdRef = d == 1 ? dnRun : upRun)
+    s.lbSweep := label.new(bar_index, s.ext, "Sweep", style = d == 1 ? label.style_label_up : label.style_label_down, color = color.new(colR, 30), textcolor = color.white, size = size.tiny)
+    array.set(ev, 0, true)
+    note(d, d == 1 ? s.crtL : s.crtH, s.ext, s.crtM, d == 1 ? s.crtH : s.crtL)
+    alert(syminfo.ticker + " CRT-ICT " + (d == 1 ? "bullish" : "bearish") + " SWEEP of CRT " + (d == 1 ? "Low " + px(s.crtL) : "High " + px(s.crtH)) + " | wick " + px(s.ext) + " | CRT H " + px(s.crtH) + " · 50% " + px(s.crtM) + " · L " + px(s.crtL), alert.freq_once_per_bar_close)
+    s
+
+// SWEPT: follow the leg from the sweep extreme. Returns true when it may arm.
+stepSwept(Setup s) =>
+    int d = s.dir
+    // a new extreme restarts the leg (A4)
+    if d == 1 ? low < s.ext : high > s.ext
+        s.ext     := d == 1 ? low : high
+        s.extBar  := bar_index
+        s.cisdRef := d == 1 ? dnRun : upRun
+        s.cisdBar := na
+        s.bigBody := false
+        s.fvgTop  := na
+        s.fvgBot  := na
+        s.fvgBar  := na
+        label.set_xy(s.lbSweep, bar_index, s.ext)
+    // the tracked FVG is dropped once price trades back into it (A5)
+    if not na(s.fvgBar) and bar_index > s.fvgBar and (d == 1 ? low <= s.fvgTop : high >= s.fvgBot)
+        s.fvgTop := na
+        s.fvgBot := na
+        s.fvgBar := na
+    // newest FVG whose first candle is at or after the extreme
+    if bar_index - 2 >= s.extBar and (d == 1 ? bullGap : bearGap)
+        s.fvgTop := d == 1 ? low : l2
+        s.fvgBot := d == 1 ? h2 : high
+        s.fvgBar := bar_index
+    if (d == 1 ? close - open : open - close) >= dispAtr * atr
+        s.bigBody := true
+    // CISD: a close through the open of the run that delivered the extreme
+    if na(s.cisdBar) and not na(s.cisdRef) and (d == 1 ? close > s.cisdRef : close < s.cisdRef)
+        s.cisdBar := bar_index
+    bool hasFvg  = not na(s.fvgBar)
+    bool dispOk  = not useDisp or (dispMode == DispT.fvg ? hasFvg : dispMode == DispT.body ? s.bigBody : dispMode == DispT.either ? hasFvg or s.bigBody : hasFvg and s.bigBody)
+    bool reclaim = d == 1 ? close > s.crtL : close < s.crtH
+    not na(s.cisdBar) and reclaim and dispOk and (entryType == EntryT.mkt or hasFvg)
+
+// Fix entry / stop / targets on the arming bar. Returns "" or the skip reason (A8).
+plan(Setup s) =>
+    int   d      = s.dir
+    bool  hasFvg = not na(s.fvgBar)
+    float e      = entryType == EntryT.prox ? (d == 1 ? s.fvgTop : s.fvgBot) : entryType == EntryT.ce ? math.round_to_mintick((s.fvgTop + s.fvgBot) / 2) : close
+    float base   = stopMode == StopT.fvg and hasFvg ? (d == 1 ? s.fvgBot : s.fvgTop) : s.ext
+    float sl     = math.round_to_mintick(base - d * stopBuf * TICK)
+    float risk   = d * (e - sl)
+    float usd    = acct * riskPct / 100
+    s.entry := e
+    s.stop  := sl
+    s.stop0 := sl
+    s.tp1   := s.crtM
+    s.tp2   := d == 1 ? s.crtH : s.crtL
+    s.tp3   := risk > 0 ? math.round_to_mintick(e + d * tp3R * risk) : na
+    s.tgt   := runT == RunT.tp3 ? s.tp3 : s.tp2
+    s.rr    := risk > 0 ? d * (s.tp2 - e) / risk : 0.0
+    s.nq    := risk > 0 ? math.floor(usd / (risk * NQ_PT)) : 0
+    s.mnq   := risk > 0 ? math.floor(usd / (risk * MNQ_PT)) : 0
+    s.qty   := sizeMode == SizeT.fixed ? qtyFixed : risk > 0 ? math.floor(usd / (risk * syminfo.pointvalue)) : 0
+    s.q1    := math.min(s.qty, math.round(s.qty * partF))
+    s.q2    := s.qty - s.q1
+    risk <= 0 or d * (s.tp1 - e) <= 0 ? "other" : s.rr < minRR ? "rr" : biasOn and not na(pdMid) and (d == 1 ? e >= pdMid : e <= pdMid) ? "bias" : s.qty < 1 ? "size" : ""
+
+// SWEPT -> ARMED: the entry and its bracket go in together (S1)
+armSetup(Setup s, Setup opp, Stats st) =>
+    s.state  := State.armed
+    s.armBar := bar_index
+    s.oid    := (s.dir == 1 ? "L" : "S") + str.tostring(s.num)
+    s.oca    := not na(opp) and opp.state == State.armed ? opp.oca : "O" + str.tostring(s.num)
+    st.found += 1
+    st.sumRR += s.rr
+    st.lastNq   := s.nq
+    st.lastMnq  := s.mnq
+    st.lastRisk := s.dir * (s.entry - s.stop0)
+    drawArm(s)
+    fire(s, 1, "ARMED (CISD confirmed)")
+    bool mkt = entryType == EntryT.mkt
+    strategy.entry(s.oid, s.dir == 1 ? strategy.long : strategy.short, qty = s.qty, limit = mkt ? na : s.entry, oca_name = s.oca, oca_type = strategy.oca.cancel, comment = dirName(s.dir) + (mkt ? " mkt" : " lmt"))
+    if s.q1 > 0
+        strategy.exit("T1" + s.oid, from_entry = s.oid, qty = s.q1, limit = s.tp1, stop = s.stop0, comment_profit = "TP1", comment_loss = "SL")
+    if s.q2 > 0
+        strategy.exit("T2" + s.oid, from_entry = s.oid, qty = s.q2, limit = s.tgt, stop = s.stop0, comment_profit = runT == RunT.tp3 ? "TP3" : "TP2", comment_loss = "SL")
+    true
+
+tryArm(Setup s, Setup opp, Stats st) =>
+    bool   oppIn   = not na(opp) and opp.state == State.filled
+    int    working = not na(opp) and opp.state == State.armed ? 1 : 0
+    string cap     = quiet ? "after 16:00" : limOn and st.dayR <= lossLim ? "daily loss limit" : st.dayN + working >= maxDay ? "max trades per day" : oppIn ? "other side in a trade" : ""
+    if cap != ""
+        st.skipCap += 1
+        endSetup(s, st, State.expired, cap)
+    else
+        string why = plan(s)
+        if why == ""
+            armSetup(s, opp, st)
+        else
+            if why == "rr"
+                st.skipRR += 1
+            else if why == "bias"
+                st.skipBias += 1
+            else if why == "size"
+                st.skipSize += 1
+            else
+                st.skipOther += 1
+            endSetup(s, st, State.expired, why)
+    true
+
+// ============================ BROKER BRIDGE ==================================
+// Open quantity and fill price of one setup's position.
+openInfo(string oid) =>
+    float q  = 0.0
+    float ep = na
+    int   n  = strategy.opentrades
+    if n > 0
+        for i = 0 to n - 1
+            if strategy.opentrades.entry_id(i) == oid
+                q  += math.abs(strategy.opentrades.size(i))
+                ep := strategy.opentrades.entry_price(i)
+    [q, ep]
+
+// Book one closed piece of a setup's position (a partial exit is its own piece).
+absorb(Setup s, int i) =>
+    int    d   = s.dir
+    float  ep  = strategy.closedtrades.entry_price(i)
+    float  xp  = strategy.closedtrades.exit_price(i)
+    float  q   = math.abs(strategy.closedtrades.size(i))
+    string xid = strategy.closedtrades.exit_id(i)
+    s.gotFill := true
+    s.fillPx  := ep
+    s.pts     += d * (xp - ep) * q
+    s.comm    += strategy.closedtrades.commission(i)
+    bool atT1 = d * (xp - s.tp1) >= -TICK / 2
+    bool atT2 = d * (xp - s.tp2) >= -TICK / 2
+    bool atTg = d * (xp - s.tgt) >= -TICK / 2
+    if xid == "T1" + s.oid and atT1 and not s.t1
+        s.t1 := true
+        fire(s, 3, "TP1")
+    if atT2 and not s.t2
+        s.t2 := true
+        fire(s, 4, "TP2")
+    if xid == "T2" + s.oid and atTg
+        s.tgtHit := true
+    if (xid == "T1" + s.oid and not atT1) or (xid == "T2" + s.oid and not atTg)
+        fire(s, 5, s.t1 ? "STOP after TP1" : "STOP LOSS")
+    true
+
+// ARMED: the broker decides the fill (S2); the cancel rules are the indicator's.
+stepArmed(Setup s, Stats st) =>
+    int d = s.dir
+    [q, ep] = openInfo(s.oid)
+    if s.gotFill or q > 0
+        s.state   := State.filled
+        s.fillBar := bar_index
+        if na(s.fillPx)
+            s.fillPx := ep
+        st.filled += 1
+        st.dayN   += 1
+        fire(s, 2, "FILLED")
+    else if bar_index > s.armBar and favHit(d, s.tp1)
+        endSetup(s, st, State.expired, "TP1 traded first")
+    else if fillWin > 0 and bar_index - s.armBar >= fillWin
+        endSetup(s, st, State.expired, "timed out")
+    if s.state == State.armed and eodBar
+        endSetup(s, st, State.expired, "16:00")
+    true
+
+// FILLED: breakeven after TP1 (S3), 16:00 flatten, and the booking once flat (S6).
+stepFilled(Setup s, Stats st) =>
+    int d = s.dir
+    [q, ep] = openInfo(s.oid)
+    if na(s.fillPx)
+        s.fillPx := ep
+    if q > 0 and bar_index > s.fillBar
+        // with no TP1 exit order (0% partial) TP1 is still the breakeven trigger
+        if not s.t1 and s.q1 == 0 and favHit(d, s.tp1)
+            s.t1 := true
+            fire(s, 3, "TP1")
+        if not s.t2 and favHit(d, s.tp2)
+            s.t2 := true
+            fire(s, 4, "TP2")
+    if q > 0 and s.t1 and beOn and not s.beDone
+        s.beDone := true
+        s.stop   := math.round_to_mintick(na(s.fillPx) ? s.entry : s.fillPx)
+        strategy.exit("T2" + s.oid, from_entry = s.oid, qty = q, limit = s.tgt, stop = s.stop, comment_profit = runT == RunT.tp3 ? "TP3" : "TP2", comment_loss = "BE")
+    if q == 0
+        float  riskPts = d * (s.entry - s.stop0)
+        float  r       = (s.pts - s.comm / syminfo.pointvalue) / (riskPts * s.qty)
+        string why     = s.tgtHit ? (runT == RunT.tp3 ? "TP3" : "TP2") : s.eodOut ? "flat at 16:00" : s.t1 ? (s.q2 > 0 ? (beOn ? "TP1, rest at BE" : "TP1, rest stopped") : "TP1") : "stopped"
+        closeTrade(s, st, r, why)
+    else if eodBar and not s.eodOut
+        s.eodOut := true
+        strategy.close(s.oid, comment = "16:00 flat")
+    true
+
+// Pass 1 - working entries and open trades. Runs for both sides before anything
+// new may arm, so a trade that closes this bar frees its side first.
+manage(Setup s, Stats st) =>
+    if not na(s)
+        if s.state == State.armed
+            stepArmed(s, st)
+        if s.state == State.filled
+            stepFilled(s, st)
+    true
+
+// Pass 2 - SWEPT setups look for the CISD and may arm. Arming happens after pass 1,
+// so a setup never fills or resolves on its own arming bar.
+advance(Setup s, Setup opp, Stats st) =>
+    if not na(s) and s.state == State.swept
+        if eodBar or bar_index - s.sweepBar > cisdWin
+            endSetup(s, st, State.expired, eodBar ? "16:00" : "no CISD in window")
+        else if stepSwept(s)
+            tryArm(s, opp, st)
+    true
+
+// A filled this bar -> B's working entry is cancelled (A9)
+oco(Setup a, Setup b, Stats st) =>
+    if not na(a) and a.fillBar == bar_index and not na(b) and b.state == State.armed
+        endSetup(b, st, State.expired, "other side filled")
+    true
+
+// C2 closed beyond the swept level -> not a CRT (A3)
+c2Check(Setup s, Stats st, float c2Close) =>
+    if not s.c2Done and (s.state == State.swept or s.state == State.armed)
+        s.c2Done := true
+        if s.dir == 1 ? c2Close < s.crtL : c2Close > s.crtH
+            endSetup(s, st, State.expired, "C2 closed outside the range")
+    true
+
+retire(Setup s, array<Setup> h) =>
+    if not na(s.armBar)
+        h.push(s)
+        if h.size() > keepN
+            deleteDraw(h.shift())
+    true
+
+// ================================ ENGINE =====================================
+var Setup sL = na
+var Setup sS = na
+var Stats st = Stats.new()
+var array<Setup> hist = array.new<Setup>()
+var int  seq     = 0
+var bool loTaken = false
+var bool hiTaken = false
+var int  c2Bar   = na
+var int  seen    = 0
+
+// Only confirmed bars move the state machine (A1): identical on history and live.
+if barstate.isconfirmed
+    if newDay
+        st.dayR := 0.0
+        st.dayN := 0
+    if newCrt
+        loTaken := false
+        hiTaken := false
+        c2Bar   := bar_index
+        // fallback when the last chart bar of C2 was missing from the data
+        if not na(sL) and sL.c2Time == htfPrev
+            c2Check(sL, st, hC)
+        if not na(sS) and sS.c2Time == htfPrev
+            c2Check(sS, st, hC)
+
+    // closed pieces since the last bar, credited to their setups (S6)
+    int nClosed = strategy.closedtrades
+    if nClosed > seen
+        for i = seen to nClosed - 1
+            string eid = strategy.closedtrades.entry_id(i)
+            if not na(sL) and sL.oid == eid
+                absorb(sL, i)
+            else if not na(sS) and sS.oid == eid
+                absorb(sS, i)
+        seen := nClosed
+
+    // pass 1: fills, targets, stops, cancels
+    manage(sL, st)
+    oco(sL, sS, st)
+    manage(sS, st)
+    oco(sS, sL, st)
+    if limOn and st.dayR <= lossLim
+        if not na(sL) and sL.state == State.armed
+            endSetup(sL, st, State.expired, "daily loss limit")
+        if not na(sS) and sS.state == State.armed
+            endSetup(sS, st, State.expired, "daily loss limit")
+    if ended(sL)
+        retire(sL, hist)
+        sL := na
+    if ended(sS)
+        retire(sS, hist)
+        sS := na
+
+    // pass 2: IDLE -> SWEPT on the first bar of this C2 through each side of C1 (A2),
+    // then every SWEPT setup looks for its CISD
+    bool takeLo = low < hL and hL - low >= minDepth * TICK
+    bool takeHi = high > hH and high - hH >= minDepth * TICK
+    if takeLo and not loTaken
+        loTaken := true
+        if na(sL) and kzOk and not quiet and dirSel != DirT.shorts
+            seq += 1
+            st.sweeps += 1
+            sL := newSetup(1, seq)
+    if takeHi and not hiTaken
+        hiTaken := true
+        if na(sS) and kzOk and not quiet and dirSel != DirT.longs
+            seq += 1
+            st.sweeps += 1
+            sS := newSetup(-1, seq)
+    advance(sL, sS, st)
+    advance(sS, sL, st)
+
+    // C2 closes on this bar: judge it now so a cancel holds from the next bar (A3)
+    if c2Last
+        if not na(sL) and sL.c2Time == htfOpen
+            c2Check(sL, st, close)
+        if not na(sS) and sS.c2Time == htfOpen
+            c2Check(sS, st, close)
+
+    if ended(sL)
+        retire(sL, hist)
+        sL := na
+    if ended(sS)
+        retire(sS, hist)
+        sS := na
+
+    if isLive(sL)
+        setRight(sL, bar_index + 5)
+    if isLive(sS)
+        setRight(sS, bar_index + 5)
+
+// ============================ ACTIVE CRT RANGE ===============================
+var line  rgH = na
+var line  rgL = na
+var line  rgM = na
+var label lbH = na
+var label lbL = na
+var label lbM = na
+if showRange and barstate.islast and not na(hH)
+    int x1 = na(c2Bar) ? bar_index : c2Bar
+    int x2 = bar_index + 8
+    if na(rgH)
+        rgH := line.new(x1, hH, x2, hH, color = colR, width = 1)
+        rgL := line.new(x1, hL, x2, hL, color = colR, width = 1)
+        rgM := line.new(x1, crtM, x2, crtM, color = colR, style = line.style_dashed, width = 1)
+        lbH := label.new(x2, hH, "", style = label.style_label_left, color = color.new(colR, 100), textcolor = colR, size = size.small)
+        lbL := label.new(x2, hL, "", style = label.style_label_left, color = color.new(colR, 100), textcolor = colR, size = size.small)
+        lbM := label.new(x2, crtM, "", style = label.style_label_left, color = color.new(colR, 100), textcolor = colR, size = size.small)
+    line.set_xy1(rgH, x1, hH)
+    line.set_xy2(rgH, x2, hH)
+    line.set_xy1(rgL, x1, hL)
+    line.set_xy2(rgL, x2, hL)
+    line.set_xy1(rgM, x1, crtM)
+    line.set_xy2(rgM, x2, crtM)
+    label.set_xy(lbH, x2, hH)
+    label.set_xy(lbL, x2, hL)
+    label.set_xy(lbM, x2, crtM)
+    label.set_text(lbH, "CRT High " + px(hH))
+    label.set_text(lbL, "CRT Low " + px(hL))
+    label.set_text(lbM, "CRT 50% " + px(crtM))
+
+// ============================== STATS TABLE ==================================
+bkText(int k) =>
+    int n = array.get(bkN, k)
+    n > 0 ? str.tostring(n) + " · " + pct(array.get(bkW, k), n) + " · " + fR(array.get(bkR, k) / n) : "-"
+
+tRow(table t, int r, string k, string v, color vc, string sz) =>
+    table.cell(t, 0, r, k, text_color = #d1d4dc, text_halign = text.align_left, text_size = sz, bgcolor = color.new(#131722, 5))
+    table.cell(t, 1, r, v, text_color = vc, text_halign = text.align_right, text_size = sz, bgcolor = color.new(#131722, 5))
+    true
+
+tHead(table t, int r, string k, string sz) =>
+    table.cell(t, 0, r, k, text_color = color.white, text_halign = text.align_left, text_size = sz, bgcolor = color.new(#2a2e39, 0))
+    true
+
+var table tb = na
+if showTbl and barstate.islast
+    string sz = tblTxt == "Tiny" ? size.tiny : tblTxt == "Normal" ? size.normal : size.small
+    if na(tb)
+        tb := table.new(position.top_right, 2, 26, border_color = color.new(#434651, 0), border_width = 1, frame_color = color.new(#434651, 0), frame_width = 1)
+        table.merge_cells(tb, 0, 0, 1, 0)
+        table.merge_cells(tb, 0, 15, 1, 15)
+        table.merge_cells(tb, 0, 20, 1, 20)
+    color  cW    = #d1d4dc
+    color  cP    = colUp
+    color  cN    = colDn
+    string tfTxt = crtTf == "D" ? "Daily" : crtTf == "240" ? "4H" : crtTf + "m"
+    string enTxt = entryType == EntryT.prox ? "FVG edge" : entryType == EntryT.ce ? "FVG 50%" : "CISD close"
+    float  expR  = st.closed > 0 ? st.sumR / st.closed : na
+    float  pf    = st.grossL > 0 ? st.grossW / st.grossL : na
+    int    nLive = (isLive(sL) ? 1 : 0) + (isLive(sS) ? 1 : 0)
+    tHead(tb, 0, "CRT-ICT · " + tfTxt + " CRT · " + enTxt + " · broker fills, net of costs", sz)
+    tRow(tb, 1, "Sweeps (" + (kzReq ? "in killzone" : "any hour") + ")", str.tostring(st.sweeps), cW, sz)
+    tRow(tb, 2, "Setups found (armed)", str.tostring(st.found) + (nLive > 0 ? "  (" + str.tostring(nLive) + " live)" : ""), cW, sz)
+    tRow(tb, 3, "Filled", str.tostring(st.filled) + " · " + pct(st.filled, st.found), cW, sz)
+    tRow(tb, 4, "Expired unfilled", str.tostring(st.unfilled), cW, sz)
+    tRow(tb, 5, "Skipped (not drawn)", "R:R " + str.tostring(st.skipRR) + " · bias " + str.tostring(st.skipBias) + " · caps " + str.tostring(st.skipCap) + " · size " + str.tostring(st.skipSize) + " · other " + str.tostring(st.skipOther), cW, sz)
+    tRow(tb, 6, "Win rate → TP1", pct(st.hit1, st.closed), cW, sz)
+    tRow(tb, 7, "Win rate → TP2", pct(st.hit2, st.closed), cW, sz)
+    tRow(tb, 8, "Win rate (R > 0)", pct(st.wins, st.closed) + "  of " + str.tostring(st.closed), cW, sz)
+    tRow(tb, 9, "Avg R:R offered (to TP2)", st.found > 0 ? str.tostring(st.sumRR / st.found, "0.0") : "-", cW, sz)
+    tRow(tb, 10, "Expectancy (R / trade)", na(expR) ? "-" : fR(expR), na(expR) ? cW : expR > 0 ? cP : cN, sz)
+    tRow(tb, 11, "Net R", st.closed > 0 ? fR(st.sumR) : "-", st.sumR > 0 ? cP : st.sumR < 0 ? cN : cW, sz)
+    tRow(tb, 12, "Profit factor", na(pf) ? (st.grossW > 0 ? "no losses" : "-") : str.tostring(pf, "0.00"), na(pf) ? cW : pf >= 1 ? cP : cN, sz)
+    tRow(tb, 13, "Max consecutive losses", str.tostring(st.maxStreak), cW, sz)
+    tRow(tb, 14, "Avg win / avg loss", (st.wins > 0 ? fR(st.grossW / st.wins) : "-") + " / " + (st.losses > 0 ? fR(-st.grossL / st.losses) : "-"), cW, sz)
+    tHead(tb, 15, "By killzone of the sweep  (trades · win · R/trade)", sz)
+    tRow(tb, 16, "London", bkText(0), cW, sz)
+    tRow(tb, 17, "NY AM", bkText(1), cW, sz)
+    tRow(tb, 18, "NY PM", bkText(2), cW, sz)
+    tRow(tb, 19, "Outside KZ", bkText(3), cW, sz)
+    tHead(tb, 20, "By direction  (trades · win · R/trade)", sz)
+    tRow(tb, 21, "Long", bkText(4), cW, sz)
+    tRow(tb, 22, "Short", bkText(5), cW, sz)
+    tRow(tb, 23, "Today", str.tostring(st.dayN) + "/" + str.tostring(maxDay) + " trades · " + fR(st.dayR) + (limOn and st.dayR <= lossLim ? " · LIMIT" : ""), st.dayR < 0 ? cN : cW, sz)
+    tRow(tb, 24, "Size (latest setup)", na(st.lastRisk) ? "-" : "NQ " + str.tostring(st.lastNq) + " · MNQ " + str.tostring(st.lastMnq) + " · " + px(st.lastRisk) + " pt stop", cW, sz)
+    tRow(tb, 25, "Now", "long " + stName(sL) + " · short " + stName(sS), cW, sz)
+
+// ================================= ALERTS ====================================
+// Create one alert on this strategy with "alert() function calls only" (or
+// together with order fills). Every event - sweep, armed, filled, TP1, TP2, stop -
+// sends ticker, direction, entry, SL and TPs to the tick. alertcondition() is not
+// available in strategies; the indicator has the one-alert-per-event versions.
