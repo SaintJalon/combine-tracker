@@ -1259,7 +1259,7 @@
     }},
     lucid:{name:"Lucid",planOrder:["pro","flex"],plans:{
       pro:{name:"Pro",order:["25k","50k","100k","150k"],sizes:{
-        "25k":S("Lucid","Pro",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID,dll:"Optional (fixed)",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+"}),
+        "25k":S("Lucid","Pro",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+"}),
         "50k":S("Lucid","Pro",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LUCID,dll:"$1,200 soft · optional",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"1+ day",minShort:"1+"}),
         "100k":S("Lucid","Pro",100000,{target:6000,maxloss:3000,dd:"EOD trailing",ddDesc:DD_LUCID,dll:"$1,800 soft · optional",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"1+ day",minShort:"1+"}),
         "150k":S("Lucid","Pro",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_LUCID,dll:"$2,700 soft · optional",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"1+ day",minShort:"1+"})
@@ -1707,7 +1707,7 @@
           renderPS();
         });
         var ed=div.querySelector(".editor");
-        function persist(){syncFollowers();save().then(function(){renderDays();refreshProgress();renderStats();renderCalendar();});}
+        function persist(){syncFollowers();save().then(function(){renderDays();autoFundArmed=true;refreshProgress();renderStats();renderCalendar();});}
         ed.querySelector(".save").addEventListener("click",function(ev){
           ev.stopPropagation();var inp=ed.querySelector(".netin");if(inp.readOnly)return;
           var v=parseFloat(inp.value);setDayNet(d,isNaN(v)?null:v);openDay=d;persist();
@@ -1771,7 +1771,13 @@
     else{bb.className="breachbar";bb.innerHTML="";}
   }
 
+  // Auto-convert fires only when logging just cleared the target (persist() arms it).
+  // Opening the app, switching accounts, or changing the firm/plan/size, target, max loss,
+  // consistency or day count shows the Convert bar instead, so browsing plans on an account
+  // with logged days can never archive its eval by accident.
+  var autoFundArmed=false;
   function refreshProgress(){
+    var armed=autoFundArmed;autoFundArmed=false;
     var c=cfg(),T=c.target,log=curLog(),total=0,daysLogged=0,best=-Infinity;
     for(var d=1;d<=c.days;d++){if(d in log){total+=log[d];daysLogged++;if(log[d]>best)best=log[d];}}
     var pct=Math.max(0,Math.min(100,(total/T)*100)),remaining=Math.max(0,T-total),daysLeft=c.days-daysLogged;
@@ -1796,7 +1802,7 @@
       else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total. Cap is "+consPct+"% — keep any one day under "+fmt(cap*T)+".";}
     }
     if(passed&&stageOf()!=="funded"){
-      if(!(state.autoFund&&state.autoFund[state.activeId]===false)){
+      if(armed&&!(state.autoFund&&state.autoFund[state.activeId]===false)){
         cv.className="convertbar";cv.innerHTML="";
         convertToFunded(true);
         return;
