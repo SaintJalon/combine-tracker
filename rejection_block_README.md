@@ -1,6 +1,9 @@
 # SaintTrades Rejection Block (ICT / Powell)
 
-`SaintTrades-RejectionBlock.pine` is a Pine Script v6 indicator. It marks rejection blocks (RBs) the way Powell Trades (Dumb Money Concepts) and ICT teach them. It trades every RB three ways and keeps score in a stats table, so you can see what works on your symbol and timeframe instead of taking the rules on faith.
+Two Pine Script v6 files:
+
+- **`SaintTrades-RejectionBlock.pine`** (indicator) marks rejection blocks (RBs) the way Powell Trades (Dumb Money Concepts) and ICT teach them. It trades every RB three ways and keeps score in a stats table, so you can see what works on your symbol and timeframe instead of taking the rules on faith.
+- **`SaintTrades-RejectionBlock-Strategy.pine`** (strategy) sends one of those entries to the Strategy Tester with real orders, costs and trade management. See [The strategy](#the-strategy).
 
 No indicator is accurate on every day in every market, and this one doesn't claim to be. What it does:
 - It applies the same strict rules every time.
@@ -124,9 +127,93 @@ Judge by **average R**, not win rate. A 60% TP1 hit rate can still lose money.
 - **Random-data sanity check.** On random synthetic prices, the large rows average close to 0R (−0.11R to +0.04R over 171–262 fills), as they should when there's no edge to find. Small rows swing further (±0.25R over 27–67 fills), which is why step 2 above asks for about 100 fills. No look-ahead is inflating the numbers.
 - **Syntax** passes the `pynescript` parser.
 
+## The strategy
+
+`SaintTrades-RejectionBlock-Strategy.pine` is the indicator's rules wired into the Strategy Tester, built the same way as `crt_ict_strategy.pine`. It uses the indicator's code unchanged for everything that decides **whether and where** to trade:
+- levels
+- the rejection candle
+- zone, CE and stop
+- displacement
+- grade and filters
+- invalidation
+- the 16:00 expiry
+- the CISD trigger
+
+A diff against the indicator shows only the order handling, inputs, table and header changed. What's different is **who decides the fills**: TradingView's broker emulator.
+
+- **One entry type, real orders.**
+  - **CE limit** and **Body-edge limit** go in as limit orders on the close of the bar the RB is found on.
+  - **CISD after tap** sends a market order on the trigger bar's close, filled at the next bar's open.
+  - Each entry carries a bracket: T1 (TP1 + stop) for the partial, T2 (TP2 + stop) for the rest.
+  - The bracket is re-sent every bar while the order works or the trade is open. T1 is never re-sent after it fills.
+- **One position at a time.** Every working limit shares one OCA group, so the first fill cancels the rest.
+  - An RB that forms during a trade waits, and gets its order once you're flat, if its zone is still untouched.
+  - An RB touched before its order could work is skipped (first touch only).
+- **Management.**
+  - 50% off at TP1, then the stop moves to breakeven.
+  - Flat at 16:00 NY: a market close on the bar that ends 16:00, filled at the next open.
+  - Nothing new until the 18:00 roll.
+- **Costs** match your CRT strategy: $0.61 per contract per side (Topstep MNQ), 1 tick of slippage and margin 0. Change them in Properties.
+
+**Strategy inputs** (the indicator's inputs are all still there):
+
+| Input | Default | What it does |
+|---|---|---|
+| Entry | CE limit | The entry that gets traded. Pick it from the indicator's table first. |
+| Close at TP1 (%) | 50 | The partial at TP1. 100 = all out at TP1. |
+| Stop to breakeven after TP1 | on | Moves the rest's stop to the fill price. |
+| Entry window (NY) | 08:30–16:00 | Orders are placed, and stay working, only inside this window. `0000-0000` = all hours. |
+| Direction | Both | Or longs / shorts only. |
+| Max trades per day | 2 | Fills per NY trading day (rolls at 18:00). Once it's reached, working orders are cancelled. |
+| Daily loss limit (R) | −2 | Stops new orders for the day. 0 = off. |
+| Sizing | Fixed, 0 = auto | Auto = 2 contracts on micros (MNQ), 1 on full-size (NQ). **Risk %** sizes from the stop; an RB that can't carry 1 contract is skipped. |
+
+**Strategy table:** setups drawn, orders placed, fills, closed trades, win rate, TP1 hit rate, expectancy, net R, profit factor, longest losing streak, today, and results by grade. R comes from the broker's fills after costs: (points × contracts − costs) / (planned risk × contracts).
+
+Hover over a label to see why an RB wasn't traded. Traded RBs show their result, e.g. `▼ RB A ✓ · PDH · +1.32R`.
+
+### Validating in the Strategy Tester
+
+1. **History.** Check the Tester's date range. About 10,000 bars is roughly 7 weeks of 5m NQ. Test several windows separately rather than adding them together.
+2. **Set up.** NQ1! or MNQ1! on 5m (or 1m with RB timeframe 5m). Confirm commission, slippage and quantity in Properties. Turn on **Bar Magnifier** if your plan has it: it settles bars where a stop and a target both trade.
+3. **Check that orders fill.** "Orders placed" and "Filled" in the table should line up with the Tester's trade count. Orders but no trades usually means margin or quantity is set wrong.
+4. **Spot-check 10 trades.** Entries should sit at the RB's CE (or edge), and exits at SL, TP1, TP2, BE or 16:00.
+5. **Compare with the indicator** on the same chart and inputs. The strategy's expectancy should be close to the indicator's row for that entry. The indicator is conservative when a stop and a target trade in the same bar; the Tester follows a price path.
+6. **Sample size and out of sample.** Don't trust fewer than about 100 closed trades. Tune on older data and judge on newer data.
+
+### What was checked (strategy)
+
+- **Same signals as the indicator.** Diffed against it: `finalize` (detection) differs only in which entry becomes the plan. `stepCisd` differs only in where it reads the CE's TP2. Levels, zones, grades and filters are byte-identical.
+- **Runs end to end in PineTS's strategy engine** with no runtime errors. Every run tested:
+  - all three entries
+  - opposing-liquidity TP2 and "Never" expiry
+  - risk sizing, direction filter, 0% and 100% partial, 3 fixed contracts, no breakeven, no loss limit
+  - required displacement and minimum grade A+
+  - 1m→5m, 1m→15m and 15m→1H
+
+  In every run, orders filled = trades closed = broker trades, and nothing was left open. With fixed size, the position never exceeded one trade's contracts.
+- **Known-answer scenarios** (hand-calculated first):
+
+  | Scenario | Result |
+  |---|---|
+  | Bearish PDH sweep, CE limit | Filled at 100.5, TP1 97, breakeven, TP2 93.5 → **+1.32R** after costs |
+  | Same, body-edge limit | 98 → 92 / 86 → **+1.39R** |
+  | Same, CISD after tap | Market at the 19:25 open, TP1 89.9, TP2 82.85 → **+1.41R** |
+  | Open at 16:00 | TP1, then the rest flattened at the 16:00 open → **+0.96R** |
+  | Bullish mirror | Same result as the bearish case |
+
+- **Bugs the tests caught and fixed.**
+  - Two orders filling on the same bar could leave one trade unbooked. Now every filled order is tracked.
+  - CISD market orders sent with `limit=na` never filled in PineTS. They now go in as plain market orders.
+  - Exits sent only once, before the entry fills, were dropped by PineTS. Brackets are now re-sent every bar.
+- **Random-data check.** With same-bar exits ruled out, random prices give −0.08R to +0.11R over 16–30 trades, and CISD entries give −0.19R. Those are no-edge numbers, as they should be.
+
+  PineTS's own emulator lets a TP1 fill on the entry bar *before* the entry, which inflates results (+0.41R on the same random data). That's a quirk of the test engine; TradingView orders fills along the bar's price path. So PineTS numbers were used to check logic, never as performance.
+
 ## Limitations
 
-- **Not compiled in TradingView yet.** It hasn't run on a real NQ chart here: TradingView and market data were blocked in this environment. PineTS is stricter than a parser but is not TradingView's compiler. If the Pine editor shows an error, send me the message and line number.
+- **Not compiled in TradingView yet.** Neither file has run on a real NQ chart here: TradingView and market data were blocked in this environment. PineTS is stricter than a parser but is not TradingView's compiler. If the Pine editor shows an error, send me the message and line number.
+- **Strategy fills near the entry bar.** Both the Strategy Tester and PineTS have to guess the order of prices inside a bar. Use Bar Magnifier, and judge the strategy against the indicator's conservative numbers.
 - **Research was done through search summaries.** TradingView, YouTube and most blog pages were blocked, so rules came from search results that describe Powell's videos and the Powell-based indicators. Where sources disagreed, the choice is an input (zone edge, invalidation) or is listed as an assumption in the file header.
 - **Clusters of wicks are not merged** into one zone (ICT's "highest body to highest wick"). Each RB is one candle; later wicks into it count as taps.
 - **One zone per area.** A new wick that stays inside a live RB of the same direction is a retest of it, not a new RB.
