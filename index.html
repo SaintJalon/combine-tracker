@@ -1235,6 +1235,8 @@
   var DD_MFFU_PRO="<b>End-of-day</b> trailing for the whole evaluation: the Max Loss rises with each new closing high and never moves down. It doesn't lock during the eval — it only locks (at starting balance + $100) after your first funded payout. No daily loss limit; a <b>50% consistency rule</b> applies in the eval only.";
   var DD_MFFU_LEGACY="<b>End-of-day</b> trailing (legacy plan — no longer sold): the Max Loss rises with each new closing high and never moves down. Intraday swings don't move it; only the daily close does.";
   var DD_LUCID="<b>End-of-day</b> trailing: at each session close the Max Loss Limit is recalculated from your highest closing balance, so intraday swings don't move it, and it locks once your balance clears Lucid's Initial Trail Balance. Lucid's daily loss limits are soft: hitting one pauses you for the day; only the Max Loss ends the account.";
+  var DD_LUCID_DAILY_EOD="<b>End-of-day</b> trailing (the EOD option picked at checkout): at each session close the Max Loss Limit is recalculated from your highest closing balance, so intraday swings don't move it, and it stops rising at a set point. If you bought the daily loss limit ON it's a soft pause, not a breach. Once funded, LucidDaily switches to <b>intraday</b> trailing.";
+  var DD_LUCID_DAILY_INTRA="<b>Intraday</b> trailing (the intraday option picked at checkout): the Max Loss Limit rises with your real-time P&L, open profits included, so giving back an unrealized gain moves you closer to it — watch your live buffer, not just closed P&L. If you bought the daily loss limit ON it's a soft pause, not a breach. Funded LucidDaily accounts stay intraday.";
   var DD_TRADEIFY="<b>End-of-day</b> trailing: the floor rises with each end-of-day balance high and applies in real time — touch it intraday and the account fails. Growth evaluations <b>don't lock</b>; the lock ($100 above start) only kicks in once you're sim funded. The daily loss limit is a soft pause, not a failure.";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor rises with your end-of-day balance and applies in real time, then locks for good at <b>$100 above your starting balance</b> once your closing balance clears the drawdown by $100. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit — plan on at least 3 trading days.";
 
@@ -1313,7 +1315,7 @@
         "50k":S("MyFundedFutures","Core (legacy)",50000,{target:3000,maxloss:1500,dd:"EOD trailing",ddDesc:DD_MFFU_LEGACY,cons:"50%",consPct:50,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2"})
       }}
     }},
-    lucid:{name:"Lucid",planOrder:["pro","flex"],plans:{
+    lucid:{name:"Lucid",planOrder:["pro","flex","daily","dailyintra"],plans:{
       pro:{name:"Pro",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("Lucid","Pro",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"1+ day",minShort:"1+"}),
         "50k":S("Lucid","Pro",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LUCID,dll:"$1,200 soft · optional",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"1+ day",minShort:"1+"}),
@@ -1325,6 +1327,18 @@
         "50k":S("Lucid","Flex",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LUCID,cons:"50%",consPct:50,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2"}),
         "100k":S("Lucid","Flex",100000,{target:6000,maxloss:3000,dd:"EOD trailing",ddDesc:DD_LUCID,cons:"50%",consPct:50,contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"min 2 to pass",minShort:"2"}),
         "150k":S("Lucid","Flex",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_LUCID,cons:"50%",consPct:50,contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"})
+      }},
+      daily:{name:"Daily EOD",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("Lucid","Daily EOD",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID_DAILY_EOD,cons:"50%",consPct:50,dll:"$600 soft · if ON",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "50k":S("Lucid","Daily EOD",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LUCID_DAILY_EOD,cons:"50%",consPct:50,dll:"$1,200 soft · if ON",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "100k":S("Lucid","Daily EOD",100000,{target:6000,maxloss:3000,dd:"EOD trailing",ddDesc:DD_LUCID_DAILY_EOD,cons:"50%",consPct:50,dll:"$1,800 soft · if ON",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "150k":S("Lucid","Daily EOD",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_LUCID_DAILY_EOD,cons:"50%",consPct:50,dll:"$2,700 soft · if ON",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"})
+      }},
+      dailyintra:{name:"Daily Intraday",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("Lucid","Daily Intraday",25000,{target:1250,maxloss:1000,dd:"Intraday trailing",ddDesc:DD_LUCID_DAILY_INTRA,cons:"50%",consPct:50,dll:"$600 soft · if ON",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "50k":S("Lucid","Daily Intraday",50000,{target:3000,maxloss:2000,dd:"Intraday trailing",ddDesc:DD_LUCID_DAILY_INTRA,cons:"50%",consPct:50,dll:"$1,200 soft · if ON",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "100k":S("Lucid","Daily Intraday",100000,{target:6000,maxloss:3000,dd:"Intraday trailing",ddDesc:DD_LUCID_DAILY_INTRA,cons:"50%",consPct:50,dll:"$1,800 soft · if ON",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "150k":S("Lucid","Daily Intraday",150000,{target:9000,maxloss:4500,dd:"Intraday trailing",ddDesc:DD_LUCID_DAILY_INTRA,cons:"50%",consPct:50,dll:"$2,700 soft · if ON",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"})
       }}
     }},
     tradeify:{name:"Tradeify",planOrder:["growth","select"],plans:{
