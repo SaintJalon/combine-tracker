@@ -135,6 +135,10 @@
   .hud .hblock.prep,.hud .hblock.opt,.hud .hguard.warn{color:var(--amber);border-color:var(--amber-soft);background:var(--amber-soft)}
   .hud .hblock.no,.hud .hblock.done,.hud .hguard.bad{color:var(--red);border-color:var(--red-soft);background:var(--red-soft)}
   html.fx-anim .hud .hblock.no,html.fx-anim .hud .hguard.bad{animation:pulse 1.6s infinite}
+  .hud .hbackup{color:var(--amber);border-color:var(--amber-soft);background:var(--amber-soft)}
+  .hud .hbackup.bad{color:var(--red);border-color:var(--red-soft);background:var(--red-soft)}
+  @keyframes flashRing{50%{box-shadow:0 0 0 3px var(--accent),0 0 24px var(--accent)}}
+  .flash{animation:flashRing .8s ease-in-out 2}
   .hud .hsync{opacity:.35;color:var(--accent)}
   .hud .hsync.on{animation:syncIn .8s ease-out forwards}
   .titlebtns{display:flex;gap:6px;flex-shrink:0}
@@ -287,6 +291,7 @@
   .copybar b{color:var(--text)}
 
   /* ---------- selectors ---------- */
+  .acctprog>h2.section{margin-top:18px}
   .acctsel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
   .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:3px;padding:15px 8px;cursor:pointer;font-size:12.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;transition:.15s}
   @media(hover:hover){.acctsel button:hover{color:var(--text);border-color:var(--line2)}}
@@ -503,6 +508,22 @@
   .eqcard .eqleg .lp{color:var(--muted)}.eqcard .eqleg .la{color:var(--green)}
   .eqcard svg{width:100%;height:auto;display:block;overflow:visible}
   .eqcard .eqdot{animation:pulse 1.6s infinite}
+  /* weekly review */
+  .wk .calnav{flex-wrap:wrap;row-gap:8px}
+  .wk .calbtn:disabled{opacity:.3;cursor:default;box-shadow:none}
+  .wk .statgrid{margin:4px 0 10px}
+  .wk .g{color:var(--green)}.wk .r{color:var(--red)}
+  .wk .atrow .an{min-width:104px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
+  .wk .atrow .am{color:var(--text)}
+  .wksec{margin-top:12px}
+  .wkchips{display:flex;flex-wrap:wrap;gap:5px}
+  .wkchips span{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:2px;background:var(--red-soft);color:var(--red)}
+  .wkchips span.ok{background:var(--green-soft);color:var(--green)}
+  .wkchips span.m{background:var(--amber-soft);color:var(--amber)}
+  .wkfix{margin-top:14px;padding:11px 13px;border-left:2px solid var(--accent);background:var(--surface)}
+  .wkfix .csecbody{font-size:13px;line-height:1.6}
+  .wknotes{margin-top:12px}
+  .wknotes summary{cursor:pointer;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:6px 0}
   .setuptbl{width:100%;border-collapse:collapse;font-size:12px}
   .setuptbl th{text-align:right;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em;font-size:9.5px;padding:0 0 8px;border-bottom:1px solid var(--line2)}
   .setuptbl th:first-child{text-align:left}
@@ -921,6 +942,7 @@
           <span class="hclock" id="mxClock">--:--:-- CST</span>
           <button type="button" class="hblock off" id="mxBlock" title="Current block in your daily schedule">Off-hours</button>
           <button type="button" class="hguard ok" id="mxGuard" title="Entry Guard status">Guard: clear</button>
+          <button type="button" class="hbackup" id="mxBackup" hidden>Backup</button>
           <span class="hsync" id="mxSync" title="Saved on this device">● Saved</span>
         </div>
       </div>
@@ -946,6 +968,22 @@
   <!-- ===================== 01 // CORE ===================== -->
   <section class="panel on" id="tab-core" data-tab="core" role="tabpanel" aria-labelledby="tabbtn-core">
     <header class="phead"><div class="pcode">01 // core</div><div class="ptitle">Mission Control</div><p class="pquote">Welcome to the real world.</p></header>
+
+    <!-- own wrapper so collapsing this heading folds only the picker, not the rest of Core -->
+    <div class="acctprog">
+      <h2 class="section">Account Program</h2>
+      <div>
+        <div class="acctsel" id="firmSel">
+          <button data-firm="topstep">TopStep</button>
+          <button data-firm="mffu">MyFundedFutures</button>
+          <button data-firm="lucid">Lucid</button>
+          <button data-firm="tradeify">Tradeify</button>
+        </div>
+        <div class="sel flow" id="planSel"></div>
+        <div class="sel flow" id="sizeSel"></div>
+        <div class="copy" id="copyPanel" style="display:none"></div>
+      </div>
+    </div>
 
     <div class="breachbar" id="breachBar"></div>
     <div class="coachcard" id="coachCard"></div>
@@ -993,18 +1031,6 @@
       <p id="coCons"></p>
     </div>
 
-    <h2 class="section">Account Program</h2>
-    <div>
-      <div class="acctsel" id="firmSel">
-        <button data-firm="topstep">TopStep</button>
-        <button data-firm="mffu">MyFundedFutures</button>
-        <button data-firm="lucid">Lucid</button>
-        <button data-firm="tradeify">Tradeify</button>
-      </div>
-      <div class="sel flow" id="planSel"></div>
-      <div class="sel flow" id="sizeSel"></div>
-      <div class="copy" id="copyPanel" style="display:none"></div>
-    </div>
   </section>
 
   <!-- ===================== 02 // LOG ===================== -->
@@ -1033,6 +1059,9 @@
   <!-- ===================== 03 // INTEL ===================== -->
   <section class="panel" id="tab-intel" data-tab="intel" role="tabpanel" aria-labelledby="tabbtn-intel">
     <header class="phead"><div class="pcode">03 // intel</div><div class="ptitle">Intel</div><p class="pquote">No one can be told what the Matrix is. You have to see it for yourself.</p></header>
+
+    <h2 class="section">Weekly Review</h2>
+    <div class="eqcard wk" id="wkCard"></div>
 
     <h2 class="section">Stats</h2>
     <div class="statgrid" id="statGrid"></div>
@@ -1206,6 +1235,7 @@
 
     <h2 class="section">Backup &amp; Export</h2>
     <div class="rules">
+      <div class="swlbl" id="backupLast" style="margin:0 0 12px"></div>
       <div class="edbar" style="padding:0">
         <button type="button" class="primary" id="btnExport">↓ Export backup</button>
         <label class="secbtn" style="cursor:pointer">↑ Import backup<input type="file" id="fileImport" accept="application/json,.json" style="display:none"></label>
@@ -1914,7 +1944,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
-    renderBuffer();renderSetups();renderTradeLog();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();renderDiscipline();renderPlanning();renderCoach();
+    renderWeekly();renderBuffer();renderSetups();renderTradeLog();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();renderDiscipline();renderPlanning();renderCoach();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -2932,6 +2962,118 @@
     pc.innerHTML='<div class="eqh"><span class="eqt">By '+(mode==="week"?"week":"month")+'</span><span class="eqleg" id="periodTog" style="cursor:pointer;text-decoration:underline">show '+(mode==="week"?"months":"weeks")+'</span></div>'+
       '<table class="setuptbl"><thead><tr><th>'+(mode==="week"?"Week":"Month")+'</th><th>Days</th><th>Win%</th><th>Net</th></tr></thead><tbody>'+prows+'</tbody></table>';
   }
+  // ---- weekly review (Intel): the weekend review on one screen, one Mon–Sun week at a time ----
+  var wkSel=null,wkAcct=null; // Monday (ISO) of the week on screen; null = pick automatically
+  function isoOf(dt){return dt.getFullYear()+"-"+pad2(dt.getMonth()+1)+"-"+pad2(dt.getDate());}
+  function mondayIso(iso){var d=new Date(iso+"T00:00:00");d.setDate(d.getDate()-((d.getDay()+6)%7));return isoOf(d);}
+  function addDaysIso(iso,n){var d=new Date(iso+"T00:00:00");d.setDate(d.getDate()+n);return isoOf(d);}
+  function datedDays(){
+    var c=cfg(),log=curLog(),j=state.journal[modeKey()]||{},out=[],undated=0;
+    for(var d=1;d<=c.days;d++){
+      if(!(d in log))continue;var jd=j[d]||{};
+      if(!jd.date){undated++;continue;}
+      out.push({d:d,date:jd.date,net:log[d],trades:jd.trades||[],followed:!!jd.followed,note:(jd.note||"").trim()});
+    }
+    out.sort(function(a,b){return a.date<b.date?-1:(a.date>b.date?1:a.d-b.d);});
+    return{days:out,undated:undated};
+  }
+  var MISTAKE_FIX={"Chased":"missed the entry? the trade is gone — no chasing","Moved stop":"the stop goes in with the order and never moves",
+    "Oversized":"size every trade from the Position Size calculator","No setup":"no checklist, no trade",
+    "Revenge":"after a loss, wait for the next A+ setup, not the next candle","FOMO":"if it's already moving without you, let it go",
+    "Early exit":"let trades reach the target or the stop — no manual exits","Late entry":"enter at the level or not at all",
+    "Early entry":"no entry until every checklist item is green"};
+  // One fix, picked by fixed priority so the same week always gives the same answer.
+  function weekFix(w,c,cap){
+    if(w.maxBreach)return "A max-loss breach this week. Next week: your hard stop is "+fmt(c.stop)+" — close the platform the moment you touch it.";
+    if(w.tilt)return "Tilt showed up on "+pl(w.tilt,"day")+". Next week: two losing trades in a row ends the session, no exceptions.";
+    if(w.overCap)return pl(w.overCap,"day")+" over your "+cap+"-trade cap. Next week: trade "+cap+" is the last one, whatever price does after.";
+    if(w.worstMistake)return "Your costliest habit was "+w.worstMistake.k+": "+pl(w.worstMistake.n,"trade")+", "+fmt(w.worstMistake.sum)+". Next week: "+(MISTAKE_FIX[w.worstMistake.k]||"name it before every entry and skip the trade if it applies")+".";
+    if(w.early)return pl(w.early,"Entry Guard override")+". Next week: when the guard flags, stand down.";
+    if(w.worstSetup&&w.worstSetup.sum<0&&w.worstSetup.n>=2)return w.worstSetup.k+" lost "+fmt(Math.abs(w.worstSetup.sum))+" over "+pl(w.worstSetup.n,"trade")+". Next week: sit it out"+(w.bestSetup&&w.bestSetup.sum>0?" and trade "+w.bestSetup.k+" only":"")+".";
+    if(w.stopBreach)return pl(w.stopBreach,"day")+" went past your "+fmt(c.stop)+" daily stop. Next week: when the stop hits, the day is over.";
+    if(w.adhUsed&&w.followed<w.days.length)return "You followed the plan on "+w.followed+" of "+pl(w.days.length,"day")+". Next week: every session by the plan, and tick the box honestly.";
+    if(w.net<0)return "A red week with no rule broken — that's variance, not a leak. Same size, same checklist next week.";
+    return "Clean week. Repeat it: same size, same checklist, same schedule.";
+  }
+  function weekStats(days,mon){
+    var sun=addDaysIso(mon,6),c=cfg(),cap=maxTradesOf();
+    var w={days:days.filter(function(x){return x.date>=mon&&x.date<=sun;}),net:0,green:0,red:0,best:null,worst:null,followed:0,adhUsed:false,
+      trades:0,wins:0,stopBreach:0,maxBreach:0,overCap:0,tilt:0,early:0,setups:{},mistakes:{},notes:[]};
+    w.days.forEach(function(x){
+      w.net+=x.net;if(x.net>0)w.green++;else if(x.net<0)w.red++;
+      if(!w.best||x.net>w.best.net)w.best=x;if(!w.worst||x.net<w.worst.net)w.worst=x;
+      if(x.followed){w.followed++;w.adhUsed=true;}
+      if(x.net<=-c.maxloss)w.maxBreach++;else if(x.net<=-c.stop)w.stopBreach++;
+      if(cap>0&&x.trades.length>cap)w.overCap++;
+      var run=0,maxRun=0;
+      x.trades.forEach(function(t){
+        var p=parseFloat(t.p);if(isNaN(p))return;
+        w.trades++;if(p>0)w.wins++;
+        if(p<0){run++;if(run>maxRun)maxRun=run;}else run=0;
+        var k=(t.s||"").trim()||"(untagged)";if(!w.setups[k])w.setups[k]={k:k,n:0,sum:0};w.setups[k].n++;w.setups[k].sum+=p;
+        (t.mistakes||[]).forEach(function(m){if(!w.mistakes[m])w.mistakes[m]={k:m,n:0,sum:0};w.mistakes[m].n++;w.mistakes[m].sum+=p;if(m==="Early entry")w.early++;});
+      });
+      if(maxRun>=2||(x.net<0&&cap>0&&x.trades.length>=cap))w.tilt++; // same tilt test as the Discipline section
+      if(x.note)w.notes.push(x);
+    });
+    var st=Object.keys(w.setups).map(function(k){return w.setups[k];}).sort(function(a,b){return b.sum-a.sum;});
+    w.bestSetup=st[0]||null;w.worstSetup=st.length>1?st[st.length-1]:null;
+    w.mistakeList=Object.keys(w.mistakes).map(function(k){return w.mistakes[k];}).sort(function(a,b){return a.sum-b.sum;});
+    w.worstMistake=w.mistakeList.filter(function(m){return m.sum<0;})[0]||null;
+    w.fix=weekFix(w,c,cap);
+    return w;
+  }
+  function renderWeekly(){
+    var host=document.getElementById("wkCard");if(!host)return;
+    if(wkAcct!==state.activeId){wkAcct=state.activeId;wkSel=null;}
+    var dd=datedDays(),days=dd.days,thisMon=mondayIso(isoDate());
+    if(wkSel==null){ // this week if it has anything logged, otherwise the latest week that does
+      var hasThis=days.some(function(x){return mondayIso(x.date)===thisMon;});
+      wkSel=(!hasThis&&days.length)?mondayIso(days[days.length-1].date):thisMon;
+    }
+    var mon=wkSel,sun=addDaysIso(mon,6),w=weekStats(days,mon),prev=weekStats(days,addDaysIso(mon,-7));
+    var md=function(iso){var p=iso.split("-");return MONTH_NAMES[+p[1]-1].slice(0,3)+" "+(+p[2]);};
+    var title=md(mon)+" – "+(mon.slice(5,7)===sun.slice(5,7)?String(+sun.slice(8)):md(sun));
+    var nav='<div class="calnav"><div class="calside"><button type="button" class="calbtn" data-wk="-1" aria-label="Previous week">‹</button>'+
+      '<div class="caltitle">'+title+'</div><button type="button" class="calbtn" data-wk="1" aria-label="Next week"'+(mon>=thisMon?" disabled":"")+'>›</button></div>'+
+      (mon!==thisMon?'<button type="button" class="caltoday" data-wk="0">This week</button>':'')+'</div>';
+    if(!w.days.length){
+      host.innerHTML=nav+'<div class="empty">Nothing logged with a date in this week.'+(dd.undated?' '+pl(dd.undated,"logged day")+' '+(dd.undated===1?"has":"have")+' no date yet — set it in the day card to include '+(dd.undated===1?"it":"them")+'.':'')+'</div>';
+      return;
+    }
+    function tile(l,val,cls,sub){return '<div class="stat"><div class="sl">'+l+'</div><div class="sv '+(cls||"")+'">'+val+'</div>'+(sub?'<div class="ss">'+sub+'</div>':'')+'</div>';}
+    function row(k,v){return '<div class="atrow"><span class="an">'+k+'</span><span class="am">'+v+'</span></div>';}
+    function money(v){return '<b class="'+(v>=0?"g":"r")+'">'+fmt(v)+'</b>';}
+    var delta=w.net-prev.net,wr=w.trades?Math.round(w.wins/w.trades*100):null;
+    var html=nav+'<div class="statgrid">'+
+      tile("Week net",fmt(w.net),w.net>=0?"g":"r",prev.days.length?((delta>=0?"▲ ":"▼ ")+fmt(Math.abs(delta))+" vs prior week"):"no prior week logged")+
+      tile("Days",String(w.days.length),"",w.green+" green · "+w.red+" red")+
+      tile("Trade win rate",wr==null?"—":wr+"%",wr==null?"":(wr>=50?"g":"a"),w.trades?pl(w.trades,"trade"):"log trades to see this")+
+      tile("Plan followed",w.adhUsed?(w.followed+"/"+w.days.length):"—",w.adhUsed?(w.followed===w.days.length?"g":"a"):"",w.adhUsed?"days by the plan":"tick “followed my plan”")+
+      '</div>';
+    html+=row("Best day",weekdayLbl(w.best.date)+" · "+money(w.best.net));
+    if(w.days.length>1)html+=row("Worst day",weekdayLbl(w.worst.date)+" · "+money(w.worst.net));
+    if(w.bestSetup)html+=row("Best setup",esc(w.bestSetup.k)+" · "+pl(w.bestSetup.n,"trade")+" · "+money(w.bestSetup.sum));
+    if(w.worstSetup)html+=row(w.worstSetup.sum<0?"Worst setup":"Weakest setup",esc(w.worstSetup.k)+" · "+pl(w.worstSetup.n,"trade")+" · "+money(w.worstSetup.sum));
+    var br=[];
+    if(w.maxBreach)br.push(pl(w.maxBreach,"max-loss breach","max-loss breaches"));
+    if(w.stopBreach)br.push(pl(w.stopBreach,"day")+" past daily stop");
+    if(w.overCap)br.push(pl(w.overCap,"day")+" over trade cap");
+    if(w.tilt)br.push(pl(w.tilt,"tilt day"));
+    if(w.early)br.push(pl(w.early,"Entry Guard override"));
+    html+='<div class="wksec"><div class="csechead">Rule breaks</div><div class="wkchips">'+(br.length?br.map(function(x){return '<span>'+esc(x)+'</span>';}).join(""):'<span class="ok">✓ Clean — no rule breaks</span>')+'</div></div>';
+    if(w.mistakeList.length)html+='<div class="wksec"><div class="csechead">Mistakes tagged</div><div class="wkchips">'+w.mistakeList.map(function(m){return '<span class="m">'+esc(m.k)+' ×'+m.n+' · '+fmt(m.sum)+'</span>';}).join("")+'</div></div>';
+    html+='<div class="wkfix"><div class="csechead">Coach Co · the one fix for next week</div><div class="csecbody">'+esc(w.fix)+'</div></div>';
+    if(w.notes.length)html+='<details class="wknotes"><summary>Your notes this week ('+w.notes.length+')</summary>'+w.notes.map(function(x){return row(weekdayLbl(x.date),esc(x.note));}).join("")+'</details>';
+    if(dd.undated)html+='<div class="hint" style="margin-top:10px">'+pl(dd.undated,"logged day")+' without a date '+(dd.undated===1?"isn't":"aren't")+' in any week — set the date in the day card.</div>';
+    host.innerHTML=html;
+  }
+  document.getElementById("wkCard").addEventListener("click",function(e){
+    var b=e.target.closest("[data-wk]");if(!b||b.disabled)return;
+    var n=+b.getAttribute("data-wk"),thisMon=mondayIso(isoDate());
+    wkSel=n===0?thisMon:addDaysIso(wkSel||thisMon,7*n);
+    renderWeekly();
+  });
   function parseR(rr){if(rr==null||rr==="")return null;var m=String(rr).split(":");var n=parseFloat(m.length>1?m[1]:m[0]);return isNaN(n)?null:n;}
   function renderSetups(){
     var host=document.getElementById("setupCard"),j=state.journal[modeKey()]||{},groups={},order=[],d,i,any=false;
@@ -3599,6 +3741,7 @@
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){URL.revokeObjectURL(url);},1000);
     var n=document.getElementById("backupNote");n.textContent="✓ Backup downloaded. Keep the file somewhere safe.";
+    markBackedUp();
   });
   document.getElementById("fileImport").addEventListener("change",function(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
@@ -4090,9 +4233,31 @@
     gd.className="hguard "+(gr.length?(hard?"bad":"warn"):"ok");
     gd.textContent=gr.length?("Guard: "+gr.length+" flag"+(gr.length>1?"s":"")):"Guard: clear";
     gd.title=gr.length?("Entry Guard — "+gr.join(" · ")):"Entry Guard: clear to trade";
+    backupTick();
   }
   document.getElementById("mxBlock").addEventListener("click",function(){jumpTo("protocol","sched");});
   document.getElementById("mxGuard").addEventListener("click",function(){jumpTo("protocol","checklist");});
+  // ---- backup reminder: all data lives on this device, so nudge once the last export gets old ----
+  var BACKUP_KEY="ct_last_backup"; // device-level, like the effect prefs; never inside the backup itself
+  function lastBackupAt(){try{return +localStorage.getItem(BACKUP_KEY)||0;}catch(e){return 0;}}
+  function markBackedUp(){try{localStorage.setItem("ct_last_backup",String(Date.now()));}catch(e){}backupTick();}
+  function hasAnyLogs(){for(var k in state.logs){if(state.logs.hasOwnProperty(k)&&state.logs[k]&&Object.keys(state.logs[k]).length)return true;}return false;}
+  function backupTick(){
+    var el=document.getElementById("mxBackup");if(!el)return;
+    var at=lastBackupAt(),days=at?Math.floor((Date.now()-at)/86400000):null,due=hasAnyLogs()&&(days===null||days>=7);
+    el.hidden=!due;
+    if(due){
+      el.className="hbackup"+(days!==null&&days>=30?" bad":"");
+      el.textContent=days===null?"Backup: none":"Backup: "+days+"d";
+      el.title=(days===null?"No backup yet on this device":"Last backup "+days+" days ago")+" — tap to export";
+    }
+    var ln=document.getElementById("backupLast");
+    if(ln)ln.textContent=at?("Last backup on this device: "+new Date(at).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})+(days===0?" (today)":" ("+days+" day"+(days===1?"":"s")+" ago)")):"No backup yet on this device.";
+  }
+  document.getElementById("mxBackup").addEventListener("click",function(){
+    jumpTo("system","btnExport");
+    var b=document.getElementById("btnExport");b.classList.remove("flash");void b.offsetWidth;b.classList.add("flash");
+  });
   function pulseSync(){var el=document.getElementById("mxSync");if(!el)return;el.classList.remove("on");void el.offsetWidth;el.classList.add("on");}
 
   // ---- SYSTEM program: experience settings ----

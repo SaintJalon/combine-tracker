@@ -1,7 +1,7 @@
 // Bump CACHE on every deploy. Changing this file is what makes the browser
 // re-install the worker at all — if it stays byte-identical, `install` never
 // re-runs and old caches are never purged.
-const CACHE = 'combine-tracker-v52';
+const CACHE = 'combine-tracker-v53';
 const ASSETS = [
   './',
   './index.html',
