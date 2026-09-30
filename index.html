@@ -763,7 +763,7 @@
   @media(max-width:760px){
     body{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
     html{scroll-padding-top:16px}
-    .tabs{position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;z-index:80;display:grid;grid-template-columns:repeat(6,1fr);gap:0;
+    .tabs{position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;z-index:80;display:grid;grid-template-columns:repeat(5,1fr);gap:0;
       padding:4px calc(2px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(2px + env(safe-area-inset-left));
       border-top:1px solid var(--line2);border-bottom:none;overflow:visible;box-shadow:0 -10px 30px rgba(0,0,0,.35)}
     .tabs button{flex-direction:column;gap:3px;padding:7px 0 5px;font-size:8.5px;letter-spacing:.08em;min-width:0}
@@ -958,11 +958,10 @@
 
   <nav class="tabs" id="tabBar" role="tablist" aria-label="Programs">
     <button type="button" role="tab" id="tabbtn-core" data-tab="core" aria-controls="tab-core" aria-selected="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span class="tn">01</span><span>Core</span></button>
-    <button type="button" role="tab" id="tabbtn-log" data-tab="log" aria-controls="tab-log" aria-selected="false"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4M7 14h2M11 14h2M15 14h2M7 17.5h2M11 17.5h2"/></svg><span class="tn">02</span><span>Log</span></button>
-    <button type="button" role="tab" id="tabbtn-intel" data-tab="intel" aria-controls="tab-intel" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M3 20.5h18"/><path d="M4 16l5-5 4 3 7-8"/><path d="M15.5 6H20v4.5"/></svg><span class="tn">03</span><span>Intel</span></button>
-    <button type="button" role="tab" id="tabbtn-protocol" data-tab="protocol" aria-controls="tab-protocol" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg><span class="tn">04</span><span>Protocol</span></button>
-    <button type="button" role="tab" id="tabbtn-armory" data-tab="armory" aria-controls="tab-armory" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="tn">05</span><span>Armory</span></button>
-    <button type="button" role="tab" id="tabbtn-path" data-tab="path" aria-controls="tab-path" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4.5L17 13H5"/></svg><span class="tn">06</span><span>Path</span></button>
+    <button type="button" role="tab" id="tabbtn-intel" data-tab="intel" aria-controls="tab-intel" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M3 20.5h18"/><path d="M4 16l5-5 4 3 7-8"/><path d="M15.5 6H20v4.5"/></svg><span class="tn">02</span><span>Intel</span></button>
+    <button type="button" role="tab" id="tabbtn-protocol" data-tab="protocol" aria-controls="tab-protocol" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg><span class="tn">03</span><span>Protocol</span></button>
+    <button type="button" role="tab" id="tabbtn-armory" data-tab="armory" aria-controls="tab-armory" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="tn">04</span><span>Armory</span></button>
+    <button type="button" role="tab" id="tabbtn-path" data-tab="path" aria-controls="tab-path" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4.5L17 13H5"/></svg><span class="tn">05</span><span>Path</span></button>
   </nav>
 
   <!-- ===================== 01 // CORE ===================== -->
@@ -986,7 +985,27 @@
     </div>
 
     <div class="breachbar" id="breachBar"></div>
-    <div class="coachcard" id="coachCard"></div>
+
+    <!-- the day log lives on Core; own wrapper so folding "Push to Target" folds only its cards -->
+    <div class="corelog">
+      <div class="copybar" id="copyBar"></div>
+
+      <h2 class="section" id="calHead">Month View</h2>
+      <div id="calBody">
+        <div class="calnav">
+          <div class="calside"><button type="button" class="calbtn" id="calPrev" aria-label="Previous month">‹</button><div class="caltitle" id="calTitle">Month</div><button type="button" class="calbtn" id="calNext" aria-label="Next month">›</button></div>
+          <button type="button" class="caltoday" id="calToday">This month</button>
+        </div>
+        <div class="calwk"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div>
+        <div class="calgrid" id="calGrid"></div>
+        <div class="calsum" id="calSum"></div>
+      </div>
+
+      <h2 class="section" id="h1">Week 1 — Build the Buffer</h2>
+      <div class="days" id="week1"></div>
+      <h2 class="section" id="h2">Week 2 — Push to Target</h2>
+      <div class="days" id="week2"></div>
+    </div>
 
     <div class="status2">
       <div class="progress">
@@ -1004,6 +1023,8 @@
       </div>
       <div class="bufcard" id="bufCard"></div>
     </div>
+
+    <div class="coachcard" id="coachCard"></div>
 
     <div class="kpis">
       <div class="kpi green"><div class="label">Target profit</div><div class="val edit" id="kTarget">$6,000</div><div class="sub">tap to edit</div></div>
@@ -1033,32 +1054,9 @@
 
   </section>
 
-  <!-- ===================== 02 // LOG ===================== -->
-  <section class="panel" id="tab-log" data-tab="log" role="tabpanel" aria-labelledby="tabbtn-log">
-    <header class="phead"><div class="pcode">02 // log</div><div class="ptitle">Day Log</div><p class="pquote">Time is always against us.</p></header>
-
-    <div class="copybar" id="copyBar"></div>
-
-    <h2 class="section" id="calHead">Month View</h2>
-    <div id="calBody">
-      <div class="calnav">
-        <div class="calside"><button type="button" class="calbtn" id="calPrev" aria-label="Previous month">‹</button><div class="caltitle" id="calTitle">Month</div><button type="button" class="calbtn" id="calNext" aria-label="Next month">›</button></div>
-        <button type="button" class="caltoday" id="calToday">This month</button>
-      </div>
-      <div class="calwk"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div>
-      <div class="calgrid" id="calGrid"></div>
-      <div class="calsum" id="calSum"></div>
-    </div>
-
-    <h2 class="section" id="h1">Week 1 — Build the Buffer</h2>
-    <div class="days" id="week1"></div>
-    <h2 class="section" id="h2">Week 2 — Push to Target</h2>
-    <div class="days" id="week2"></div>
-  </section>
-
-  <!-- ===================== 03 // INTEL ===================== -->
+  <!-- ===================== 02 // INTEL ===================== -->
   <section class="panel" id="tab-intel" data-tab="intel" role="tabpanel" aria-labelledby="tabbtn-intel">
-    <header class="phead"><div class="pcode">03 // intel</div><div class="ptitle">Intel</div><p class="pquote">No one can be told what the Matrix is. You have to see it for yourself.</p></header>
+    <header class="phead"><div class="pcode">02 // intel</div><div class="ptitle">Intel</div><p class="pquote">No one can be told what the Matrix is. You have to see it for yourself.</p></header>
 
     <h2 class="section">Weekly Review</h2>
     <div class="eqcard wk" id="wkCard"></div>
@@ -1092,9 +1090,9 @@
     </div>
   </section>
 
-  <!-- ===================== 04 // PROTOCOL ===================== -->
+  <!-- ===================== 03 // PROTOCOL ===================== -->
   <section class="panel" id="tab-protocol" data-tab="protocol" role="tabpanel" aria-labelledby="tabbtn-protocol">
-    <header class="phead"><div class="pcode">04 // protocol</div><div class="ptitle">Protocol</div><p class="pquote">I can only show you the door. You're the one that has to walk through it.</p></header>
+    <header class="phead"><div class="pcode">03 // protocol</div><div class="ptitle">Protocol</div><p class="pquote">I can only show you the door. You're the one that has to walk through it.</p></header>
 
     <div class="grid2">
       <div>
@@ -1121,9 +1119,9 @@
     <div class="rules"><div class="rulebox" id="ruleDisc"></div></div>
   </section>
 
-  <!-- ===================== 05 // ARMORY ===================== -->
+  <!-- ===================== 04 // ARMORY ===================== -->
   <section class="panel" id="tab-armory" data-tab="armory" role="tabpanel" aria-labelledby="tabbtn-armory">
-    <header class="phead"><div class="pcode">05 // armory</div><div class="ptitle">Armory</div><p class="pquote">Guns. Lots of guns. — sizing, risk and the math behind every entry.</p></header>
+    <header class="phead"><div class="pcode">04 // armory</div><div class="ptitle">Armory</div><p class="pquote">Guns. Lots of guns. — sizing, risk and the math behind every entry.</p></header>
 
     <h2 class="section">Position Size</h2>
     <div class="plan">
@@ -1193,9 +1191,9 @@
     </div>
   </section>
 
-  <!-- ===================== 06 // PATH ===================== -->
+  <!-- ===================== 05 // PATH ===================== -->
   <section class="panel" id="tab-path" data-tab="path" role="tabpanel" aria-labelledby="tabbtn-path">
-    <header class="phead"><div class="pcode">06 // path</div><div class="ptitle">The Path</div><p class="pquote">There's a difference between knowing the path and walking the path.</p></header>
+    <header class="phead"><div class="pcode">05 // path</div><div class="ptitle">The Path</div><p class="pquote">There's a difference between knowing the path and walking the path.</p></header>
 
     <h2 class="section withbtn">Attempt <button type="button" class="secbtn" id="atNew">＋ New attempt</button></h2>
     <div class="plan">
@@ -1248,7 +1246,7 @@
 
   <footer class="footer">
     Trading Tracker // Matrix build<br>
-    all data stays on this device · keys <span class="kbd">1</span>–<span class="kbd">6</span> switch programs · <span class="kbd">0</span> system<br>
+    all data stays on this device · keys <span class="kbd">1</span>–<span class="kbd">5</span> switch programs · <span class="kbd">0</span> system<br>
     <span class="q">“There is no spoon.”</span>
   </footer>
 
@@ -1532,7 +1530,7 @@
   // Scroll to and open a day's card in the list below (expanding a collapsed section first).
   function focusDay(d){
     openDay=d;
-    showTab("log",{keepScroll:true});
+    showTab("core",{keepScroll:true});
     var hd1=document.getElementById("h1"),hd2=document.getElementById("h2");
     var buildCount=tpl(cfg().days).p.filter(function(p){return p==="build";}).length;
     var inWeek1=d<=buildCount;
@@ -2099,7 +2097,7 @@
     if(openDay==null&&r.ok){
       logBar.style.display="flex";
       document.getElementById("psLog").disabled=true;
-      document.querySelector("#psLogBar .hint").textContent="Open a day's editor in the Log program (tap a day card) to enable logging this trade there.";
+      document.querySelector("#psLogBar .hint").textContent="Open a day's editor on Core (tap a day card) to enable logging this trade there.";
     }else if(r.ok){
       document.getElementById("psLog").disabled=false;
       document.querySelector("#psLogBar .hint").textContent="Stages side/instrument/entry/qty into the currently open day card — fill in the P&L once the trade closes.";
@@ -4000,16 +3998,29 @@
   // collapsible sections (#35) — click a heading to hide/show everything under it
   // up to (but not including) the next h2.section. Week1/Week2 headings get their
   // chevron re-appended inside renderDays() since their text is rewritten on every render.
+  // Folded sections stay folded between visits (per device, outside backups and undo).
+  var FOLD_KEY="ct_matrix_folds";
+  function foldKey(h){
+    if(h.id)return h.id;
+    var t=h.firstChild&&h.firstChild.nodeType===3?h.firstChild.nodeValue:h.textContent; // skip button labels like "Cap: 4/day"
+    return String(t||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-");
+  }
   function setupCollapsibleSections(){
+    var folds={};try{folds=JSON.parse(localStorage.getItem(FOLD_KEY)||"{}")||{};}catch(e){folds={};}
     var heads=document.querySelectorAll("h2.section");
     heads.forEach(function(h){
+      var key=foldKey(h);
       if(h.id!=="h1"&&h.id!=="h2")h.insertAdjacentHTML("beforeend",'<span class="chev">▾</span>');
       var run=[],sib=h.nextElementSibling;
       while(sib&&!(sib.tagName==="H2"&&sib.classList.contains("section"))){run.push(sib);sib=sib.nextElementSibling;}
+      function apply(collapsed){h.classList.toggle("collapsed",collapsed);run.forEach(function(el){el.style.display=collapsed?"none":"";});}
+      if(folds[key])apply(true);
       h.addEventListener("click",function(e){
         if(e.target.closest("button"))return;
-        var collapsed=h.classList.toggle("collapsed");
-        run.forEach(function(el){el.style.display=collapsed?"none":"";});
+        var collapsed=!h.classList.contains("collapsed");
+        apply(collapsed);
+        if(collapsed)folds[key]=1;else delete folds[key];
+        try{localStorage.setItem(FOLD_KEY,JSON.stringify(folds));}catch(err){}
       });
     });
   }
@@ -4174,7 +4185,7 @@
   var rain=makeRain(document.getElementById("mxRain"));
 
   // ---- programs (tabs) ----
-  var TABS=["core","log","intel","protocol","armory","path","system"],curTab=null,lastProgram="core",tabScroll={};
+  var TABS=["core","intel","protocol","armory","path","system"],curTab=null,lastProgram="core",tabScroll={};
   function showTab(t,o){
     o=o||{};
     if(TABS.indexOf(t)<0)t="core";
@@ -4202,7 +4213,7 @@
     e.preventDefault();var n=btns[(i+(e.key==="ArrowRight"?1:btns.length-1))%btns.length];n.focus();showTab(n.getAttribute("data-tab"));
   });
   document.getElementById("btnSystem").addEventListener("click",function(){showTab(curTab==="system"?lastProgram:"system");});
-  var KEYTAB={"1":"core","2":"log","3":"intel","4":"protocol","5":"armory","6":"path","0":"system"};
+  var KEYTAB={"1":"core","2":"intel","3":"protocol","4":"armory","5":"path","0":"system"};
   document.addEventListener("keydown",function(e){
     if(mxDlgOpen||booting||e.metaKey||e.ctrlKey||e.altKey)return;
     var t=e.target,tag=t&&t.tagName;
