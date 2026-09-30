@@ -51,16 +51,15 @@ git add . && git commit -m "update" && git push
 ---
 
 ## Finding your way around
-The app is split into six programs (bottom bar on a phone, top bar on desktop — or keys `1`–`6`):
+The app is split into five programs (bottom bar on a phone, top bar on desktop — or keys `1`–`5`):
 
 | Program | What's in it |
 |---|---|
-| **01 Core** | Firm · plan · size picker and copy trading at the top, then Coach Co, progress to target, buffer to floor, target / days / stop / max-loss, plan rules |
-| **02 Log** | Month calendar and the day cards (net P&L, trades, notes, "followed my plan") |
-| **03 Intel** | Weekly Review (week net, best/worst day and setup, rule breaks, Coach Co's one fix for next week), stats, equity curve, by-setup table, searchable trade log, R-distribution, weekday / week / month breakdowns |
-| **04 Protocol** | Pre-trade checklist, daily schedule, discipline score + trade cap + cooldown, your rules |
-| **05 Armory** | Position size, money management, risk lab |
-| **06 Path** | Attempts, funded / payout, planning & goals |
+| **01 Core** | Firm · plan · size picker and copy trading at the top, then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
+| **02 Intel** | Weekly Review (week net, best/worst day and setup, rule breaks, Coach Co's one fix for next week), stats, equity curve, by-setup table, searchable trade log, R-distribution, weekday / week / month breakdowns |
+| **03 Protocol** | Pre-trade checklist, daily schedule, discipline score + trade cap + cooldown, your rules |
+| **04 Armory** | Position size, money management, risk lab |
+| **05 Path** | Attempts, funded / payout, planning & goals |
 
 The `>_` button (or key `0`) opens **System**: Matrix / Construct theme, accent, digital rain,
 CRT scanlines, animations, boot sequence, and Backup & Export. Those effect settings are per
@@ -68,14 +67,17 @@ device and don't go into backups. The header clock shows CST, which block of you
 you're in, and whether the Entry Guard is clear — tap either one to jump to it. A **Backup** chip
 appears there when you have logged days and no export in 7+ days; tap it to export.
 
+Tap any section heading to fold it; folded sections stay folded next time you open the app
+(handy for the account picker once it's set).
+
 The first launch plays the intro and asks red pill (full effects) or blue pill (calm mode, no effects).
 You can change that anytime in System.
 
 ## Daily routine
 1. **2:00 PM CST** — platform closes (your hard stop). Open the app.
 2. Pick the account you traded from the account strip under the title.
-3. **Log** → tap the day (or its date on the calendar) → enter net P&L → Save. Add a mental note: did I take only A+ setups?
-4. **Core** → glance at the buffer / consistency line. Done in under a minute.
+3. **Core** → tap the day (or its date on the calendar) → enter net P&L → Save. Add a mental note: did I take only A+ setups?
+4. Scroll down to the buffer / consistency line. Done in under a minute.
 5. **Weekend** — open **Intel → Weekly Review**: scan the week and read Coach Co's one fix for next week.
    Export a backup while you're there if the header asks for one.
 
