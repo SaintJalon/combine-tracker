@@ -1,0 +1,336 @@
+//@version=6
+// =============================================================================
+// SaintTrades Rejection Blocks + Fixed Range Volume Profile        INDICATOR
+// -----------------------------------------------------------------------------
+// Built for the 5-minute chart. It marks where each rejection block (RB) is,
+// exactly, and nothing else: no stats, no trade simulation. The full version
+// with entries and stats is SaintTrades-RejectionBlock.pine.
+//
+// A rejection block is the WICK of a candle that ran a level and closed back:
+//   Bearish: the upper wick trades through the level, the body stays below it.
+//   Bullish: the lower wick trades through the level, the body stays above it.
+// Zone  = body edge (open or close nearest the wick) to the wick tip.
+// CE    = 50% of the zone, the dotted line (ICT mean threshold, Powell's limit).
+// Dead  = any later wick past the tip (Powell). The box stops and turns dotted.
+//
+// Levels the wick must run:
+//   Powell key opens (New York): 18:00, 00:00, 02:00, 08:30, 09:30, 10:00,
+//   13:30. A touch is enough, from either side, until the next 18:00.
+//   Previous day high/low, Asia (20:00-00:00) and London (02:00-05:00)
+//   high/low, and swing highs/lows. These must be traded through, and each
+//   counts once: after price has traded through it, it's spent.
+// The wick must also be the candle's main feature: at least 40% of the range,
+// at least the body, longer than the other wick, and at least 0.25 x ATR(14).
+//
+// Everything is decided on the candle's close, so nothing repaints.
+//
+// The volume profile covers the range you pick on the chart when you add the
+// indicator (drag the two time markers to move it). Rows in the value area
+// are brighter, the POC row is gold.
+// =============================================================================
+indicator("SaintTrades Rejection Blocks + Volume Profile", "ST RB5", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ================================ INPUTS =====================================
+G_RB = "Rejection blocks"
+useKO   = input.bool(true, "Key opens (NY 18:00 00:00 02:00 08:30 09:30 10:00 13:30)", group=G_RB)
+usePD   = input.bool(true, "Previous day high / low", group=G_RB)
+useSes  = input.bool(true, "Asia and London high / low", group=G_RB)
+useSw   = input.bool(true, "Swing highs / lows", inline="sw", group=G_RB)
+swLen   = input.int(5, "strength", minval=2, maxval=20, inline="sw", group=G_RB)
+wickPct = input.float(40, "Wick at least % of the candle", minval=0, maxval=100, step=5, group=G_RB)
+wickAtr = input.float(0.25, "Wick at least ATR(14) ×", minval=0, step=0.05, group=G_RB)
+keepN   = input.int(10, "RBs on the chart", minval=1, maxval=50, group=G_RB)
+stop16  = input.bool(true, "Stop extending at 16:00 NY", tooltip="Powell's RBs are for the day. Off: a box extends until a wick takes its tip.", group=G_RB)
+colBull = input.color(#26a69a, "Bullish", inline="c", group=G_RB)
+colBear = input.color(#ef5350, "Bearish", inline="c", group=G_RB)
+
+G_VP = "Fixed range volume profile"
+vpOn     = input.bool(true, "Show volume profile", group=G_VP)
+vpStart  = input.time(timestamp("2026-09-30T09:30:00-04:00"), "Range start", confirm=true, group=G_VP)
+vpEnd    = input.time(timestamp("2026-09-30T16:00:00-04:00"), "Range end", confirm=true, tooltip="A range that ends after the last bar runs to the last bar and updates live.", group=G_VP)
+vpRows   = input.int(30, "Rows", minval=5, maxval=100, group=G_VP)
+vpVaPct  = input.float(70, "Value area %", minval=30, maxval=95, step=5, group=G_VP)
+vpWidth  = input.int(40, "Width (% of the range)", minval=5, maxval=100, group=G_VP)
+vpExtend = input.bool(true, "Extend POC / VAH / VAL right", group=G_VP)
+colRow   = input.color(#78909c, "Rows", inline="v", group=G_VP)
+colVa    = input.color(#42a5f5, "Value area", inline="v", group=G_VP)
+colPoc   = input.color(#ffb300, "POC", inline="v", group=G_VP)
+
+// ================================ LEVELS =====================================
+NY = "America/New_York"
+int  mNow   = hour(time, NY) * 60 + minute(time, NY)
+bool newDay = timeframe.change("D")    // CME daily bars start at 18:00 NY
+
+// key opens printed today (two-sided, a touch counts)
+var array<float>  koP = array.new<float>()
+var array<string> koN = array.new<string>()
+// one-sided liquidity: price, name, spent
+var array<float>  lqP = array.new<float>()
+var array<string> lqN = array.new<string>()
+var array<int>    lqK = array.new<int>()     // 1 = high (bearish RB sweeps it), -1 = low
+var array<bool>   lqX = array.new<bool>()
+
+addLiq(float p, string n, int k) =>
+    if not na(p)
+        array.push(lqP, p)
+        array.push(lqN, n)
+        array.push(lqK, k)
+        array.push(lqX, false)
+    true
+
+var float dH = na
+var float dL = na
+var float aH = na
+var float aL = na
+var float lH = na
+var float lL = na
+bool inAsia = mNow >= 1200
+bool inLon  = mNow >= 120 and mNow < 300
+
+float atr = ta.atr(14)
+float ph  = ta.pivothigh(high, swLen, swLen)
+float pl  = ta.pivotlow(low, swLen, swLen)
+
+// ============================== RB DRAWINGS ==================================
+type RB
+    bool  bull
+    float tip
+    float edge
+    bool  live   = true
+    bool  tapped = false
+    box   bx
+    line  ce
+    label lb
+
+var array<RB> rbs = array.new<RB>()
+
+bool newBull = false
+bool newBear = false
+bool tapBull = false
+bool tapBear = false
+
+if barstate.isconfirmed
+    // ---- the day rolls at 18:00: yesterday's range becomes PDH/PDL, key opens reset
+    if newDay
+        array.clear(koP)
+        array.clear(koN)
+        array.clear(lqP)
+        array.clear(lqN)
+        array.clear(lqK)
+        array.clear(lqX)
+        if usePD
+            addLiq(dH, "PDH", 1)
+            addLiq(dL, "PDL", -1)
+        dH := high
+        dL := low
+    else
+        dH := na(dH) ? high : math.max(dH, high)
+        dL := na(dL) ? low : math.min(dL, low)
+
+    // ---- 1. live RBs: taken tip = dead, a touch of the zone = tapped, 16:00 = stop
+    bool at16 = stop16 and mNow < 960 and not na(time_close) and hour(time_close, NY) * 60 + minute(time_close, NY) >= 960
+    for r in rbs
+        if r.live
+            bool dead = r.bull ? low < r.tip : high > r.tip
+            if not r.tapped and (r.bull ? low <= r.edge : high >= r.edge)
+                r.tapped := true
+                if r.bull
+                    tapBull := true
+                else
+                    tapBear := true
+            box.set_right(r.bx, bar_index)
+            line.set_x2(r.ce, bar_index)
+            if dead or at16
+                r.live := false
+            if dead
+                color c = r.bull ? colBull : colBear
+                box.set_bgcolor(r.bx, color.new(c, 92))
+                box.set_border_color(r.bx, color.new(c, 55))
+                box.set_border_style(r.bx, line.style_dotted)
+                line.set_color(r.ce, color.new(c, 70))
+                label.set_textcolor(r.lb, color.new(c, 45))
+
+    // ---- 2. is this candle an RB? (levels as they stood before it)
+    float bTop = math.max(open, close)
+    float bBot = math.min(open, close)
+    float rng  = high - low
+    float upW  = high - bTop
+    float dnW  = bBot - low
+    float body = bTop - bBot
+    bool bearShape = rng > 0 and upW >= wickPct / 100 * rng and upW >= body and upW > dnW and (na(atr) or upW >= wickAtr * atr)
+    bool bullShape = rng > 0 and dnW >= wickPct / 100 * rng and dnW >= body and dnW > upW and (na(atr) or dnW >= wickAtr * atr)
+    if bearShape or bullShape
+        bool bull = bullShape
+        array<string> hit = array.new<string>()
+        // newest key open first, so the label names the nearest one
+        if useKO and array.size(koP) > 0
+            for i = array.size(koP) - 1 to 0
+                float k = array.get(koP, i)
+                if bull ? low <= k and bBot > k : high >= k and bTop < k
+                    array.push(hit, array.get(koN, i))
+        if array.size(lqP) > 0
+            for i = 0 to array.size(lqP) - 1
+                float q = array.get(lqP, i)
+                if not array.get(lqX, i) and array.get(lqK, i) == (bull ? -1 : 1)
+                    if bull ? low < q and bBot > q : high > q and bTop < q
+                        array.push(hit, array.get(lqN, i))
+        if array.size(hit) > 0
+            float tip  = bull ? low : high
+            float edge = bull ? bBot : bTop
+            // a wick that stays inside a live RB of the same side is a retest of it
+            bool dup = false
+            for r in rbs
+                if r.live and r.bull == bull and (bull ? tip >= r.tip and tip <= r.edge : tip <= r.tip and tip >= r.edge)
+                    dup := true
+            if not dup
+                color c = bull ? colBull : colBear
+                string names = array.join(array.slice(hit, 0, math.min(2, array.size(hit))), "+")
+                float ce = (tip + edge) / 2
+                box bx = box.new(bar_index, math.max(tip, edge), bar_index + 1, math.min(tip, edge), border_color=color.new(c, 0), bgcolor=color.new(c, 75))
+                line cl = line.new(bar_index, ce, bar_index + 1, ce, color=color.new(c, 0), style=line.style_dotted)
+                string tt = (bull ? "Bullish" : "Bearish") + " rejection block\nRan: " + array.join(hit, ", ") + "\nZone: " + str.tostring(math.min(tip, edge), format.mintick) + " – " + str.tostring(math.max(tip, edge), format.mintick) + "\nCE (50%): " + str.tostring(ce, format.mintick) + "\nDead if a wick goes past " + str.tostring(tip, format.mintick)
+                label lb = label.new(bar_index, tip, (bull ? "▲ RB " : "▼ RB ") + names, style=bull ? label.style_label_up : label.style_label_down, color=color.new(color.black, 100), textcolor=c, size=size.small, tooltip=tt)
+                array.push(rbs, RB.new(bull, tip, edge, bx=bx, ce=cl, lb=lb))
+                if bull
+                    newBull := true
+                else
+                    newBear := true
+                if array.size(rbs) > keepN
+                    RB old = array.shift(rbs)
+                    box.delete(old.bx)
+                    line.delete(old.ce)
+                    label.delete(old.lb)
+
+    // ---- 3. this candle spends the one-sided levels it traded through
+    if array.size(lqP) > 0
+        for i = 0 to array.size(lqP) - 1
+            if not array.get(lqX, i)
+                float q = array.get(lqP, i)
+                if array.get(lqK, i) == 1 ? high > q : low < q
+                    array.set(lqX, i, true)
+
+    // ---- 4. new levels, usable from the next candle on
+    if useKO
+        string kn = mNow == 1080 ? "18:00" : mNow == 0 ? "00:00" : mNow == 120 ? "02:00" : mNow == 510 ? "08:30" : mNow == 570 ? "09:30" : mNow == 600 ? "10:00" : mNow == 810 ? "13:30" : ""
+        if kn != ""
+            array.push(koP, open)
+            array.push(koN, kn)
+    if useSes
+        if inAsia
+            aH := inAsia[1] ? math.max(aH, high) : high
+            aL := inAsia[1] ? math.min(aL, low) : low
+        else if inAsia[1]
+            addLiq(aH, "Asia H", 1)
+            addLiq(aL, "Asia L", -1)
+        if inLon
+            lH := inLon[1] ? math.max(lH, high) : high
+            lL := inLon[1] ? math.min(lL, low) : low
+        else if inLon[1]
+            addLiq(lH, "London H", 1)
+            addLiq(lL, "London L", -1)
+    if useSw
+        if not na(ph)
+            addLiq(ph, "Swing H", 1)
+        if not na(pl)
+            addLiq(pl, "Swing L", -1)
+
+alertcondition(newBull, "Bullish RB", "Bullish rejection block formed")
+alertcondition(newBear, "Bearish RB", "Bearish rejection block formed")
+alertcondition(tapBull, "Price tapped a bullish RB", "Price is back in a bullish rejection block")
+alertcondition(tapBear, "Price tapped a bearish RB", "Price is back in a bearish rejection block")
+
+// ========================= FIXED RANGE VOLUME PROFILE =========================
+// bars inside the range, gathered on their close
+var array<float> vH = array.new<float>()
+var array<float> vL = array.new<float>()
+var array<float> vV = array.new<float>()
+var int vT0 = na
+var int vT1 = na
+bool inRange = time >= vpStart and time <= vpEnd
+if vpOn and inRange and barstate.isconfirmed and not na(volume)
+    array.push(vH, high)
+    array.push(vL, low)
+    array.push(vV, volume)
+    vT0 := na(vT0) ? time : vT0
+    vT1 := time
+
+var array<box>   vpBoxes = array.new<box>()
+var array<line>  vpLines = array.new<line>()
+var array<label> vpLabels = array.new<label>()
+
+vpLine(float y, int t0, int t1, color c, int w, string txt) =>
+    array.push(vpLines, line.new(t0, y, t1, y, xloc=xloc.bar_time, color=c, width=w, extend=vpExtend ? extend.right : extend.none))
+    array.push(vpLabels, label.new(t1, y, txt + " " + str.tostring(y, format.mintick), xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.black, 100), textcolor=c, size=size.small))
+    true
+
+if vpOn and barstate.islast
+    for b in vpBoxes
+        box.delete(b)
+    for l in vpLines
+        line.delete(l)
+    for l in vpLabels
+        label.delete(l)
+    array.clear(vpBoxes)
+    array.clear(vpLines)
+    array.clear(vpLabels)
+    // the forming bar counts too while the range is still open
+    array<float> hs = array.copy(vH)
+    array<float> ls = array.copy(vL)
+    array<float> vs = array.copy(vV)
+    int t0 = vT0
+    int t1 = vT1
+    if not barstate.isconfirmed and inRange and not na(volume)
+        array.push(hs, high)
+        array.push(ls, low)
+        array.push(vs, volume)
+        t0 := na(t0) ? time : t0
+        t1 := time
+    int n = array.size(hs)
+    if n > 0
+        float hi = array.max(hs)
+        float lo = array.min(ls)
+        float step = (hi - lo) / vpRows
+        if step > 0
+            // each bar's volume is shared across the rows its range covers
+            array<float> rows = array.new<float>(vpRows, 0.0)
+            for i = 0 to n - 1
+                float bh = array.get(hs, i)
+                float bl = array.get(ls, i)
+                float bv = array.get(vs, i)
+                int r0 = math.max(0, math.min(vpRows - 1, int(math.floor((bl - lo) / step))))
+                int r1 = math.max(0, math.min(vpRows - 1, int(math.floor((bh - lo) / step))))
+                if bh <= bl
+                    array.set(rows, r0, array.get(rows, r0) + bv)
+                else
+                    for r = r0 to r1
+                        float ov = math.min(bh, lo + (r + 1) * step) - math.max(bl, lo + r * step)
+                        if ov > 0
+                            array.set(rows, r, array.get(rows, r) + bv * ov / (bh - bl))
+            float tot = array.sum(rows)
+            float mx  = array.max(rows)
+            int poc = array.indexof(rows, mx)
+            // value area: grow from the POC toward the heavier neighbour
+            int up = poc
+            int dn = poc
+            float acc = mx
+            while acc < tot * vpVaPct / 100 and (up < vpRows - 1 or dn > 0)
+                float vUp = up < vpRows - 1 ? array.get(rows, up + 1) : -1.0
+                float vDn = dn > 0 ? array.get(rows, dn - 1) : -1.0
+                if vUp >= vDn
+                    up += 1
+                    acc += vUp
+                else
+                    dn -= 1
+                    acc += vDn
+            int tEnd = math.max(t1, time)
+            int wMax = math.max(1, int((t1 - t0) * vpWidth / 100))
+            if mx > 0
+                for r = 0 to vpRows - 1
+                    float v = array.get(rows, r)
+                    if v > 0
+                        color c = r == poc ? colPoc : r >= dn and r <= up ? color.new(colVa, 45) : color.new(colRow, 65)
+                        int w = math.max(1, int(wMax * v / mx))
+                        array.push(vpBoxes, box.new(t0, lo + (r + 1) * step, t0 + w, lo + r * step, xloc=xloc.bar_time, border_color=color.new(color.black, 100), bgcolor=c))
+            vpLine(lo + (poc + 0.5) * step, t0, tEnd, colPoc, 2, "POC")
+            vpLine(lo + (up + 1) * step, t0, tEnd, color.new(colVa, 0), 1, "VAH")
+            vpLine(lo + dn * step, t0, tEnd, color.new(colVa, 0), 1, "VAL")
