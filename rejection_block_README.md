@@ -87,9 +87,19 @@ Pine Editor → paste `SaintTrades-RejectionBlock.pine` → **Save** → **Add t
 | Equal high/low tolerance / lookback | 4 ticks / 20 candles | The clean-tip check (wick theory). |
 | Require displacement before the first touch | off | With this on, an RB touched before it displaced is removed and never traded. |
 
-**5 · Visuals / 6 · Stats**: colours, CE line, how many RBs stay drawn (15), how many live RBs show entry/stop/TP lines (1), and the table position.
+**5 · Visuals / 6 · Stats** (the defaults keep the chart clean):
 
-Hover over any RB label for its zone, CE, stop, which filters passed, and its CISD level.
+| Input | Default | What it does |
+|---|---|---|
+| RB labels | Compact | **Compact** = direction, grade and ✓ once displaced, e.g. `▼ A ✓`. **Full** also lists the levels the wick ran, e.g. `▼ A ✓ · 10:00+PDH`. **Off** = no labels. |
+| Keep labels on finished RBs | off | An RB's label goes when its zone ends; the dimmed box stays. |
+| RBs kept on the chart | 8 | Older drawings go first. |
+| Entry / stop / TP lines | newest 1 live RB | Their prices sit at the right edge. |
+| Stats table | Compact | **Compact** = the three entries compared. **Full** adds the filter lab and grades. **Off** hides it. |
+
+Key-open times are written at the start of each dotted line, so the right edge is left for the entry, stop and target prices.
+
+Hover over any RB label for its zone, CE, stop, the levels it ran, which filters passed, and its CISD level.
 
 ## Reading the stats table
 
@@ -97,14 +107,14 @@ Hover over any RB label for its zone, CE, stop, which filters passed, and its CI
 |---|---|
 | Setups / Live | RBs whose three entries have all resolved / RBs still in play. |
 | Entry rows | For each entry: fills, fill %, then **→TP1** and **→TP2**. Each shows *average R per filled trade · win %*, with the whole position held to that target on the same stop. |
-| Filter lab | Fills of the selected entry (▶) where each filter held, whether or not you require it. Compare each row with **All fills**. A filter earns its place only if its row beats *All fills* on a decent sample. |
+| Filter lab (**Stats table = Full**) | Fills of the selected entry (▶) where each filter held, whether or not you require it. Compare each row with **All fills**. A filter earns its place only if its row beats *All fills* on a decent sample. |
 
 Judge by **average R**, not win rate. A 60% TP1 hit rate can still lose money.
 
 ## How to find what's accurate on your market
 
 1. Run it on NQ1! 5m (or 1m with 5m RBs) over as much history as your plan loads.
-2. In the filter lab, find the rows with positive average R and **at least ~100 fills**. Ignore smaller rows; they are noise.
+2. Set **Stats table** to Full. In the filter lab, find the rows with positive average R and **at least ~100 fills**. Ignore smaller rows; they are noise.
 3. Turn on only those filters, then check the result on a *different* date range than the one you chose them on (out of sample).
 4. Pick the entry type from the entry rows. CE gives better R but fills less often. Body-edge fills almost every time at a worse price. CISD fills least but confirms first.
 5. Repaint check: leave it running through a live session, screenshot, reload, compare. Finished RBs must not move.
@@ -168,9 +178,9 @@ A diff against the indicator shows only the order handling, inputs, table and he
 | Daily loss limit (R) | −2 | Stops new orders for the day. 0 = off. |
 | Sizing | Fixed, 0 = auto | Auto = 2 contracts on micros (MNQ), 1 on full-size (NQ). **Risk %** sizes from the stop; an RB that can't carry 1 contract is skipped. |
 
-**Strategy table:** setups drawn, orders placed, fills, closed trades, win rate, TP1 hit rate, expectancy, net R, profit factor, longest losing streak, today, and results by grade. R comes from the broker's fills after costs: (points × contracts − costs) / (planned risk × contracts).
+**Strategy table:** Compact shows closed trades, win rate, expectancy, net R, profit factor and the longest losing streak. Full adds setups drawn, orders placed, fills, TP1 hit rate, today, and results by grade. R comes from the broker's fills after costs: (points × contracts − costs) / (planned risk × contracts).
 
-Hover over a label to see why an RB wasn't traded. Traded RBs show their result, e.g. `▼ RB A ✓ · PDH · +1.32R`.
+On the chart, only RBs the strategy traded stay drawn. Each keeps its label with the result, e.g. `▼ A ✓ · +1.32R`, and the Tester's own markers show `Long +2`, `TP1 −1`, `BE −1`, `TP2 −1` or `16:00`. Turn on **Show RBs that weren't traded** to keep the others dimmed; hovering one of their labels says why it wasn't traded (in a trade, daily cap, touched first...).
 
 ### Validating in the Strategy Tester
 
