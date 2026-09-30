@@ -227,10 +227,12 @@ colEnt  = input.color(#2962ff, "Entry", inline="c3", group=G_VIS)
 colSl   = input.color(#ef5350, "Stop", inline="c3", group=G_VIS)
 colTp   = input.color(#26a69a, "Targets", inline="c3", group=G_VIS)
 showCE  = input.bool(true, "CE (50%) line", group=G_VIS)
-maxKeep = input.int(15, "RBs kept on the chart", minval=1, maxval=100, tooltip="Older drawings are deleted first. RBs still in play keep being tracked for the stats after their drawings go.", group=G_VIS)
+lblMode = input.string("Compact", "RB labels", options=["Compact", "Full", "Off"], tooltip="Compact = direction, grade and ✓ once displaced, e.g. ▼ A ✓. Full also lists the levels the wick ran. Hover a label for the zone, CE, stop and filters.", group=G_VIS)
+keepLbl = input.bool(false, "Keep labels on finished RBs", tooltip="Off: an RB's label goes when its zone ends (tip taken, expired or done); the dimmed box stays.", group=G_VIS)
+maxKeep = input.int(8, "RBs kept on the chart", minval=1, maxval=100, tooltip="Older drawings are deleted first. RBs still in play keep being tracked for the stats after their drawings go.", group=G_VIS)
 lvlN    = input.int(1, "Entry / stop / TP lines for the newest N live RBs", minval=0, maxval=5, group=G_VIS)
 
-showStats = input.bool(true, "Show stats table", group=G_ST)
+tblMode   = input.string("Compact", "Stats table", options=["Compact", "Full", "Off"], tooltip="Compact = the three entries compared. Full adds the filter lab and the grade rows.", group=G_ST)
 statsPos  = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Middle Right"], group=G_ST)
 
 // ============================= CONSTANTS =====================================
@@ -251,6 +253,8 @@ if useAgg and timeframe.in_seconds(rbTf) < timeframe.in_seconds()
     runtime.error("The RB timeframe must be at or above the chart timeframe.")
 
 invWick = invMode == "Wick past tip (Powell)"
+showStats = tblMode != "Off"
+fullTbl   = tblMode == "Full"
 // TradingView refuses drawings anchored ~10,000 bars back; RBs this old expire (A6)
 MAX_AGE = 4500
 selIdx  = entrySel == "CE limit" ? 0 : entrySel == "Body-edge limit" ? 1 : 2
@@ -360,7 +364,7 @@ addLvl(float p, string n, int k, int tier, int bt, int d) =>
     if k == 0 ? drawKO : drawLiq
         color c = k == 0 ? colKO : colLiq
         lv.ln := line.new(bar_index, p, bar_index + 1, p, color=color.new(c, 30), style=k == 0 ? line.style_dotted : line.style_dashed, width=1)
-        lv.lb := label.new(bar_index + 1, p, n, color=color.new(color.black, 100), style=label.style_label_left, textcolor=c, size=size.tiny)
+        lv.lb := label.new(bar_index, p, n, color=color.new(color.black, 100), style=label.style_label_lower_left, textcolor=c, size=size.tiny)
     array.push(lvls, lv)
     true
 
@@ -570,7 +574,12 @@ yes(bool b) =>
     b ? "✓" : "✗"
 
 tagText(RB r) =>
-    (r.bull ? "▲ RB " : "▼ RB ") + r.grade + (r.disp ? " ✓" : "") + " · " + r.names
+    string t = (r.bull ? "▲ " : "▼ ") + r.grade + (r.disp ? " ✓" : "")
+    lblMode == "Full" ? t + " · " + r.names : t
+
+// whether an RB keeps its label once its zone has ended
+keepTag(RB r) =>
+    keepLbl
 
 tagTip(RB r) =>
     (r.bull ? "Bullish" : "Bearish") + " rejection block, grade " + r.grade + "\nRan: " + r.names + "\nZone: " + str.tostring(math.min(r.tip, r.edge), format.mintick) + " – " + str.tostring(math.max(r.tip, r.edge), format.mintick) + "\nCE: " + str.tostring(r.ce, format.mintick) + "   Stop: " + str.tostring(r.stop, format.mintick) + "\nKey level " + yes(r.fKey) + " · Killzone " + yes(r.fKz) + " · P/D " + yes(r.fPd) + " · Bias " + yes(r.fBias) + " · Clean tip " + yes(r.fClean) + "\nCISD: " + (r.disp ? "printed" : "waiting") + " at " + str.tostring(r.cisdLvl, format.mintick)
@@ -580,13 +589,17 @@ drawNew(RB r) =>
     r.bx := box.new(left=r.formBar, top=math.max(r.tip, r.edge), right=bar_index, bottom=math.min(r.tip, r.edge), border_color=color.new(c, 30), border_style=r.disp ? line.style_solid : line.style_dashed, bgcolor=color.new(c, 85))
     if showCE
         r.ceLn := line.new(r.formBar, r.ce, bar_index, r.ce, color=color.new(c, 20), style=line.style_dotted, width=1)
-    r.tag := label.new(r.formBar, r.tip, tagText(r), color=color.new(color.black, 100), style=r.bull ? label.style_label_up : label.style_label_down, textcolor=c, size=size.tiny, tooltip=tagTip(r))
+    if lblMode != "Off"
+        r.tag := label.new(r.formBar, r.tip, tagText(r), color=color.new(color.black, 100), style=r.bull ? label.style_label_up : label.style_label_down, textcolor=c, size=size.tiny, tooltip=tagTip(r))
     true
 
 // the zone has stopped being live: freeze and dim its drawings
 endZone(RB r) =>
     r.zoneDone := true
     color c = r.bull ? colBull : colBear
+    if not keepTag(r)
+        label.delete(r.tag)
+        r.tag := na
     if not na(r.bx)
         box.set_right(r.bx, bar_index)
         box.set_bgcolor(r.bx, color.new(c, 94))
@@ -646,6 +659,7 @@ finalize(float o, float h, float l, float c, int cT, int b0, bool late) =>
                     r.dispFirst := not r.tapped
                     if not na(r.bx)
                         box.set_border_style(r.bx, line.style_solid)
+                    if not na(r.tag)
                         label.set_text(r.tag, tagText(r))
                         label.set_tooltip(r.tag, tagTip(r))
                     if r.dispFirst
@@ -1009,11 +1023,12 @@ if barstate.isconfirmed
                 if bar_index - lv.bornBar > MAX_AGE
                     line.set_x1(lv.ln, bar_index - MAX_AGE)
                 line.set_x2(lv.ln, bar_index)
-                label.set_x(lv.lb, bar_index)
 
-    // ---- entry / stop / TP lines for the newest live RBs; prune old drawings
+    // ---- entry / stop / TP lines for the newest live RBs; only the newest maxKeep RBs
+    // that are still drawn keep their drawings, and finished RBs with none are dropped
     int liveShown = 0
     int kept = 0
+    int total = 0
     if array.size(rbs) > 0
         for i = array.size(rbs) - 1 to 0
             RB r = array.get(rbs, i)
@@ -1023,11 +1038,13 @@ if barstate.isconfirmed
                 drawTrade(r)
             else
                 clearTrade(r)
-            kept += 1
-            if kept > maxKeep
-                deleteDrawings(r)
-                if r.resolved or kept > 300
-                    array.remove(rbs, i)
+            if not na(r.bx)
+                kept += 1
+                if kept > maxKeep
+                    deleteDrawings(r)
+            total += 1
+            if na(r.bx) and (r.resolved or total > 300)
+                array.remove(rbs, i)
 
 // ============================== ALERTS =======================================
 alertcondition(aNewBull, "Bullish RB formed", "Bullish rejection block formed")
@@ -1084,20 +1101,21 @@ if barstate.islast and showStats
         table.cell(stat, 3, 2 + m, fR(s1, array.get(eW1, m), n), bgcolor=rowBg, text_color=n > 0 ? (s1 > 0 ? colBull : colBear) : txt, text_size=size.small)
         table.cell(stat, 4, 2 + m, fR(s2, array.get(eW2, m), n), bgcolor=rowBg, text_color=n > 0 ? (s2 > 0 ? colBull : colBear) : txt, text_size=size.small)
 
-    table.cell(stat, 0, 5, "Filter lab (▶)", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Fills of the selected entry (▶) where each filter held, whether or not it is required. Compare a row with All fills to see what that filter alone would change.")
-    table.cell(stat, 1, 5, "N", bgcolor=hdrBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 2, 5, "Keep%", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Share of all fills this filter keeps.")
-    table.cell(stat, 3, 5, "→TP1", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip=tipTp)
-    table.cell(stat, 4, 5, "→TP2", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip=tipTp)
-    array<string> lNames = array.from("All fills", "Key level", "Killzone", "Premium/discount", "Daily bias", "Clean tip", "CISD first", "Grade A+", "Grade A", "Grade B", "Grade C")
-    array<bool>   lReq   = array.from(false, reqKey, reqKz, reqPd, reqBias, reqClean, reqDisp, false, false, false, false)
-    int allN = array.get(lN, 0)
-    for k = 0 to LAB_N - 1
-        int n = array.get(lN, k)
-        float s1 = array.get(lS1, k)
-        float s2 = array.get(lS2, k)
-        table.cell(stat, 0, 6 + k, array.get(lNames, k) + (array.get(lReq, k) ? " (req)" : ""), bgcolor=rowBg, text_color=txt, text_size=size.small)
-        table.cell(stat, 1, 6 + k, str.tostring(n), bgcolor=rowBg, text_color=txt, text_size=size.small)
-        table.cell(stat, 2, 6 + k, f_pct(n, allN), bgcolor=rowBg, text_color=txt, text_size=size.small)
-        table.cell(stat, 3, 6 + k, fR(s1, array.get(lW1, k), n), bgcolor=rowBg, text_color=n > 0 ? (s1 > 0 ? colBull : colBear) : txt, text_size=size.small)
-        table.cell(stat, 4, 6 + k, fR(s2, array.get(lW2, k), n), bgcolor=rowBg, text_color=n > 0 ? (s2 > 0 ? colBull : colBear) : txt, text_size=size.small)
+    if fullTbl
+        table.cell(stat, 0, 5, "Filter lab (▶)", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Fills of the selected entry (▶) where each filter held, whether or not it is required. Compare a row with All fills to see what that filter alone would change.")
+        table.cell(stat, 1, 5, "N", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, 5, "Keep%", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Share of all fills this filter keeps.")
+        table.cell(stat, 3, 5, "→TP1", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip=tipTp)
+        table.cell(stat, 4, 5, "→TP2", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip=tipTp)
+        array<string> lNames = array.from("All fills", "Key level", "Killzone", "Premium/discount", "Daily bias", "Clean tip", "CISD first", "Grade A+", "Grade A", "Grade B", "Grade C")
+        array<bool>   lReq   = array.from(false, reqKey, reqKz, reqPd, reqBias, reqClean, reqDisp, false, false, false, false)
+        int allN = array.get(lN, 0)
+        for k = 0 to LAB_N - 1
+            int n = array.get(lN, k)
+            float s1 = array.get(lS1, k)
+            float s2 = array.get(lS2, k)
+            table.cell(stat, 0, 6 + k, array.get(lNames, k) + (array.get(lReq, k) ? " (req)" : ""), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 1, 6 + k, str.tostring(n), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 2, 6 + k, f_pct(n, allN), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 3, 6 + k, fR(s1, array.get(lW1, k), n), bgcolor=rowBg, text_color=n > 0 ? (s1 > 0 ? colBull : colBear) : txt, text_size=size.small)
+            table.cell(stat, 4, 6 + k, fR(s2, array.get(lW2, k), n), bgcolor=rowBg, text_color=n > 0 ? (s2 > 0 ? colBull : colBear) : txt, text_size=size.small)

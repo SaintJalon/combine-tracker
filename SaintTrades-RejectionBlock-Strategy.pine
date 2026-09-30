@@ -250,10 +250,13 @@ colEnt  = input.color(#2962ff, "Entry", inline="c3", group=G_VIS)
 colSl   = input.color(#ef5350, "Stop", inline="c3", group=G_VIS)
 colTp   = input.color(#26a69a, "Targets", inline="c3", group=G_VIS)
 showCE  = input.bool(true, "CE (50%) line", group=G_VIS)
-maxKeep = input.int(15, "RBs kept on the chart", minval=1, maxval=100, tooltip="Older drawings are deleted first. RBs still in play keep being tracked for the stats after their drawings go.", group=G_VIS)
+lblMode = input.string("Compact", "RB labels", options=["Compact", "Full", "Off"], tooltip="Compact = direction, grade and ✓ once displaced, e.g. ▼ A ✓. Full also lists the levels the wick ran. Hover a label for the zone, CE, stop and filters.", group=G_VIS)
+keepLbl = input.bool(false, "Keep labels on finished RBs", tooltip="Off: an RB's label goes when its zone ends (tip taken, expired or done); the dimmed box stays. RBs that were traded always keep theirs, with the result.", group=G_VIS)
+showSkip = input.bool(false, "Show RBs that weren't traded", tooltip="Off: an RB the strategy doesn't trade (in a trade, daily cap, touched first...) is removed from the chart. On: it stays dimmed, and its label's tooltip says why.", group=G_VIS)
+maxKeep = input.int(8, "RBs kept on the chart", minval=1, maxval=100, tooltip="Older drawings are deleted first. RBs still in play keep being tracked for the stats after their drawings go.", group=G_VIS)
 lvlN    = input.int(1, "Entry / stop / TP lines for the newest N live RBs", minval=0, maxval=5, group=G_VIS)
 
-showStats = input.bool(true, "Show stats table", group=G_ST)
+tblMode   = input.string("Compact", "Stats table", options=["Compact", "Full", "Off"], tooltip="Compact = closed trades, win rate, expectancy, net R, profit factor and losing streak. Full adds orders, fills, TP1 hits, today and the grade rows.", group=G_ST)
 statsPos  = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Middle Right"], group=G_ST)
 
 // ============================= CONSTANTS =====================================
@@ -274,6 +277,8 @@ if useAgg and timeframe.in_seconds(rbTf) < timeframe.in_seconds()
     runtime.error("The RB timeframe must be at or above the chart timeframe.")
 
 invWick = invMode == "Wick past tip (Powell)"
+showStats = tblMode != "Off"
+fullTbl   = tblMode == "Full"
 // TradingView refuses drawings anchored ~10,000 bars back; RBs this old expire (A6)
 MAX_AGE = 4500
 selIdx  = entrySel == "CE limit" ? 0 : entrySel == "Body-edge limit" ? 1 : 2
@@ -372,7 +377,7 @@ addLvl(float p, string n, int k, int tier, int bt, int d) =>
     if k == 0 ? drawKO : drawLiq
         color c = k == 0 ? colKO : colLiq
         lv.ln := line.new(bar_index, p, bar_index + 1, p, color=color.new(c, 30), style=k == 0 ? line.style_dotted : line.style_dashed, width=1)
-        lv.lb := label.new(bar_index + 1, p, n, color=color.new(color.black, 100), style=label.style_label_left, textcolor=c, size=size.tiny)
+        lv.lb := label.new(bar_index, p, n, color=color.new(color.black, 100), style=label.style_label_lower_left, textcolor=c, size=size.tiny)
     array.push(lvls, lv)
     true
 
@@ -534,7 +539,12 @@ yes(bool b) =>
     b ? "✓" : "✗"
 
 tagText(RB r) =>
-    (r.bull ? "▲ RB " : "▼ RB ") + r.grade + (r.disp ? " ✓" : "") + " · " + r.names
+    string t = (r.bull ? "▲ " : "▼ ") + r.grade + (r.disp ? " ✓" : "")
+    lblMode == "Full" ? t + " · " + r.names : t
+
+// whether an RB keeps its label once its zone has ended
+keepTag(RB r) =>
+    keepLbl or (r.bs >= 1 and r.bs <= 3)
 
 tagTip(RB r) =>
     (r.bull ? "Bullish" : "Bearish") + " rejection block, grade " + r.grade + "\nRan: " + r.names + "\nZone: " + str.tostring(math.min(r.tip, r.edge), format.mintick) + " – " + str.tostring(math.max(r.tip, r.edge), format.mintick) + "\nCE: " + str.tostring(r.ce, format.mintick) + "   Stop: " + str.tostring(r.stop, format.mintick) + "\nKey level " + yes(r.fKey) + " · Killzone " + yes(r.fKz) + " · P/D " + yes(r.fPd) + " · Bias " + yes(r.fBias) + " · Clean tip " + yes(r.fClean) + "\nCISD: " + (r.disp ? "printed" : "waiting") + " at " + str.tostring(r.cisdLvl, format.mintick)
@@ -544,13 +554,17 @@ drawNew(RB r) =>
     r.bx := box.new(left=r.formBar, top=math.max(r.tip, r.edge), right=bar_index, bottom=math.min(r.tip, r.edge), border_color=color.new(c, 30), border_style=r.disp ? line.style_solid : line.style_dashed, bgcolor=color.new(c, 85))
     if showCE
         r.ceLn := line.new(r.formBar, r.ce, bar_index, r.ce, color=color.new(c, 20), style=line.style_dotted, width=1)
-    r.tag := label.new(r.formBar, r.tip, tagText(r), color=color.new(color.black, 100), style=r.bull ? label.style_label_up : label.style_label_down, textcolor=c, size=size.tiny, tooltip=tagTip(r))
+    if lblMode != "Off"
+        r.tag := label.new(r.formBar, r.tip, tagText(r), color=color.new(color.black, 100), style=r.bull ? label.style_label_up : label.style_label_down, textcolor=c, size=size.tiny, tooltip=tagTip(r))
     true
 
 // the zone has stopped being live: freeze and dim its drawings
 endZone(RB r) =>
     r.zoneDone := true
     color c = r.bull ? colBull : colBear
+    if not keepTag(r)
+        label.delete(r.tag)
+        r.tag := na
     if not na(r.bx)
         box.set_right(r.bx, bar_index)
         box.set_bgcolor(r.bx, color.new(c, 94))
@@ -577,6 +591,7 @@ finalize(float o, float h, float l, float c, int cT, int b0, bool late) =>
                     r.dispFirst := not r.tapped
                     if not na(r.bx)
                         box.set_border_style(r.bx, line.style_solid)
+                    if not na(r.tag)
                         label.set_text(r.tag, tagText(r))
                         label.set_tooltip(r.tag, tagTip(r))
                     if r.dispFirst
@@ -784,6 +799,8 @@ skipRB(RB r, string why) =>
         label.set_tooltip(r.tag, tagTip(r) + "\nNot traded: " + why)
     if not r.zoneDone
         endZone(r)
+    if not showSkip
+        deleteDrawings(r)
     true
 
 lossHit() =>
@@ -815,9 +832,9 @@ placeOrder(RB r) =>
         r.placeBar := bar_index
         string oca = "RB" + str.tostring(st.grp)
         if mkt
-            strategy.entry(r.oid, r.bull ? strategy.long : strategy.short, qty=qty, oca_name=oca, oca_type=strategy.oca.cancel, comment=(r.bull ? "Long " : "Short ") + r.grade + " mkt")
+            strategy.entry(r.oid, r.bull ? strategy.long : strategy.short, qty=qty, oca_name=oca, oca_type=strategy.oca.cancel, comment=r.bull ? "Long" : "Short")
         else
-            strategy.entry(r.oid, r.bull ? strategy.long : strategy.short, qty=qty, limit=t.entry, oca_name=oca, oca_type=strategy.oca.cancel, comment=(r.bull ? "Long " : "Short ") + r.grade + " lmt")
+            strategy.entry(r.oid, r.bull ? strategy.long : strategy.short, qty=qty, limit=t.entry, oca_name=oca, oca_type=strategy.oca.cancel, comment=r.bull ? "Long" : "Short")
         bracket(r, t.stop)
         alert((r.bull ? "Long" : "Short") + " RB " + (mkt ? "market order" : "limit") + (mkt ? "" : " @ " + str.tostring(t.entry, format.mintick)) + "  SL " + str.tostring(t.stop, format.mintick) + "  TP1 " + str.tostring(t.tp1, format.mintick) + "  TP2 " + str.tostring(t.tp2, format.mintick) + "  qty " + str.tostring(qty), alert.freq_once_per_bar_close)
     true
@@ -889,7 +906,7 @@ stepPos(RB r) =>
         closedNow := true
     else if flatNow and not r.eodOut
         r.eodOut := true
-        strategy.close(r.oid, comment="16:00 flat")
+        strategy.close(r.oid, comment="16:00")
     closedNow
 
 // ============================== ENGINE =======================================
@@ -1140,11 +1157,12 @@ if barstate.isconfirmed
                 if bar_index - lv.bornBar > MAX_AGE
                     line.set_x1(lv.ln, bar_index - MAX_AGE)
                 line.set_x2(lv.ln, bar_index)
-                label.set_x(lv.lb, bar_index)
 
-    // ---- entry / stop / TP lines for the newest live RBs; prune old drawings
+    // ---- entry / stop / TP lines for the newest live RBs; only the newest maxKeep RBs
+    // that are still drawn keep their drawings, and finished RBs with none are dropped
     int liveShown = 0
     int kept = 0
+    int total = 0
     if array.size(rbs) > 0
         for i = array.size(rbs) - 1 to 0
             RB r = array.get(rbs, i)
@@ -1154,11 +1172,13 @@ if barstate.isconfirmed
                 drawTrade(r)
             else
                 clearTrade(r)
-            kept += 1
-            if kept > maxKeep
-                deleteDrawings(r)
-                if r.resolved or (kept > 300 and r.bs == 0)
-                    array.remove(rbs, i)
+            if not na(r.bx)
+                kept += 1
+                if kept > maxKeep
+                    deleteDrawings(r)
+            total += 1
+            if na(r.bx) and (r.resolved or (total > 300 and r.bs == 0))
+                array.remove(rbs, i)
 
 
 // ============================ STATS TABLE ====================================
@@ -1185,13 +1205,19 @@ if barstate.islast and showStats
     array<string> v = array.from(str.tostring(st.setups), str.tostring(st.placed), str.tostring(st.filled) + " (" + f_pct(st.filled, st.placed) + ")", str.tostring(st.closed), f_pct(st.wins, st.closed), f_pct(st.hit1, st.closed), na(expc) ? "-" : (expc >= 0 ? "+" : "") + str.tostring(expc, "0.00") + "R", (st.sumR >= 0 ? "+" : "") + str.tostring(st.sumR, "0.00") + "R", pf, str.tostring(st.maxStreak), str.tostring(st.dayN) + " · " + (st.dayR >= 0 ? "+" : "") + str.tostring(st.dayR, "0.00") + "R")
     table.cell(stat, 0, 0, "RB strategy · " + entrySel, bgcolor=hdrBg, text_color=txt, text_size=size.small)
     table.cell(stat, 1, 0, "RB " + (rbTfIn == "Chart" ? timeframe.period : rbTfIn), bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    // Compact: closed trades, win rate, expectancy, net R, profit factor, losing streak
+    array<bool> compact = array.from(false, false, false, true, true, false, true, true, true, true, false)
+    int row = 1
     for i = 0 to array.size(k) - 1
-        color vc = i == 6 or i == 7 ? (st.sumR > 0 ? colBull : st.sumR < 0 ? colBear : txt) : txt
-        table.cell(stat, 0, 1 + i, array.get(k, i), bgcolor=rowBg, text_color=txt, text_size=size.small, tooltip=i == 6 ? "Average R per closed trade, after costs. The number that matters." : "")
-        table.cell(stat, 1, 1 + i, array.get(v, i), bgcolor=rowBg, text_color=vc, text_size=size.small)
-    array<string> gNames = array.from("Grade A+", "Grade A", "Grade B", "Grade C")
-    for g = 0 to 3
-        int n = array.get(gN, g)
-        float s = array.get(gS, g)
-        table.cell(stat, 0, 12 + g, array.get(gNames, g), bgcolor=rowBg, text_color=txt, text_size=size.small)
-        table.cell(stat, 1, 12 + g, str.tostring(n) + " · " + fR(s, array.get(gW, g), n), bgcolor=rowBg, text_color=n > 0 ? (s > 0 ? colBull : colBear) : txt, text_size=size.small)
+        if fullTbl or array.get(compact, i)
+            color vc = i == 6 or i == 7 ? (st.sumR > 0 ? colBull : st.sumR < 0 ? colBear : txt) : txt
+            table.cell(stat, 0, row, array.get(k, i), bgcolor=rowBg, text_color=txt, text_size=size.small, tooltip=i == 6 ? "Average R per closed trade, after costs. The number that matters." : "")
+            table.cell(stat, 1, row, array.get(v, i), bgcolor=rowBg, text_color=vc, text_size=size.small)
+            row += 1
+    if fullTbl
+        array<string> gNames = array.from("Grade A+", "Grade A", "Grade B", "Grade C")
+        for g = 0 to 3
+            int n = array.get(gN, g)
+            float s = array.get(gS, g)
+            table.cell(stat, 0, row + g, array.get(gNames, g), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 1, row + g, str.tostring(n) + " · " + fR(s, array.get(gW, g), n), bgcolor=rowBg, text_color=n > 0 ? (s > 0 ? colBull : colBear) : txt, text_size=size.small)
