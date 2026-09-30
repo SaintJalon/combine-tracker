@@ -171,6 +171,7 @@ type RB
     bool   dropped   = false
     bool   resolved  = false
     bool   zoneDone  = false
+    string resTxt    = ""      // the selected entry's result, shown on the label once it's done
     int    score
     string grade
     bool   fKey   = false
@@ -272,7 +273,7 @@ colSl   = input.color(#ef5350, "Stop", inline="c3", group=G_VIS)
 colTp   = input.color(#26a69a, "Targets", inline="c3", group=G_VIS)
 showCE  = input.bool(true, "CE (50%) line", group=G_VIS)
 lblMode = input.string("Compact", "RB labels", options=["Compact", "Full", "Off"], tooltip="Compact = direction, grade and ✓ once displaced, e.g. ▼ A ✓. Full also lists the levels the wick ran. Hover a label for the zone, CE, stop and filters.", group=G_VIS)
-keepLbl = input.bool(false, "Keep labels on finished RBs", tooltip="Off: an RB's label goes when its zone ends (tip taken, expired or done); the dimmed box stays.", group=G_VIS)
+keepLbl = input.bool(true, "Keep labels on finished RBs", tooltip="On: a finished RB keeps its label, with the selected entry's result held to TP2 (e.g. ▼ B · +2.0R, -1.0R, no fill). Off: the label goes when the zone ends; the dotted box stays.", group=G_VIS)
 maxKeep = input.int(8, "RBs kept on the chart", minval=1, maxval=100, tooltip="Older drawings are deleted first. RBs still in play keep being tracked for the stats after their drawings go.", group=G_VIS)
 lvlN    = input.int(1, "Entry / stop / TP lines for the newest N live RBs", minval=0, maxval=5, group=G_VIS)
 
@@ -665,7 +666,8 @@ yes(bool b) =>
 
 tagText(RB r) =>
     string t = (r.bull ? "▲ " : "▼ ") + r.grade + (r.disp ? " ✓" : "")
-    lblMode == "Full" ? t + " · " + r.names : t
+    t := lblMode == "Full" ? t + " · " + r.names : t
+    r.resTxt == "" ? t : t + " · " + r.resTxt
 
 // whether an RB keeps its label once its zone has ended
 keepTag(RB r) =>
@@ -690,13 +692,16 @@ endZone(RB r) =>
     if not keepTag(r)
         label.delete(r.tag)
         r.tag := na
+    if not na(r.tag)
+        label.set_textcolor(r.tag, color.new(c, 25))
     if not na(r.bx)
         box.set_right(r.bx, bar_index)
-        box.set_bgcolor(r.bx, color.new(c, 94))
-        box.set_border_color(r.bx, color.new(c, 70))
+        box.set_bgcolor(r.bx, color.new(c, 90))
+        box.set_border_color(r.bx, color.new(c, 40))
+        box.set_border_style(r.bx, line.style_dotted)
     if not na(r.ceLn)
         line.set_x2(r.ceLn, bar_index)
-        line.set_color(r.ceLn, color.new(c, 70))
+        line.set_color(r.ceLn, color.new(c, 50))
     true
 
 // A7: add a resolved RB to the stats
@@ -1103,6 +1108,12 @@ if barstate.isconfirmed
                     if invNow and selLive and not tsI.filled
                         aInval := true
                         alert((r.bull ? "Bullish" : "Bearish") + " RB invalidated (tip " + str.tostring(r.tip, format.mintick) + " taken)", alert.freq_once_per_bar_close)
+                    Trade tsD = selTrade(r)
+                    if r.resTxt == "" and isDone(tsD)
+                        r.resTxt := not tsD.filled ? "no fill" : (tsD.r2 >= 0 ? "+" : "") + str.tostring(tsD.r2, "0.0") + "R"
+                        if not na(r.tag)
+                            label.set_text(r.tag, tagText(r))
+                            label.set_tooltip(r.tag, tagTip(r) + "\nResult (" + entrySel + ", held to TP2 on the same stop): " + r.resTxt)
                     if deadNow and not r.zoneDone
                         endZone(r)
                     if isDone(r.t0) and isDone(r.t1) and isDone(r.t2)
@@ -1248,7 +1259,8 @@ if barstate.islast and showStats
     table.cell(stat, 1, 1, bNow == 1 ? "▲ Bull" : bNow == -1 ? "▼ Bear" : "– None", bgcolor=rowBg, text_color=bNow == 1 ? colBull : bNow == -1 ? colBear : txt, text_size=size.small)
     table.cell(stat, 2, 1, "SMT", bgcolor=rowBg, text_color=txt, text_size=size.small)
     table.cell(stat, 3, 1, smtTx, bgcolor=rowBg, text_color=txt, text_size=size.small)
-    table.cell(stat, 4, 1, "", bgcolor=rowBg, text_color=txt, text_size=size.small)
+    string tfTip = "The RB timeframe is the chart timeframe, so fills are judged on the same candles: a candle that reaches the entry and then the stop counts as a loss even when the target came first. For fair stats, use a lower chart timeframe, e.g. a 1m chart with RB timeframe 5m."
+    table.cell(stat, 4, 1, useAgg ? "" : "⚠ use a lower chart TF", bgcolor=rowBg, text_color=useAgg ? txt : colBear, text_size=size.small, tooltip=useAgg ? "" : tfTip)
 
     table.cell(stat, 0, 2, "Entry", bgcolor=hdrBg, text_color=txt, text_size=size.small)
     table.cell(stat, 1, 2, "Fills", bgcolor=hdrBg, text_color=txt, text_size=size.small)

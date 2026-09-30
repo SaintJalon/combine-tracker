@@ -114,7 +114,7 @@ Pine Editor → paste `SaintTrades-RejectionBlock.pine` → **Save** → **Add t
 | Input | Default | What it does |
 |---|---|---|
 | RB labels | Compact | **Compact** = direction, grade and ✓ once displaced, e.g. `▼ A ✓`. **Full** also lists the levels the wick ran, e.g. `▼ A ✓ · 10:00+PDH`. **Off** = no labels. |
-| Keep labels on finished RBs | off | An RB's label goes when its zone ends; the dimmed box stays. |
+| Keep labels on finished RBs | on | A finished RB keeps its label with the selected entry's result held to TP2, e.g. `▼ B · +2.0R`, `-1.0R` or `no fill`. Its box turns dotted and lighter. Off = the label goes and the dotted box stays. |
 | RBs kept on the chart | 8 | Older drawings go first. |
 | Entry / stop / TP lines | newest 1 live RB | Their prices sit at the right edge. |
 | Stats table | Compact | **Compact** = the three entries compared. **Full** adds the filter lab and grades. **Off** hides it. |
@@ -128,7 +128,7 @@ Hover over any RB label for its zone, CE, stop, the levels it ran, which filters
 | Section | Meaning |
 |---|---|
 | Setups / Live | RBs whose three entries have all resolved / RBs still in play. |
-| Bias / SMT | Today's daily bias (▲ Bull, ▼ Bear, – None) and the SMT partner. "no data" means the partner symbol returned nothing on your plan, so SMT never holds. |
+| Bias / SMT | Today's daily bias (▲ Bull, ▼ Bear, – None) and the SMT partner. "no data" means the partner symbol returned nothing on your plan, so SMT never holds. **⚠ use a lower chart TF** appears when the RB timeframe is the chart timeframe. Fills are then judged on the RB candles themselves, and a candle that reaches the entry and then the stop counts as a loss even when the target came first, so the stats read low. |
 | Entry rows | For each entry: fills, fill %, then **→TP1** and **→TP2**. Each shows *average R per filled trade · win %*, with the whole position held to that target on the same stop. |
 | Filter lab (**Stats table = Full**) | Fills of the selected entry (▶) where each filter held, whether or not you require it: key level, killzone, premium/discount, daily bias, clean tip, SMT, closed with the rejection, CISD first, FVG first, and each grade. Compare each row with **All fills**. A filter earns its place only if its row beats *All fills* on a decent sample. |
 

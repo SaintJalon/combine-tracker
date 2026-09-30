@@ -117,6 +117,7 @@ type RB
     bool   dropped   = false
     bool   resolved  = false
     bool   zoneDone  = false
+    string resTxt    = ""      // the selected entry's result, shown on the label once it's done
     int    score
     string grade
     bool   fKey   = false
@@ -601,7 +602,8 @@ yes(bool b) =>
 
 tagText(RB r) =>
     string t = (r.bull ? "▲ " : "▼ ") + r.grade + (r.disp ? " ✓" : "")
-    lblMode == "Full" ? t + " · " + r.names : t
+    t := lblMode == "Full" ? t + " · " + r.names : t
+    r.resTxt == "" ? t : t + " · " + r.resTxt
 
 // whether an RB keeps its label once its zone has ended
 keepTag(RB r) =>
@@ -626,13 +628,16 @@ endZone(RB r) =>
     if not keepTag(r)
         label.delete(r.tag)
         r.tag := na
+    if not na(r.tag)
+        label.set_textcolor(r.tag, color.new(c, 25))
     if not na(r.bx)
         box.set_right(r.bx, bar_index)
-        box.set_bgcolor(r.bx, color.new(c, 94))
-        box.set_border_color(r.bx, color.new(c, 70))
+        box.set_bgcolor(r.bx, color.new(c, 90))
+        box.set_border_color(r.bx, color.new(c, 40))
+        box.set_border_style(r.bx, line.style_dotted)
     if not na(r.ceLn)
         line.set_x2(r.ceLn, bar_index)
-        line.set_color(r.ceLn, color.new(c, 70))
+        line.set_color(r.ceLn, color.new(c, 50))
     true
 
 // Finalize one closed RB-timeframe candle: displacement for live RBs (R8), then
