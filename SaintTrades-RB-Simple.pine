@@ -27,7 +27,8 @@
 // The volume profile covers the last NY session (09:30-16:00) by default,
 // live while the session runs. It can instead cover today since 18:00, or
 // two times you type in. Rows in the value area are brighter, the POC row is
-// gold. A small status line at the bottom right counts the RBs found.
+// gold. A status box at the top right counts the RBs found, and every RB
+// candle gets a small triangle.
 // =============================================================================
 indicator("SaintTrades Rejection Blocks + Volume Profile", "ST RB5", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
@@ -241,6 +242,10 @@ if barstate.isconfirmed
         if not na(pl)
             addLiq(pl, "Swing L", -1)
 
+// a marker on every RB candle, all the way back (plots aren't limited like boxes)
+plotshape(newBear, "Bearish RB candle", shape.triangledown, location.abovebar, colBear, size=size.tiny)
+plotshape(newBull, "Bullish RB candle", shape.triangleup, location.belowbar, colBull, size=size.tiny)
+
 alertcondition(newBull, "Bullish RB", "Bullish rejection block formed")
 alertcondition(newBear, "Bearish RB", "Bearish rejection block formed")
 alertcondition(tapBull, "Price tapped a bullish RB", "Price is back in a bullish rejection block")
@@ -358,8 +363,9 @@ if vpOn and barstate.islast
             vpLine(lo + dn * step, t0, tEnd, color.new(colVa, 0), 1, "VAL")
 
 // ============================== STATUS LINE ==================================
-var table stat = table.new(position.bottom_right, 1, 1)
+var table stat = table.new(position.top_right, 1, 1, bgcolor=color.new(#131722, 10), frame_color=color.new(#787b86, 0), frame_width=1)
 if barstate.islast
     string tfNote = timeframe.period != "5" ? " · built for the 5m chart" : ""
     string lastTxt = na(lastT) ? "" : " · last " + str.format_time(lastT, "MMM d HH:mm", NY)
-    table.cell(stat, 0, 0, "ST RB5 · " + str.tostring(found) + " RBs found" + lastTxt + tfNote, text_color=color.new(color.gray, 0), text_size=size.small)
+    string txt = found == 0 ? "ST RB5 running · no RBs found yet" : "ST RB5 · " + str.tostring(found) + " RBs found" + lastTxt
+    table.cell(stat, 0, 0, txt + tfNote, text_color=color.white, text_size=size.normal)
