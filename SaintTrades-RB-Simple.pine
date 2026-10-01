@@ -24,9 +24,10 @@
 //
 // Everything is decided on the candle's close, so nothing repaints.
 //
-// The volume profile covers the range you pick on the chart when you add the
-// indicator (drag the two time markers to move it). Rows in the value area
-// are brighter, the POC row is gold.
+// The volume profile covers the last NY session (09:30-16:00) by default,
+// live while the session runs. It can instead cover today since 18:00, or
+// two times you type in. Rows in the value area are brighter, the POC row is
+// gold. A small status line at the bottom right counts the RBs found.
 // =============================================================================
 indicator("SaintTrades Rejection Blocks + Volume Profile", "ST RB5", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
@@ -46,8 +47,9 @@ colBear = input.color(#ef5350, "Bearish", inline="c", group=G_RB)
 
 G_VP = "Fixed range volume profile"
 vpOn     = input.bool(true, "Show volume profile", group=G_VP)
-vpStart  = input.time(timestamp("2026-09-30T09:30:00-04:00"), "Range start", confirm=true, group=G_VP)
-vpEnd    = input.time(timestamp("2026-09-30T16:00:00-04:00"), "Range end", confirm=true, tooltip="A range that ends after the last bar runs to the last bar and updates live.", group=G_VP)
+vpMode   = input.string("Last NY session (09:30-16:00)", "Range", options=["Last NY session (09:30-16:00)", "Today since 18:00", "Custom times below"], group=G_VP)
+vpStart  = input.time(timestamp("2026-09-30T09:30:00-04:00"), "Custom start", group=G_VP)
+vpEnd    = input.time(timestamp("2026-09-30T16:00:00-04:00"), "Custom end", tooltip="Only used with Range = Custom times below. A range that ends after the last bar runs to the last bar and updates live.", group=G_VP)
 vpRows   = input.int(30, "Rows", minval=5, maxval=100, group=G_VP)
 vpVaPct  = input.float(70, "Value area %", minval=30, maxval=95, step=5, group=G_VP)
 vpWidth  = input.int(40, "Width (% of the range)", minval=5, maxval=100, group=G_VP)
@@ -86,6 +88,7 @@ var float lH = na
 var float lL = na
 bool inAsia = mNow >= 1200
 bool inLon  = mNow >= 120 and mNow < 300
+bool inNY   = mNow >= 570 and mNow < 960
 
 float atr = ta.atr(14)
 float ph  = ta.pivothigh(high, swLen, swLen)
@@ -103,6 +106,8 @@ type RB
     label lb
 
 var array<RB> rbs = array.new<RB>()
+var int found = 0
+var int lastT = na
 
 bool newBull = false
 bool newBear = false
@@ -191,6 +196,8 @@ if barstate.isconfirmed
                 string tt = (bull ? "Bullish" : "Bearish") + " rejection block\nRan: " + array.join(hit, ", ") + "\nZone: " + str.tostring(math.min(tip, edge), format.mintick) + " – " + str.tostring(math.max(tip, edge), format.mintick) + "\nCE (50%): " + str.tostring(ce, format.mintick) + "\nDead if a wick goes past " + str.tostring(tip, format.mintick)
                 label lb = label.new(bar_index, tip, (bull ? "▲ RB " : "▼ RB ") + names, style=bull ? label.style_label_up : label.style_label_down, color=color.new(color.black, 100), textcolor=c, size=size.small, tooltip=tt)
                 array.push(rbs, RB.new(bull, tip, edge, bx=bx, ce=cl, lb=lb))
+                found += 1
+                lastT := time
                 if bull
                     newBull := true
                 else
@@ -246,7 +253,17 @@ var array<float> vL = array.new<float>()
 var array<float> vV = array.new<float>()
 var int vT0 = na
 var int vT1 = na
-bool inRange = time >= vpStart and time <= vpEnd
+bool vpNY = vpMode == "Last NY session (09:30-16:00)"
+bool vpDay = vpMode == "Today since 18:00"
+bool inRange = vpNY ? inNY : vpDay ? true : time >= vpStart and time <= vpEnd
+// a new session (or day) starts a new profile
+bool vpReset = vpNY ? inNY and not inNY[1] : vpDay ? newDay : false
+if vpReset and barstate.isconfirmed
+    array.clear(vH)
+    array.clear(vL)
+    array.clear(vV)
+    vT0 := na
+    vT1 := na
 if vpOn and inRange and barstate.isconfirmed and not na(volume)
     array.push(vH, high)
     array.push(vL, low)
@@ -279,6 +296,11 @@ if vpOn and barstate.islast
     array<float> vs = array.copy(vV)
     int t0 = vT0
     int t1 = vT1
+    if not barstate.isconfirmed and vpReset
+        array.clear(hs)
+        array.clear(ls)
+        array.clear(vs)
+        t0 := na
     if not barstate.isconfirmed and inRange and not na(volume)
         array.push(hs, high)
         array.push(ls, low)
@@ -334,3 +356,10 @@ if vpOn and barstate.islast
             vpLine(lo + (poc + 0.5) * step, t0, tEnd, colPoc, 2, "POC")
             vpLine(lo + (up + 1) * step, t0, tEnd, color.new(colVa, 0), 1, "VAH")
             vpLine(lo + dn * step, t0, tEnd, color.new(colVa, 0), 1, "VAL")
+
+// ============================== STATUS LINE ==================================
+var table stat = table.new(position.bottom_right, 1, 1)
+if barstate.islast
+    string tfNote = timeframe.period != "5" ? " · built for the 5m chart" : ""
+    string lastTxt = na(lastT) ? "" : " · last " + str.format_time(lastT, "MMM d HH:mm", NY)
+    table.cell(stat, 0, 0, "ST RB5 · " + str.tostring(found) + " RBs found" + lastTxt + tfNote, text_color=color.new(color.gray, 0), text_size=size.small)
