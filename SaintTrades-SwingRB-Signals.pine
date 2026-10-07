@@ -1,0 +1,357 @@
+//@version=6
+// =============================================================================
+// SaintTrades Swing Rejection Blocks + Signals                         INDICATOR
+// -----------------------------------------------------------------------------
+// Swing-point rejection blocks as described for "Rejection Blocks [Taking
+// Prophets]": wick-dominant candles at swing highs/lows, extended right,
+// deleted when mitigated, with an optional 50% midline. That script is
+// protected source, so this is rebuilt from its public description; none of its
+// code is used. On top of the blocks it adds BUY / SELL signals with a stop and
+// target, alerts, and a scorecard that shows how the signals did on this chart.
+// Non-repainting: blocks, signals and results only change on closed bars.
+//
+// --------------------------------- RULES -------------------------------------
+//  R1. Swing points. A swing high is a candle whose high is the highest of the
+//      N candles on each side (N = swing strength). A swing low is the mirror.
+//      A swing is only known N candles later, so its block appears then.
+//  R2. Rejection block. A swing-high candle whose UPPER wick is at least X times
+//      its body is a bearish block: zone = body top (higher of open/close) to
+//      the high. A swing-low candle whose LOWER wick is at least X times its
+//      body is a bullish block: zone = the low to the body bottom.
+//  R3. 50% midline = the middle of the wick (ICT's mean threshold).
+//  R4. Blocks extend right until mitigated, then they are deleted.
+//      Mitigated = a close past the wick tip (default) or any wick past it.
+//  R5. Signals. Each block gives at most one signal, on its first retest that
+//      passes the filters (a retest the filters block doesn't use it up).
+//        Rejection close - a bar trades into the block and closes back out on
+//                          the block's side. Bullish: low <= zone top and
+//                          close > zone top. Entry = that close.
+//        50% touch       - a limit at the midline. A bar that trades to the 50%
+//                          fills it. Entry = the midline.
+//      Stop = wick tip -/+ buffer ticks. Target = entry +/- R x risk.
+//  R6. Several blocks firing on the same bar give one signal; the newest block
+//      sets the stop. A BUY and a SELL on the same bar cancel out.
+//  R7. Filters. The EMA trend filter reads the signal bar's close for rejection
+//      closes, and the previous bar's close for 50% limits (a limit is placed
+//      before its bar trades). Signal hours are New York time.
+//  R8. Scorecard. A trade wins when its target trades before its stop. A bar
+//      that reaches both counts as a loss. A rejection-close entry fills at the
+//      close, so its stop and target count from the next bar. A 50% entry's
+//      stop also counts on the bar it fills; its target from the next bar.
+// =============================================================================
+
+indicator("SaintTrades Swing Rejection Blocks + Signals", "ST Swing RB", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ============================== INPUTS =======================================
+G_RB  = "1 · Rejection blocks"
+G_SIG = "2 · Buy / sell signals"
+G_VIS = "3 · Visuals"
+
+swLen    = input.int(3, "Swing strength (candles each side)", minval=1, maxval=20, tooltip="A swing high must be the highest high of this many candles on each side. Higher = fewer, more major swings. The block appears this many candles after its wick.", group=G_RB)
+wickBody = input.float(2.0, "Rejecting wick ≥ body ×", minval=0.5, step=0.25, tooltip="How much bigger the rejecting wick must be than the candle's body. Raise it for fewer, cleaner blocks.", group=G_RB)
+wickAtr  = input.float(0.0, "Rejecting wick ≥ ATR(14) ×", minval=0, step=0.05, tooltip="Ignores small wicks. 0 = off.", group=G_RB)
+mitMode  = input.string("Close past tip", "Mitigated when", options=["Close past tip", "Wick past tip"], tooltip="Close past tip = a candle closes beyond the wick's extreme. Wick past tip = any trade beyond it.", group=G_RB)
+maxLive  = input.int(5, "Live blocks kept per side", minval=1, maxval=50, tooltip="The oldest live block on a side is dropped when a new one forms past this count. Dropped blocks give no signals.", group=G_RB)
+keepMit  = input.int(0, "Mitigated blocks kept (dimmed)", minval=0, maxval=50, tooltip="0 = delete a block as soon as it is mitigated.", group=G_RB)
+showMid  = input.bool(true, "50% midline", group=G_RB)
+extBars  = input.int(10, "Extend blocks right (bars)", minval=0, maxval=200, group=G_RB)
+
+sigOn    = input.bool(true, "BUY / SELL signals", tooltip="Off = blocks only: no signals, alerts or scorecard.", group=G_SIG)
+trigMode = input.string("Rejection close", "Signal when", options=["Rejection close", "50% touch"], tooltip="Rejection close = price trades into the block and a candle closes back out of it; enter at that close. 50% touch = a limit at the block's midline; enter when price trades to it.", group=G_SIG)
+stopTk   = input.int(2, "Stop buffer past the tip (ticks)", minval=0, maxval=1000, tooltip="4 ticks = 1 point on NQ/ES.", group=G_SIG)
+tpR      = input.float(2.0, "Target (R)", minval=0.25, step=0.25, tooltip="Target = entry ± this many times the risk (entry to stop).", group=G_SIG)
+useEma   = input.bool(false, "Only trade with the EMA trend", inline="ema", tooltip="BUY only above the EMA, SELL only below it.", group=G_SIG)
+emaLen   = input.int(200, "", minval=2, inline="ema", group=G_SIG)
+sessIn   = input.session("0000-0000", "Signal hours (New York time)", tooltip="0000-0000 = all hours. 0930-1600 = the NY cash session.", group=G_SIG)
+showLvls = input.bool(true, "Entry / stop / target lines for the latest signal", group=G_SIG)
+
+colBull  = input.color(#26a69a, "Bullish block", inline="c1", group=G_VIS)
+colBear  = input.color(#ef5350, "Bearish block", inline="c1", group=G_VIS)
+colBuy   = input.color(#089981, "BUY", inline="c2", group=G_VIS)
+colSell  = input.color(#f23645, "SELL", inline="c2", group=G_VIS)
+colEnt   = input.color(#2962ff, "Entry line", inline="c2", group=G_VIS)
+tblOn    = input.bool(true, "Scorecard table", group=G_VIS)
+tblPosIn = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=G_VIS)
+
+// ============================= CONSTANTS =====================================
+NY       = "America/New_York"
+TICK     = syminfo.mintick
+mitClose = mitMode == "Close past tip"
+touchMd  = trigMode == "50% touch"
+tblPos   = switch tblPosIn
+    "Top Left"     => position.top_left
+    "Bottom Right" => position.bottom_right
+    "Bottom Left"  => position.bottom_left
+    => position.top_right
+
+// ============================== TYPES ========================================
+type Block
+    bool  bull
+    float tip            // wick extreme
+    float edge           // body edge the wick starts from
+    float mid            // 50% of the wick
+    int   born           // bar index of the wick candle
+    box   bx
+    line  ml
+    bool  used = false   // has given its signal (R5)
+
+type Trade
+    bool  bull
+    float entry
+    float stop
+    float tp
+    bool  done   = false
+    bool  win    = false
+    int   endBar
+
+// ============================== STATE ========================================
+var array<Block> live   = array.new<Block>()
+var array<Block> dead   = array.new<Block>()
+var array<Trade> trades = array.new<Trade>()
+var Trade lastT = na
+var line  lnE   = na
+var line  lnS   = na
+var line  lnT   = na
+var label lbE   = na
+var label lbS   = na
+var label lbT   = na
+var int sigL  = 0
+var int sigS  = 0
+var int winL  = 0
+var int lossL = 0
+var int winS  = 0
+var int lossS = 0
+
+// ============================== SERIES =======================================
+atr    = ta.atr(14)
+ema    = ta.ema(close, emaLen)
+ph     = ta.pivothigh(high, swLen, swLen)
+pl     = ta.pivotlow(low, swLen, swLen)
+inSess = not na(time(timeframe.period, sessIn, NY))
+upOk   = not useEma or (touchMd ? close[1] > ema[1] : close > ema)
+dnOk   = not useEma or (touchMd ? close[1] < ema[1] : close < ema)
+
+// ============================= HELPERS =======================================
+fmt(float p) => str.tostring(p, format.mintick)
+
+killBlock(Block b) =>
+    box.delete(b.bx)
+    line.delete(b.ml)
+
+// R4: a mitigated block is deleted, or dimmed and kept when keepMit > 0
+retire(Block b) =>
+    if keepMit > 0
+        c = b.bull ? colBull : colBear
+        box.set_right(b.bx, bar_index)
+        box.set_bgcolor(b.bx, color.new(c, 94))
+        box.set_border_color(b.bx, color.new(c, 75))
+        if not na(b.ml)
+            line.set_x2(b.ml, bar_index)
+            line.set_color(b.ml, color.new(c, 75))
+        dead.push(b)
+        if dead.size() > keepMit
+            killBlock(dead.shift())
+    else
+        killBlock(b)
+
+// Drops the oldest live block on one side once that side holds more than maxLive
+capSide(bool bull) =>
+    int n      = 0
+    int oldest = -1
+    for [i, b] in live
+        if b.bull == bull
+            n += 1
+            if oldest < 0
+                oldest := i
+    if n > maxLive
+        killBlock(live.get(oldest))
+        live.remove(oldest)
+
+// Wick-dominance check on the swing candle (R2)
+isRejection(float wick, float body, float atrAt) =>
+    wick > 0 and wick >= wickBody * body and wick >= wickAtr * nz(atrAt)
+
+newBlock(bool bull, float tip, float edge) =>
+    c  = bull ? colBull : colBear
+    b  = Block.new(bull, tip, edge, (tip + edge) / 2, bar_index - swLen)
+    b.bx := box.new(b.born, math.max(tip, edge), bar_index + extBars, math.min(tip, edge), border_color=color.new(c, 40), bgcolor=color.new(c, 82))
+    if showMid
+        b.ml := line.new(b.born, b.mid, bar_index + extBars, b.mid, color=color.new(c, 30), style=line.style_dashed)
+    live.push(b)
+    capSide(bull)
+
+levelLine(float y, color c, line old) =>
+    line.delete(old)
+    line.new(bar_index, y, bar_index + extBars, y, color=c, width=1)
+
+levelLabel(float y, string txt, color c, label old) =>
+    label.delete(old)
+    label.new(bar_index + extBars, y, txt + " " + fmt(y), color=color.new(color.black, 100), style=label.style_label_left, textcolor=c, size=size.tiny)
+
+// ============================== ENGINE =======================================
+buySig  = false
+sellSig = false
+newBull = false
+newBear = false
+
+if barstate.isconfirmed
+    // 1) Resolve trades from earlier bars (R8)
+    if trades.size() > 0
+        for i = trades.size() - 1 to 0
+            t = trades.get(i)
+            hitSl = t.bull ? low <= t.stop : high >= t.stop
+            hitTp = t.bull ? high >= t.tp : low <= t.tp
+            if hitSl or hitTp
+                t.done   := true
+                t.win    := not hitSl
+                t.endBar := bar_index
+                if t.bull
+                    winL  += t.win ? 1 : 0
+                    lossL += t.win ? 0 : 1
+                else
+                    winS  += t.win ? 1 : 0
+                    lossS += t.win ? 0 : 1
+                trades.remove(i)
+
+    // 2) Retests and mitigation of live blocks (R4, R5)
+    hitB = array.new<Block>()
+    hitS = array.new<Block>()
+    if live.size() > 0
+        for i = live.size() - 1 to 0
+            b     = live.get(i)
+            mitig = b.bull ? (mitClose ? close < b.tip : low < b.tip) : (mitClose ? close > b.tip : high > b.tip)
+            rej   = not mitig and (b.bull ? low <= b.edge and close > b.edge : high >= b.edge and close < b.edge)
+            touch = b.bull ? low <= b.mid : high >= b.mid
+            if not b.used and (touchMd ? touch : rej)
+                if b.bull
+                    hitB.push(b)
+                else
+                    hitS.push(b)
+            if mitig
+                retire(b)
+                live.remove(i)
+
+    // 3) Signals (R5-R7). Blocks were walked newest first, so .first() is the newest.
+    wantB = sigOn and hitB.size() > 0 and inSess and upOk
+    wantS = sigOn and hitS.size() > 0 and inSess and dnOk
+    if wantB and wantS
+        wantB := false
+        wantS := false
+    if wantB or wantS
+        bull  = wantB
+        hits  = bull ? hitB : hitS
+        for b in hits
+            b.used := true
+        b0    = hits.first()
+        entry = touchMd ? b0.mid : close
+        stop  = bull ? b0.tip - stopTk * TICK : b0.tip + stopTk * TICK
+        tp    = entry + (bull ? 1 : -1) * tpR * math.abs(entry - stop)
+        t     = Trade.new(bull, entry, stop, tp)
+        // A 50% limit can be stopped on the bar that fills it (R8)
+        if touchMd and (bull ? low <= stop : high >= stop)
+            t.done   := true
+            t.endBar := bar_index
+            lossL += bull ? 1 : 0
+            lossS += bull ? 0 : 1
+        else
+            trades.push(t)
+        sigL += bull ? 1 : 0
+        sigS += bull ? 0 : 1
+        buySig  := bull
+        sellSig := not bull
+        lastT   := t
+
+        tipTxt = (bull ? "Long" : "Short") + " @ " + fmt(entry) + "\nStop " + fmt(stop) + "\nTarget " + fmt(tp) + " (" + str.tostring(tpR) + "R)\nBlock " + fmt(math.min(b0.tip, b0.edge)) + " – " + fmt(math.max(b0.tip, b0.edge)) + "  50% " + fmt(b0.mid)
+        label.new(bar_index, bull ? low : high, bull ? "BUY" : "SELL", color=bull ? colBuy : colSell, style=bull ? label.style_label_up : label.style_label_down, textcolor=color.white, size=size.small, tooltip=tipTxt)
+        if showLvls
+            lnE := levelLine(entry, colEnt, lnE)
+            lnS := levelLine(stop, colSell, lnS)
+            lnT := levelLine(tp, colBuy, lnT)
+            lbE := levelLabel(entry, "Entry", colEnt, lbE)
+            lbS := levelLabel(stop, "Stop", colSell, lbS)
+            lbT := levelLabel(tp, "Target", colBuy, lbT)
+        alert(syminfo.ticker + " " + (bull ? "BUY" : "SELL") + " (swing RB, " + trigMode + ")  entry " + fmt(entry) + "  stop " + fmt(stop) + "  target " + fmt(tp), alert.freq_once_per_bar_close)
+
+    // 4) New blocks from swings confirmed on this bar (R1, R2)
+    if not na(ph)
+        o = open[swLen]
+        c = close[swLen]
+        h = high[swLen]
+        if isRejection(h - math.max(o, c), math.abs(c - o), atr[swLen])
+            newBlock(false, h, math.max(o, c))
+            newBear := true
+    if not na(pl)
+        o = open[swLen]
+        c = close[swLen]
+        l = low[swLen]
+        if isRejection(math.min(o, c) - l, math.abs(c - o), atr[swLen])
+            newBlock(true, l, math.min(o, c))
+            newBull := true
+
+// ============================ DRAWING ========================================
+for b in live
+    box.set_right(b.bx, bar_index + extBars)
+    if not na(b.ml)
+        line.set_x2(b.ml, bar_index + extBars)
+
+// Latest signal's levels run right until the trade ends, then stop there
+if showLvls and not na(lastT) and not na(lnE)
+    xr = lastT.done ? lastT.endBar : bar_index + extBars
+    line.set_x2(lnE, xr)
+    line.set_x2(lnS, xr)
+    line.set_x2(lnT, xr)
+    label.set_x(lbE, xr)
+    label.set_x(lbS, xr)
+    label.set_x(lbT, xr)
+
+plot(useEma ? ema : na, "EMA", color=color.new(color.gray, 30), linewidth=1)
+
+// ============================== TABLE ========================================
+winTxt(int w, int n) => n > 0 ? str.tostring(100.0 * w / n, "#") + "%" : "–"
+
+avgTxt(int w, int n) =>
+    string s = "–"
+    if n > 0
+        a = (w * tpR - (n - w)) / n
+        s := (a >= 0 ? "+" : "") + str.tostring(a, "#.##") + "R"
+    s
+
+cell(table tb, int col, int row, string s) =>
+    table.cell(tb, col, row, s, bgcolor=color.new(color.gray, 85), text_color=chart.fg_color, text_size=size.small)
+
+var table tb = na
+if barstate.islast and tblOn and sigOn
+    if na(tb)
+        tb := table.new(tblPos, 4, 6, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+        table.merge_cells(tb, 0, 5, 3, 5)
+    nL = winL + lossL
+    nS = winS + lossS
+    nA = nL + nS
+    cell(tb, 0, 0, "Swing RB · " + str.tostring(tpR) + "R")
+    cell(tb, 1, 0, "BUY")
+    cell(tb, 2, 0, "SELL")
+    cell(tb, 3, 0, "All")
+    cell(tb, 0, 1, "Signals")
+    cell(tb, 1, 1, str.tostring(sigL))
+    cell(tb, 2, 1, str.tostring(sigS))
+    cell(tb, 3, 1, str.tostring(sigL + sigS))
+    cell(tb, 0, 2, "Closed")
+    cell(tb, 1, 2, str.tostring(nL))
+    cell(tb, 2, 2, str.tostring(nS))
+    cell(tb, 3, 2, str.tostring(nA))
+    cell(tb, 0, 3, "Win %")
+    cell(tb, 1, 3, winTxt(winL, nL))
+    cell(tb, 2, 3, winTxt(winS, nS))
+    cell(tb, 3, 3, winTxt(winL + winS, nA))
+    cell(tb, 0, 4, "Avg R")
+    cell(tb, 1, 4, avgTxt(winL, nL))
+    cell(tb, 2, 4, avgTxt(winS, nS))
+    cell(tb, 3, 4, avgTxt(winL + winS, nA))
+    last = na(lastT) ? "No signal yet" : (lastT.bull ? "Last: BUY " : "Last: SELL ") + fmt(lastT.entry) + " · stop " + fmt(lastT.stop) + " · target " + fmt(lastT.tp) + (lastT.done ? (lastT.win ? " · won" : " · lost") : " · open")
+    cell(tb, 0, 5, last)
+
+// ============================== ALERTS =======================================
+alertcondition(buySig, "BUY signal", "ST Swing RB: BUY {{ticker}} {{interval}} at {{close}}")
+alertcondition(sellSig, "SELL signal", "ST Swing RB: SELL {{ticker}} {{interval}} at {{close}}")
+alertcondition(buySig or sellSig, "BUY or SELL signal", "ST Swing RB: signal on {{ticker}} {{interval}} at {{close}}")
+alertcondition(newBull or newBear, "New rejection block", "ST Swing RB: new rejection block on {{ticker}} {{interval}}")
