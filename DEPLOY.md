@@ -55,7 +55,7 @@ The app is split into five programs (bottom bar on a phone, top bar on desktop �
 
 | Program | What's in it |
 |---|---|
-| **01 Core** | Firm · plan · size picker and copy trading at the top, then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
+| **01 Core** | Firm · plan · size picker, rebill tracker and copy trading at the top, then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
 | **02 Intel** | Weekly Review (week net, best/worst day and setup, rule breaks, Coach Co's one fix for next week), stats, equity curve, by-setup table, searchable trade log, R-distribution, weekday / week / month breakdowns |
 | **03 Protocol** | Pre-trade checklist, daily schedule, discipline score + trade cap + cooldown, your rules |
 | **04 Armory** | Position size, money management, risk lab |
@@ -83,3 +83,9 @@ You can change that anytime in System.
 
 Each account keeps its own log, so running two at once won't mix them up.
 Tap the **Target** or **Max Loss** number on Core to match your dashboard if a firm changes its rules.
+
+**Rebills:** most evals are subscriptions that renew every 30 days from the day you bought them.
+Under the size picker on Core, tap **＋ Track purchase date** and pick the day you bought the account.
+Its chip in the account strip then counts down to the next rebill (`↻ 12d`), turning amber at 5 days
+and red the day before. Tap **Rebills every** if your firm uses a different cycle, or **Stop tracking**
+once the subscription ends.
