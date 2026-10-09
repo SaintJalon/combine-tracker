@@ -84,8 +84,10 @@ You can change that anytime in System.
 Each account keeps its own log, so running two at once won't mix them up.
 Tap the **Target** or **Max Loss** number on Core to match your dashboard if a firm changes its rules.
 
-**Rebills:** most evals are subscriptions that renew every 30 days from the day you bought them.
-Under the size picker on Core, tap **＋ Track purchase date** and pick the day you bought the account.
+**Rebills & spend:** most evals are subscriptions that renew every 30 days from the day you bought them.
+Under the size picker on Core, tap **＋ Track purchase date** and pick the day you bought the account, then tap
+**Rebill price** to enter what each cycle costs (and **First payment** if you paid a different promo price up front).
 Its chip in the account strip then counts down to the next rebill (`↻ 12d`), turning amber at 5 days
-and red the day before. Tap **Rebills every** if your firm uses a different cycle, or **Stop tracking**
-once the subscription ends.
+and red the day before, and the card shows **Total spent** — plus an all-accounts total once two or more accounts
+have a price. Tap **Rebills every** if your firm uses a different cycle. Once you pass or cancel, tap **Mark ended**:
+the countdown stops but the spend stays in your totals (**Resume** undoes it, **Remove** deletes the record).

@@ -327,6 +327,9 @@
   .bill .note{font-size:10.5px;color:var(--muted2);margin-top:8px;line-height:1.55}
   .bill .grid{margin-top:12px}
   .bill .bufbar{margin:12px 0 0}
+  .bill .bbtns{display:flex;gap:6px}
+  .bill .bn{font-size:10.5px;font-weight:600;color:var(--muted2)}
+  .bill .note b{color:var(--text)}
   .copytag{display:inline-block;font-size:9.5px;font-weight:800;color:var(--blue);background:var(--blue-soft);padding:1px 6px;border-radius:2px;vertical-align:middle;letter-spacing:.06em;text-transform:uppercase}
   .day.copied{border-color:var(--blue-soft);background:var(--hud),linear-gradient(180deg,var(--blue-soft),var(--card))}
 
@@ -2231,6 +2234,7 @@
     host.innerHTML='<div style="margin-top:8px;font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em">Past attempts</div>'+rows;
   }
   // ---- rebill tracker: opt-in per account; firms rebill every `cycle` days from the purchase date ----
+  // state.billing[id] = {bought, cycle, price?, first?, ended?}; `ended` freezes the charge count once the subscription stops.
   function billingOf(id){return state.billing&&state.billing[id]&&state.billing[id].bought?state.billing[id]:null;}
   // left = days until the next rebill (0 on a rebill day); day/cycleNo = where we are in the billing cycle.
   function rebillInfo(b){
@@ -2238,25 +2242,46 @@
     var n=(e>0&&e%cyc===0)?k:k+1,left=n*cyc-e;
     return {cycle:cyc,left:left,next:addDaysIso(b.bought,n*cyc),day:e-k*cyc+1,cycleNo:k+1,tone:left<=1?"bad":(left<=5?"warn":"")};
   }
+  // Charges paid: the purchase plus every rebill up to today (or the end date); a rebill day counts as charged.
+  function billCharges(b){var e=daysBetween(b.bought)-(b.ended?daysBetween(b.ended):0);return 1+Math.floor(Math.max(0,e)/(b.cycle||30));}
+  // null until a rebill price is set. The first payment defaults to the rebill price — promo codes are what make them differ.
+  function billSpent(b){if(b.price==null)return null;var first=b.first!=null?b.first:b.price;return Math.round((first+(billCharges(b)-1)*b.price)*100)/100;}
+  function fmtc(n){return n%1?"$"+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):fmt(n);}
   function renderBilling(){
     var host=document.getElementById("billPanel"),b=billingOf(state.activeId);
+    // spend across every account, shown only when another account adds to what's already on screen
+    var tot=0,cnt=0,others=false;
+    state.accounts.forEach(function(a){var x=billingOf(a.id),sp=x?billSpent(x):null;if(sp!=null){tot+=sp;cnt++;if(a.id!==state.activeId)others=true;}});
+    var allNote=others?'<div class="note">All accounts: <b>'+fmtc(Math.round(tot*100)/100)+'</b> spent across '+cnt+' tracked account'+(cnt===1?"":"s")+'.</div>':"";
     if(!b){
       host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4><button type="button" class="secbtn" id="billOn">＋ Track purchase date</button></div>'+
-        '<div class="note">Optional — log the day you bought this account to count down to its next 30-day rebill.</div>';
+        '<div class="note">Optional — log the day you bought this account and its price to count down to the next 30-day rebill and see what you\'ve spent.</div>'+allNote;
       return;
     }
-    var r=rebillInfo(b),pct=Math.round((r.cycle-r.left)/r.cycle*100),col=r.tone==="bad"?"red":(r.tone==="warn"?"amber":"green"),msg;
-    if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today. The next one after that is "+weekdayLbl(addDaysIso(r.next,r.cycle))+".";
-    else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+"). Cancel before then if you don't want another cycle.";
-    else msg="↻ Next rebill in <b>"+r.left+" days</b> — day "+r.day+" of "+r.cycle+", cycle "+r.cycleNo+".";
-    host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4><button type="button" class="secbtn" id="billOff">Stop tracking</button></div>'+
+    var n=billCharges(b),spent=billSpent(b),head,dates,tail;
+    var money='<div class="item"><div class="k">Rebill price</div><div class="v edit" id="billPrice">'+(b.price!=null?fmtc(b.price):"Set")+'</div></div>'+
+      '<div class="item"><div class="k">First payment</div><div class="v edit" id="billFirst"'+(b.first==null?' style="color:var(--muted2)"':'')+'>'+(b.first!=null?fmtc(b.first):"Same")+'</div></div>'+
+      '<div class="item"><div class="k">Total spent</div><div class="v">'+(spent!=null?fmtc(spent):"—")+' <span class="bn">· '+n+' charge'+(n===1?"":"s")+'</span></div></div>';
+    if(!b.ended){
+      var r=rebillInfo(b),pct=Math.round((r.cycle-r.left)/r.cycle*100),col=r.tone==="bad"?"red":(r.tone==="warn"?"amber":"green"),msg;
+      if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+". The next one after that is "+weekdayLbl(addDaysIso(r.next,r.cycle))+".";
+      else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+"). Cancel before then if you don't want another cycle.";
+      else msg="↻ Next rebill in <b>"+r.left+" days</b> — day "+r.day+" of "+r.cycle+", cycle "+r.cycleNo+".";
+      head='<button type="button" class="secbtn" id="billEnd">Mark ended</button>';
+      dates='<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+'</div></div>';
+      tail='<div class="bufbar"><div class="fill" style="width:'+pct+'%;background:var(--'+col+')"></div></div>'+
+        '<div class="pomsg'+(r.tone?" "+r.tone:"")+'">'+msg+'</div>';
+    }else{
+      head='<span class="bbtns"><button type="button" class="secbtn" id="billResume">Resume</button><button type="button" class="secbtn" id="billOff">Remove</button></span>';
+      dates='<div class="item"><div class="k">Ended</div><div class="v edit" id="billEnded">'+weekdayLbl(b.ended)+'</div></div>';
+      tail='<div class="pomsg">■ Subscription ended — '+n+' charge'+(n===1?"":"s")+(spent!=null?', <b>'+fmtc(spent)+'</b> all in':'')+'. No more rebills are counted; tap Resume if it\'s still billing.</div>';
+    }
+    host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4>'+head+'</div>'+
       '<div class="grid">'+
         '<div class="item"><div class="k">Purchased</div><div class="v edit" id="billBought">'+weekdayLbl(b.bought)+'</div></div>'+
-        '<div class="item"><div class="k">Rebills every</div><div class="v edit" id="billCycle">'+r.cycle+' days</div></div>'+
-        '<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+'</div></div>'+
-      '</div>'+
-      '<div class="bufbar"><div class="fill" style="width:'+pct+'%;background:var(--'+col+')"></div></div>'+
-      '<div class="pomsg'+(r.tone?" "+r.tone:"")+'">'+msg+'</div>';
+        '<div class="item"><div class="k">Rebills every</div><div class="v edit" id="billCycle">'+(b.cycle||30)+' days</div></div>'+
+        dates+money+
+      '</div>'+tail+allNote;
   }
   // ---- planning & goals (#21-24) ----
   function planningOf(){if(!state.planning)state.planning={};if(!state.planning[state.activeId])state.planning[state.activeId]={};return state.planning[state.activeId];}
@@ -3190,7 +3215,7 @@
       var sub=f.name+" · "+pl.name+" · "+a.size.toUpperCase();
       var badge=(a.id===state.leaderId)?'<span class="badge lead">★ Leader</span>':(a.follow&&leaderAcct()&&a.id!==state.leaderId?'<span class="badge foll">⇄ Follows</span>':"");
       var bl=billingOf(a.id);
-      if(bl){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="Rebills '+(rb.left===0?"today":weekdayLbl(rb.next))+'">↻ '+(rb.left===0?"today":rb.left+"d")+'</span>';}
+      if(bl&&!bl.ended){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="Rebills '+(rb.left===0?"today":weekdayLbl(rb.next))+'">↻ '+(rb.left===0?"today":rb.left+"d")+'</span>';}
       html+='<div class="acch'+(a.id===state.activeId?" active":"")+'" data-id="'+a.id+'" title="'+(a.id===state.activeId?"Tap to rename":"Switch to this account")+'">'+
         '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span>'+badge+'</div>'+
         '<div class="achbtns">'+
@@ -3977,29 +4002,43 @@
 
   // rebill tracker (Core → Account Program)
   function rerenderBilling(){renderBilling();renderAcctBar();}
-  document.getElementById("billPanel").addEventListener("click",function(e){
-    var id=state.activeId,b=billingOf(id),el,inp,fired=false;
+  // Inline editor for one tracker field. Commits once (a date fires both change and blur, and a second
+  // save would leave Undo pointing at the edited value), then re-renders.
+  function billEdit(el,html,commit){
+    if(el.querySelector("input"))return;
+    el.innerHTML=html;var inp=el.querySelector("input"),fired=false;inp.focus();if(inp.type!=="date")inp.select();
+    var done=function(){if(fired)return;fired=true;commit(inp.value);save().then(rerenderBilling);};
+    if(inp.type==="date")inp.addEventListener("change",done);
+    inp.addEventListener("blur",done);
+    inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+  }
+  function billMoney(v){var x=parseFloat(v);return(isNaN(x)||x<0)?null:Math.round(x*100)/100;}
+  document.getElementById("billPanel").addEventListener("click",async function(e){
+    var id=state.activeId,b=billingOf(id),el,t=isoDate();
     if(e.target.closest("#billOn")){
       if(!state.billing)state.billing={};
-      state.billing[id]={bought:isoDate(),cycle:30};
+      state.billing[id]={bought:t,cycle:30};
       // straight into the date picker: today is only a placeholder for the real purchase day
       save().then(function(){rerenderBilling();var bb=document.getElementById("billBought");if(bb)bb.click();});
       return;
     }
-    if(e.target.closest("#billOff")){delete state.billing[id];save().then(rerenderBilling);return;}
     if(!b)return;
-    if((el=e.target.closest("#billBought"))&&!el.querySelector("input")){
-      el.innerHTML='<input type="date" max="'+isoDate()+'" value="'+b.bought+'">';inp=el.querySelector("input");inp.focus();
-      // change and blur both commit; only the first one saves, so Undo still steps back to the old date
-      var done=function(){if(fired)return;fired=true;var v=inp.value;if(v)b.bought=v>isoDate()?isoDate():v;save().then(rerenderBilling);};
-      inp.addEventListener("change",done);inp.addEventListener("blur",done);
-      return;
+    if(e.target.closest("#billEnd")){
+      var n=billCharges(b),sp=billSpent(b);
+      if(!(await mxConfirm("Mark this subscription as ended today?\n\nThe rebill countdown stops and the total stays at "+n+" charge"+(n===1?"":"s")+(sp!=null?" ("+fmtc(sp)+")":"")+". Use it once you've passed or cancelled — tap Ended afterwards to backdate it.",{title:"■ Subscription ended",okText:"Mark ended"})))return;
+      b.ended=t;save().then(rerenderBilling);return;
     }
-    if((el=e.target.closest("#billCycle"))&&!el.querySelector("input")){
-      el.innerHTML='<input type="number" min="1" max="365" inputmode="numeric" placeholder="days" value="'+(b.cycle||30)+'">';inp=el.querySelector("input");inp.focus();inp.select();
-      inp.addEventListener("blur",function(){var v=parseInt(inp.value,10);if(!isNaN(v)&&v>=1)b.cycle=Math.min(365,v);save().then(rerenderBilling);});
-      inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+    if(e.target.closest("#billResume")){delete b.ended;save().then(rerenderBilling);return;}
+    if(e.target.closest("#billOff")){
+      var rs=billSpent(b);
+      if(!(await mxConfirm("Remove this account's rebill record?"+(rs!=null?" Its "+fmtc(rs)+" drops out of your total spent.":""),{title:"↻ Remove rebill record",tone:"warn",okText:"Remove"})))return;
+      delete state.billing[id];save().then(rerenderBilling);return;
     }
+    if((el=e.target.closest("#billBought")))billEdit(el,'<input type="date" max="'+t+'" value="'+b.bought+'">',function(v){if(v)b.bought=v>t?t:v;if(b.ended&&b.ended<b.bought)b.ended=b.bought;});
+    else if((el=e.target.closest("#billEnded")))billEdit(el,'<input type="date" min="'+b.bought+'" max="'+t+'" value="'+b.ended+'">',function(v){if(v)b.ended=v>t?t:(v<b.bought?b.bought:v);});
+    else if((el=e.target.closest("#billCycle")))billEdit(el,'<input type="number" min="1" max="365" inputmode="numeric" placeholder="days" value="'+(b.cycle||30)+'">',function(v){v=parseInt(v,10);if(!isNaN(v)&&v>=1)b.cycle=Math.min(365,v);});
+    else if((el=e.target.closest("#billPrice")))billEdit(el,'<input type="number" min="0" step="0.01" inputmode="decimal" placeholder="$" value="'+(b.price!=null?b.price:"")+'">',function(v){b.price=billMoney(v);});
+    else if((el=e.target.closest("#billFirst")))billEdit(el,'<input type="number" min="0" step="0.01" inputmode="decimal" placeholder="same" value="'+(b.first!=null?b.first:"")+'">',function(v){b.first=billMoney(v);});
   });
 
   // risk lab inputs
