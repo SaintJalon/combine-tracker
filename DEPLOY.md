@@ -66,6 +66,8 @@ CRT scanlines, animations, boot sequence, and Backup & Export. Those effect sett
 device and don't go into backups. The header clock shows CST, which block of your schedule
 you're in, and whether the Entry Guard is clear — tap either one to jump to it. A **Backup** chip
 appears there when you have logged days and no export in 7+ days; tap it to export.
+A **Spent** chip shows what you've paid across all accounts once any account has a rebill price;
+tap it to open the rebill tracker.
 
 Tap any section heading to fold it; folded sections stay folded next time you open the app
 (handy for the account picker once it's set).
@@ -87,7 +89,8 @@ Tap the **Target** or **Max Loss** number on Core to match your dashboard if a f
 **Rebills & spend:** most evals are subscriptions that renew every 30 days from the day you bought them.
 Under the size picker on Core, tap **＋ Track purchase date** and pick the day you bought the account, then tap
 **Rebill price** to enter what each cycle costs (and **First payment** if you paid a different promo price up front).
-Its chip in the account strip then counts down to the next rebill (`↻ 12d`), turning amber at 5 days
-and red the day before, and the card shows **Total spent** — plus an all-accounts total once two or more accounts
+Its chip in the account strip then counts the **trading days** (Mon–Fri) you have left before the next rebill
+(`↻ 14 td`) — billing counts weekends, but you can't trade them. Today counts until your schedule's last block
+(the 2:00 PM hard stop). The chip turns amber 5 calendar days out and red the day before, and the card shows **Total spent** — plus an all-accounts total once two or more accounts
 have a price. Tap **Rebills every** if your firm uses a different cycle. Once you pass or cancel, tap **Mark ended**:
 the countdown stops but the spend stays in your totals (**Resume** undoes it, **Remove** deletes the record).
