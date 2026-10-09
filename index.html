@@ -168,6 +168,10 @@
   .acch .badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:1px 6px;border-radius:2px;margin-top:3px}
   .acch .badge.lead{background:var(--amber-soft);color:var(--amber)}
   .acch .badge.foll{background:var(--blue-soft);color:var(--blue)}
+  .acch .badge.bill{background:var(--card2);color:var(--muted)}
+  .acch .badge.bill.warn{background:var(--amber-soft);color:var(--amber)}
+  .acch .badge.bill.bad{background:var(--red-soft);color:var(--red)}
+  .acch .badge+.badge{margin-left:4px}
   .acch.add{color:var(--muted);font-weight:700;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;border-style:dashed;border-color:var(--line2);padding:10px 14px}
   @media(hover:hover){.acch.add:hover{color:var(--accent);border-color:var(--accent)}}
 
@@ -317,6 +321,12 @@
   .copy .frow .sc{font-size:10.5px;color:var(--muted2)}
   .copy .frow input{width:18px;height:18px;flex-shrink:0;cursor:pointer}
   .copy .note{font-size:10.5px;color:var(--muted2);margin-top:9px;line-height:1.55}
+  .bill{margin:0 0 8px;padding:14px 16px}
+  .bill .bh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .bill .bh h4{margin:0;font-size:11.5px;font-weight:800;color:var(--accent);letter-spacing:.14em;text-transform:uppercase}
+  .bill .note{font-size:10.5px;color:var(--muted2);margin-top:8px;line-height:1.55}
+  .bill .grid{margin-top:12px}
+  .bill .bufbar{margin:12px 0 0}
   .copytag{display:inline-block;font-size:9.5px;font-weight:800;color:var(--blue);background:var(--blue-soft);padding:1px 6px;border-radius:2px;vertical-align:middle;letter-spacing:.06em;text-transform:uppercase}
   .day.copied{border-color:var(--blue-soft);background:var(--hud),linear-gradient(180deg,var(--blue-soft),var(--card))}
 
@@ -562,6 +572,7 @@
   .pomsg{margin-top:12px;font-size:12px;padding:9px 12px;border-radius:2px;border:1px solid var(--line)}
   .pomsg.ok{background:var(--green-soft);border-color:rgba(var(--green-rgb),.3);color:var(--msg-ok)}
   .pomsg.warn{background:var(--amber-soft);border-color:var(--amber-soft);color:var(--msg-warn)}
+  .pomsg.bad{background:var(--red-soft);border-color:var(--red);color:var(--msg-bad)}
 
   /* ---------- tools: money management, position size, risk lab ---------- */
   .mmin{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
@@ -980,6 +991,7 @@
         </div>
         <div class="sel flow" id="planSel"></div>
         <div class="sel flow" id="sizeSel"></div>
+        <div class="plan bill" id="billPanel"></div>
         <div class="copy" id="copyPanel" style="display:none"></div>
       </div>
     </div>
@@ -1438,7 +1450,7 @@
     ["logs","targets","maxloss","stops","consPct","days","journal","balance","mm"].forEach(function(m){
       if(state[m]&&state[m][oldK]!==undefined)state[m][newK]=JSON.parse(JSON.stringify(state[m][oldK]));
     });
-    ["maxTrades","stage","payout","attempts","attemptMeta","planning","payoutGoal","payouts"].forEach(function(m){
+    ["maxTrades","stage","payout","attempts","attemptMeta","planning","payoutGoal","payouts","billing"].forEach(function(m){
       if(state[m]&&state[m][id]!==undefined)state[m][newId]=JSON.parse(JSON.stringify(state[m][id]));
     });
     state.activeId=newId;
@@ -2217,6 +2229,34 @@
     var rows=list.map(function(a){var col=a.result==="passed"?"g":(a.result==="failed"?"r":"m");
       return '<div class="atrow"><span class="an">#'+a.no+'</span><span class="ar '+col+'">'+a.result+'</span><span class="am">'+fmt(a.net)+' · '+a.days+'d · ended '+a.ended+'</span></div>';}).reverse().join("");
     host.innerHTML='<div style="margin-top:8px;font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em">Past attempts</div>'+rows;
+  }
+  // ---- rebill tracker: opt-in per account; firms rebill every `cycle` days from the purchase date ----
+  function billingOf(id){return state.billing&&state.billing[id]&&state.billing[id].bought?state.billing[id]:null;}
+  // left = days until the next rebill (0 on a rebill day); day/cycleNo = where we are in the billing cycle.
+  function rebillInfo(b){
+    var cyc=b.cycle||30,e=Math.max(0,daysBetween(b.bought)),k=Math.floor(e/cyc);
+    var n=(e>0&&e%cyc===0)?k:k+1,left=n*cyc-e;
+    return {cycle:cyc,left:left,next:addDaysIso(b.bought,n*cyc),day:e-k*cyc+1,cycleNo:k+1,tone:left<=1?"bad":(left<=5?"warn":"")};
+  }
+  function renderBilling(){
+    var host=document.getElementById("billPanel"),b=billingOf(state.activeId);
+    if(!b){
+      host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4><button type="button" class="secbtn" id="billOn">＋ Track purchase date</button></div>'+
+        '<div class="note">Optional — log the day you bought this account to count down to its next 30-day rebill.</div>';
+      return;
+    }
+    var r=rebillInfo(b),pct=Math.round((r.cycle-r.left)/r.cycle*100),col=r.tone==="bad"?"red":(r.tone==="warn"?"amber":"green"),msg;
+    if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today. The next one after that is "+weekdayLbl(addDaysIso(r.next,r.cycle))+".";
+    else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+"). Cancel before then if you don't want another cycle.";
+    else msg="↻ Next rebill in <b>"+r.left+" days</b> — day "+r.day+" of "+r.cycle+", cycle "+r.cycleNo+".";
+    host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4><button type="button" class="secbtn" id="billOff">Stop tracking</button></div>'+
+      '<div class="grid">'+
+        '<div class="item"><div class="k">Purchased</div><div class="v edit" id="billBought">'+weekdayLbl(b.bought)+'</div></div>'+
+        '<div class="item"><div class="k">Rebills every</div><div class="v edit" id="billCycle">'+r.cycle+' days</div></div>'+
+        '<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+'</div></div>'+
+      '</div>'+
+      '<div class="bufbar"><div class="fill" style="width:'+pct+'%;background:var(--'+col+')"></div></div>'+
+      '<div class="pomsg'+(r.tone?" "+r.tone:"")+'">'+msg+'</div>';
   }
   // ---- planning & goals (#21-24) ----
   function planningOf(){if(!state.planning)state.planning={};if(!state.planning[state.activeId])state.planning[state.activeId]={};return state.planning[state.activeId];}
@@ -3149,6 +3189,8 @@
       var pl=f.plans[a.plan]||f.plans[f.planOrder[0]];
       var sub=f.name+" · "+pl.name+" · "+a.size.toUpperCase();
       var badge=(a.id===state.leaderId)?'<span class="badge lead">★ Leader</span>':(a.follow&&leaderAcct()&&a.id!==state.leaderId?'<span class="badge foll">⇄ Follows</span>':"");
+      var bl=billingOf(a.id);
+      if(bl){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="Rebills '+(rb.left===0?"today":weekdayLbl(rb.next))+'">↻ '+(rb.left===0?"today":rb.left+"d")+'</span>';}
       html+='<div class="acch'+(a.id===state.activeId?" active":"")+'" data-id="'+a.id+'" title="'+(a.id===state.activeId?"Tap to rename":"Switch to this account")+'">'+
         '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span>'+badge+'</div>'+
         '<div class="achbtns">'+
@@ -3296,7 +3338,7 @@
     });
   });
 
-  function renderAll(){syncFollowers();renderCopyPanel();renderAcctBar();renderPlan();renderDays();refreshProgress();renderStats();renderMM();renderPS();renderRules();renderCalendar();}
+  function renderAll(){syncFollowers();renderCopyPanel();renderAcctBar();renderPlan();renderBilling();renderDays();refreshProgress();renderStats();renderMM();renderPS();renderRules();renderCalendar();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
@@ -3348,7 +3390,7 @@
         if(state.maxTrades)delete state.maxTrades[del];if(state.stage)delete state.stage[del];if(state.payout)delete state.payout[del];
         if(state.cooldown)delete state.cooldown[del];if(state.lastTradeAt)delete state.lastTradeAt[del];
         if(state.planning)delete state.planning[del];if(state.payoutGoal)delete state.payoutGoal[del];if(state.payouts)delete state.payouts[del];
-        if(state.autoFund)delete state.autoFund[del];
+        if(state.autoFund)delete state.autoFund[del];if(state.billing)delete state.billing[del];
         if(state.leaderId===del)state.leaderId=null;
         if(state.activeId===del)state.activeId=state.accounts[0].id;
         ensureAccounts();save().then(renderAll);
@@ -3726,7 +3768,7 @@
   document.getElementById("discEdit").addEventListener("click",function(){editDisc=!editDisc;renderRules();});
 
   // re-check the date when the PWA comes back to the foreground (midnight rollover)
-  document.addEventListener("visibilitychange",function(){if(!document.hidden)renderChecklist();});
+  document.addEventListener("visibilitychange",function(){if(!document.hidden){renderChecklist();renderAcctBar();renderBilling();}});
 
   // ---- backup: export / import all data ----
   document.getElementById("btnExport").addEventListener("click",function(){
@@ -3931,6 +3973,33 @@
     if(!state.autoFund)state.autoFund={};
     state.autoFund[state.activeId]=e.target.checked;
     save().then(renderAll);
+  });
+
+  // rebill tracker (Core → Account Program)
+  function rerenderBilling(){renderBilling();renderAcctBar();}
+  document.getElementById("billPanel").addEventListener("click",function(e){
+    var id=state.activeId,b=billingOf(id),el,inp,fired=false;
+    if(e.target.closest("#billOn")){
+      if(!state.billing)state.billing={};
+      state.billing[id]={bought:isoDate(),cycle:30};
+      // straight into the date picker: today is only a placeholder for the real purchase day
+      save().then(function(){rerenderBilling();var bb=document.getElementById("billBought");if(bb)bb.click();});
+      return;
+    }
+    if(e.target.closest("#billOff")){delete state.billing[id];save().then(rerenderBilling);return;}
+    if(!b)return;
+    if((el=e.target.closest("#billBought"))&&!el.querySelector("input")){
+      el.innerHTML='<input type="date" max="'+isoDate()+'" value="'+b.bought+'">';inp=el.querySelector("input");inp.focus();
+      // change and blur both commit; only the first one saves, so Undo still steps back to the old date
+      var done=function(){if(fired)return;fired=true;var v=inp.value;if(v)b.bought=v>isoDate()?isoDate():v;save().then(rerenderBilling);};
+      inp.addEventListener("change",done);inp.addEventListener("blur",done);
+      return;
+    }
+    if((el=e.target.closest("#billCycle"))&&!el.querySelector("input")){
+      el.innerHTML='<input type="number" min="1" max="365" inputmode="numeric" placeholder="days" value="'+(b.cycle||30)+'">';inp=el.querySelector("input");inp.focus();inp.select();
+      inp.addEventListener("blur",function(){var v=parseInt(inp.value,10);if(!isNaN(v)&&v>=1)b.cycle=Math.min(365,v);save().then(rerenderBilling);});
+      inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+    }
   });
 
   // risk lab inputs
