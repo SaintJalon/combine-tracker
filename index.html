@@ -297,7 +297,7 @@
 
   /* ---------- selectors ---------- */
   .acctprog>h2.section{margin-top:18px}
-  .acctsel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+  .acctsel{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
   .acctsel button{background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:3px;padding:15px 8px;cursor:pointer;font-size:12.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;transition:.15s}
   @media(hover:hover){.acctsel button:hover{color:var(--text);border-color:var(--line2)}}
   .acctsel button.active{background:var(--hud),linear-gradient(180deg,rgba(var(--accent-rgb),.14),var(--card));color:var(--accent);border-color:var(--accent-border);text-shadow:var(--glow)}
@@ -993,6 +993,8 @@
           <button data-firm="mffu">MyFundedFutures</button>
           <button data-firm="lucid">Lucid</button>
           <button data-firm="tradeify">Tradeify</button>
+          <button data-firm="apex">Apex</button>
+          <button data-firm="tpt">Take Profit Trader</button>
         </div>
         <div class="sel flow" id="planSel"></div>
         <div class="sel flow" id="sizeSel"></div>
@@ -1283,6 +1285,9 @@
   var DD_LUCID_DAILY_EOD="<b>End-of-day</b> trailing (the EOD option picked at checkout): at each session close the Max Loss Limit is recalculated from your highest closing balance, so intraday swings don't move it, and it stops rising at a set point. If you bought the daily loss limit ON it's a soft pause, not a breach. Once funded, LucidDaily switches to <b>intraday</b> trailing.";
   var DD_LUCID_DAILY_INTRA="<b>Intraday</b> trailing (the intraday option picked at checkout): the Max Loss Limit rises with your real-time P&L, open profits included, so giving back an unrealized gain moves you closer to it — watch your live buffer, not just closed P&L. If you bought the daily loss limit ON it's a soft pause, not a breach. Funded LucidDaily accounts stay intraday.";
   var DD_TRADEIFY="<b>End-of-day</b> trailing: the floor rises with each end-of-day balance high and applies in real time — touch it intraday and the account fails. Growth evaluations <b>don't lock</b>; the lock ($100 above start) only kicks in once you're sim funded. The daily loss limit is a soft pause, not a failure.";
+  var DD_APEX_EOD="<b>End-of-day</b> trailing: the threshold is recalculated once a day at 4:59 PM ET from your highest closing balance and never moves down; intraday swings don't move it, but touching it intraday still fails the account. It keeps trailing for the whole evaluation (it would only stop at your profit-target balance, which is where you pass). The daily loss limit is a soft stop: hitting it liquidates and pauses you for the day, it doesn't fail the eval. No consistency rule and no minimum days in the evaluation.";
+  var DD_APEX_INTRA="<b>Intraday</b> trailing: the threshold follows your highest balance in real time, open profit included, and never moves down — give back an unrealized gain and the floor has already moved up, so watch your live buffer. It trails for the whole evaluation. No daily loss limit, no consistency rule and no minimum days in the evaluation.";
+  var DD_TPT="<b>End-of-day</b> trailing: the drawdown is recalculated at each day's close from your highest closing balance, not on open positions, and locks for good once it reaches your starting balance. No daily loss limit in the Test. A <b>50% consistency rule</b> applies: no single day can be half or more of your profit — break it and you don't fail, you just keep trading until your best day is under 50%. Minimum 3 trading days (Tests bought before Aug 17, 2026 keep 5).";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor rises with your end-of-day balance and applies in real time, then locks for good at <b>$100 above your starting balance</b> once your closing balance clears the drawdown by $100. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit — plan on at least 3 trading days.";
 
   // Build a day-plan for any number of days: weights ramp up (build small → push big),
@@ -1306,8 +1311,8 @@
   }
 
   // per-trade risk/stop (your personal rules, scaled by account size)
-  var RS={25000:{risk:75,stop:150},50000:{risk:100,stop:200},100000:{risk:200,stop:400},150000:{risk:300,stop:600}};
-  var SZLABEL={25000:"25K",50000:"50K",100000:"100K",150000:"150K"};
+  var RS={25000:{risk:75,stop:150},50000:{risk:100,stop:200},75000:{risk:150,stop:300},100000:{risk:200,stop:400},150000:{risk:300,stop:600}};
+  var SZLABEL={25000:"25K",50000:"50K",75000:"75K",100000:"100K",150000:"150K"};
   function S(firmName,planName,size,o){
     return Object.assign({
       title:firmName+" — "+planName+" "+SZLABEL[size],
@@ -1398,6 +1403,29 @@
         "50k":S("Tradeify","Select",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_SELECT,cons:"40%",consPct:40,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 3 to pass",minShort:"3",lockOff:100}),
         "100k":S("Tradeify","Select",100000,{target:6000,maxloss:3000,dd:"EOD trailing",ddDesc:DD_SELECT,cons:"40%",consPct:40,contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"min 3 to pass",minShort:"3",lockOff:100}),
         "150k":S("Tradeify","Select",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_SELECT,cons:"40%",consPct:40,contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"min 3 to pass",minShort:"3",lockOff:100})
+      }}
+    }},
+    apex:{name:"Apex",planOrder:["eod","intraday"],plans:{
+      eod:{name:"EOD",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("Apex","EOD",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$500 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"1",locks:false}),
+        "50k":S("Apex","EOD",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$1,000 soft",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"no minimum",minShort:"1",locks:false}),
+        "100k":S("Apex","EOD",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$1,500 soft",contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"no minimum",minShort:"1",locks:false}),
+        "150k":S("Apex","EOD",150000,{target:9000,maxloss:4000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$2,000 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"1",locks:false})
+      }},
+      intraday:{name:"Intraday",order:["25k","50k","100k","150k"],sizes:{
+        "25k":S("Apex","Intraday",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"1",locks:false}),
+        "50k":S("Apex","Intraday",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"no minimum",minShort:"1",locks:false}),
+        "100k":S("Apex","Intraday",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"no minimum",minShort:"1",locks:false}),
+        "150k":S("Apex","Intraday",150000,{target:9000,maxloss:4000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"1",locks:false})
+      }}
+    }},
+    tpt:{name:"Take Profit Trader",planOrder:["test"],plans:{
+      test:{name:"Test",order:["25k","50k","75k","100k","150k"],sizes:{
+        "25k":S("Take Profit Trader","Test",25000,{target:1500,maxloss:1500,dd:"EOD trailing",ddDesc:DD_TPT,cons:"50%",consPct:50,consRaises:true,contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 3 to pass",minShort:"3"}),
+        "50k":S("Take Profit Trader","Test",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_TPT,cons:"50%",consPct:50,consRaises:true,contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"min 3 to pass",minShort:"3"}),
+        "75k":S("Take Profit Trader","Test",75000,{target:4500,maxloss:2500,dd:"EOD trailing",ddDesc:DD_TPT,cons:"50%",consPct:50,consRaises:true,contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"min 3 to pass",minShort:"3"}),
+        "100k":S("Take Profit Trader","Test",100000,{target:6000,maxloss:3500,dd:"EOD trailing",ddDesc:DD_TPT,cons:"50%",consPct:50,consRaises:true,contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 3 to pass",minShort:"3"}),
+        "150k":S("Take Profit Trader","Test",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_TPT,cons:"50%",consPct:50,consRaises:true,contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 3 to pass",minShort:"3"})
       }}
     }}
   };
