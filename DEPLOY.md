@@ -1,7 +1,7 @@
 # Combine Tracker — deploy & daily use
 
-A self-contained web app for tracking TopStep 100K / 50K and Lucid / MyFundedFutures 25K
-combine evaluations. No accounts, no server, no internet needed after first load.
+A self-contained web app for tracking prop-firm evaluations — TopStep, MyFundedFutures, Lucid,
+Tradeify, Apex and Take Profit Trader. No accounts, no server, no internet needed after first load.
 Your logged P&L is saved on the device (localStorage).
 
 ## Files
