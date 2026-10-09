@@ -66,6 +66,8 @@ CRT scanlines, animations, boot sequence, and Backup & Export. Those effect sett
 device and don't go into backups. The header clock shows CST, which block of your schedule
 you're in, and whether the Entry Guard is clear — tap either one to jump to it. A **Backup** chip
 appears there when you have logged days and no export in 7+ days; tap it to export.
+A **Spent** chip shows what you've paid across all accounts once any account has a rebill price;
+tap it to open the rebill tracker.
 
 Tap any section heading to fold it; folded sections stay folded next time you open the app
 (handy for the account picker once it's set).

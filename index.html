@@ -137,6 +137,7 @@
   html.fx-anim .hud .hblock.no,html.fx-anim .hud .hguard.bad{animation:pulse 1.6s infinite}
   .hud .hbackup{color:var(--amber);border-color:var(--amber-soft);background:var(--amber-soft)}
   .hud .hbackup.bad{color:var(--red);border-color:var(--red-soft);background:var(--red-soft)}
+  .hud .hspend{color:var(--text)}
   @keyframes flashRing{50%{box-shadow:0 0 0 3px var(--accent),0 0 24px var(--accent)}}
   .flash{animation:flashRing .8s ease-in-out 2}
   .hud .hsync{opacity:.35;color:var(--accent)}
@@ -957,6 +958,7 @@
           <button type="button" class="hblock off" id="mxBlock" title="Current block in your daily schedule">Off-hours</button>
           <button type="button" class="hguard ok" id="mxGuard" title="Entry Guard status">Guard: clear</button>
           <button type="button" class="hbackup" id="mxBackup" hidden>Backup</button>
+          <button type="button" class="hspend" id="mxSpend" hidden>Spent</button>
           <span class="hsync" id="mxSync" title="Saved on this device">● Saved</span>
         </div>
       </div>
@@ -2247,12 +2249,24 @@
   // null until a rebill price is set. The first payment defaults to the rebill price — promo codes are what make them differ.
   function billSpent(b){if(b.price==null)return null;var first=b.first!=null?b.first:b.price;return Math.round((first+(billCharges(b)-1)*b.price)*100)/100;}
   function fmtc(n){return n%1?"$"+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):fmt(n);}
-  function renderBilling(){
-    var host=document.getElementById("billPanel"),b=billingOf(state.activeId);
-    // spend across every account, shown only when another account adds to what's already on screen
+  // Spend over every account with a rebill price; `others` = a priced account besides the active one.
+  function billTotals(){
     var tot=0,cnt=0,others=false;
     state.accounts.forEach(function(a){var x=billingOf(a.id),sp=x?billSpent(x):null;if(sp!=null){tot+=sp;cnt++;if(a.id!==state.activeId)others=true;}});
-    var allNote=others?'<div class="note">All accounts: <b>'+fmtc(Math.round(tot*100)/100)+'</b> spent across '+cnt+' tracked account'+(cnt===1?"":"s")+'.</div>':"";
+    return {tot:Math.round(tot*100)/100,cnt:cnt,others:others};
+  }
+  // header chip: total spent across all accounts, shown once any account has a rebill price
+  function renderSpendChip(T){
+    var el=document.getElementById("mxSpend");
+    el.hidden=!T.cnt;
+    if(T.cnt){el.textContent="Spent "+fmt(T.tot);el.title=fmtc(T.tot)+" spent across "+T.cnt+" tracked account"+(T.cnt===1?"":"s")+" — tap for the rebill tracker";}
+  }
+  function renderBilling(){
+    var host=document.getElementById("billPanel"),b=billingOf(state.activeId);
+    // the card's all-accounts line only shows when another account adds to what's already on screen
+    var T=billTotals();
+    renderSpendChip(T);
+    var allNote=T.others?'<div class="note">All accounts: <b>'+fmtc(T.tot)+'</b> spent across '+T.cnt+' tracked account'+(T.cnt===1?"":"s")+'.</div>':"";
     if(!b){
       host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4><button type="button" class="secbtn" id="billOn">＋ Track purchase date</button></div>'+
         '<div class="note">Optional — log the day you bought this account and its price to count down to the next 30-day rebill and see what you\'ve spent.</div>'+allNote;
@@ -4376,6 +4390,11 @@
   document.getElementById("mxBackup").addEventListener("click",function(){
     jumpTo("system","btnExport");
     var b=document.getElementById("btnExport");b.classList.remove("flash");void b.offsetWidth;b.classList.add("flash");
+  });
+  document.getElementById("mxSpend").addEventListener("click",function(){
+    var h=document.querySelector(".acctprog>h2.section");if(h&&h.classList.contains("collapsed"))h.click();
+    jumpTo("core","billPanel");
+    var b=document.getElementById("billPanel");b.classList.remove("flash");void b.offsetWidth;b.classList.add("flash");
   });
   function pulseSync(){var el=document.getElementById("mxSync");if(!el)return;el.classList.remove("on");void el.offsetWidth;el.classList.add("on");}
 
