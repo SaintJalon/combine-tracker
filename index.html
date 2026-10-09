@@ -2238,24 +2238,57 @@
   // ---- rebill tracker: opt-in per account; firms rebill every `cycle` days from the purchase date ----
   // state.billing[id] = {bought, cycle, price?, first?, ended?}; `ended` freezes the charge count once the subscription stops.
   function billingOf(id){return state.billing&&state.billing[id]&&state.billing[id].bought?state.billing[id]:null;}
-  // left = calendar days until the next rebill (0 on a rebill day). tdLeft / tdCycle = Mon–Fri days you can
-  // still trade before the next charge / in the whole cycle — the billing cycle counts weekends, you can't trade them.
+  // left = calendar days until the next rebill (0 on a rebill day). tdLeft / tdCycle = days you can still trade
+  // before the next charge / in the whole cycle: Mon–Fri minus market holidays — billing counts every day.
+  // hols names the market holidays from today to the next charge.
   function rebillInfo(b){
     var cyc=b.cycle||30,e=Math.max(0,daysBetween(b.bought)),k=Math.floor(e/cyc);
     var n=(e>0&&e%cyc===0)?k:k+1,left=n*cyc-e,next=addDaysIso(b.bought,n*cyc),t=isoDate();
     var due=left===0?addDaysIso(next,cyc):next; // on a rebill day the cycle you're trading in started today
     return {cycle:cyc,left:left,next:next,tone:left<=1?"bad":(left<=5?"warn":""),
-      tdLeft:weekdaysBetween(todayTradeable()?t:addDaysIso(t,1),due),tdCycle:weekdaysBetween(addDaysIso(due,-cyc),due)};
+      tdLeft:tradingDaysBetween(todayTradeable()?t:addDaysIso(t,1),due),tdCycle:tradingDaysBetween(addDaysIso(due,-cyc),due),hols:holidaysBetween(t,due)};
   }
-  // Mon–Fri days in [a, b).
-  function weekdaysBetween(a,b){
+  // Trading days in [a, b): Mon–Fri, minus market holidays.
+  function tradingDaysBetween(a,b){
     var n=0,d=new Date(a+"T00:00:00"),end=new Date(b+"T00:00:00");
-    for(;d<end;d.setDate(d.getDate()+1)){var w=d.getDay();if(w!==0&&w!==6)n++;}
+    for(;d<end;d.setDate(d.getDate()+1)){var w=d.getDay();if(w!==0&&w!==6&&!holidayOn(isoOf(d)))n++;}
     return n;
+  }
+  function holidaysBetween(a,b){
+    var out=[],d=new Date(a+"T00:00:00"),end=new Date(b+"T00:00:00"),iso,nm;
+    for(;d<end;d.setDate(d.getDate()+1)){iso=isoOf(d);if((nm=holidayOn(iso)))out.push(nm+" ("+weekdayLbl(iso)+")");}
+    return out;
+  }
+  // US stock market holidays: no regular New York session, so they aren't trading days. Built from the
+  // exchange's rules rather than a date list, so it never goes stale: a Saturday holiday closes the Friday
+  // before and a Sunday one the Monday after — except New Year's on a Saturday, which isn't made up.
+  var holCache={};
+  function holidayOn(iso){return marketHolidays(+iso.slice(0,4))[iso]||null;}
+  function marketHolidays(y){
+    if(holCache[y])return holCache[y];
+    var h={};
+    function fixed(m,d,name,noSat){var dt=new Date(y,m,d),w=dt.getDay();if(w===6){if(noSat)return;dt.setDate(d-1);}else if(w===0)dt.setDate(d+1);h[isoOf(dt)]=name;}
+    function nth(m,wd,n,name){var dt=new Date(y,m,1);dt.setDate(1+(wd-dt.getDay()+7)%7+(n-1)*7);h[isoOf(dt)]=name;}
+    function last(m,wd,name){var dt=new Date(y,m+1,0);dt.setDate(dt.getDate()-(dt.getDay()-wd+7)%7);h[isoOf(dt)]=name;}
+    fixed(0,1,"New Year's Day",true);
+    nth(0,1,3,"MLK Day");nth(1,1,3,"Presidents' Day");
+    var gf=easterSunday(y);gf.setDate(gf.getDate()-2);h[isoOf(gf)]="Good Friday";
+    last(4,1,"Memorial Day");
+    if(y>=2022)fixed(5,19,"Juneteenth");
+    fixed(6,4,"Independence Day");
+    nth(8,1,1,"Labor Day");nth(10,4,4,"Thanksgiving");
+    fixed(11,25,"Christmas");
+    return(holCache[y]=h);
+  }
+  // Gregorian Easter (anonymous / Meeus algorithm), for Good Friday.
+  function easterSunday(y){
+    var a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),
+      h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),x=h+l-7*m+114;
+    return new Date(y,Math.floor(x/31)-1,x%31+1);
   }
   // Today stays a trading day until your schedule's last block (the 2:00 PM hard stop by default).
   function todayTradeable(){
-    var w=new Date().getDay(),stop=null;if(w===0||w===6)return false;
+    var w=new Date().getDay(),stop=null;if(w===0||w===6||holidayOn(isoDate()))return false;
     schRows().forEach(function(r){var tm=parseSchedTime(r.t);if(tm){var e=tm.end!=null?tm.end:tm.start;if(stop===null||e>stop)stop=e;}});
     return stop===null||nowCSTMinutes()<stop;
   }
@@ -2294,10 +2327,10 @@
       '<div class="item"><div class="k">Charges</div><div class="v">'+n+'</div></div>';
     if(!b.ended){
       var r=rebillInfo(b),pct=Math.round((r.cycle-r.left)/r.cycle*100),col=r.tone==="bad"?"red":(r.tone==="warn"?"amber":"green"),msg;
-      var td=r.tdLeft+" trading day"+(r.tdLeft===1?"":"s");
-      if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+". The next one is "+weekdayLbl(addDaysIso(r.next,r.cycle))+", <b>"+td+"</b> away.";
-      else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+") — "+(r.tdLeft?"<b>"+td+"</b> left to trade":"<b>no trading days</b> left before it")+". Cancel before then if you don't want another cycle.";
-      else msg="↻ Next rebill in "+r.left+" days — <b>"+td+"</b> left to trade, of "+r.tdCycle+" this cycle.";
+      var td=r.tdLeft+" trading day"+(r.tdLeft===1?"":"s"),hol=r.hols.length?" Market holiday"+(r.hols.length>1?"s":"")+" not counted: "+r.hols.join(", ")+".":"";
+      if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+". The next one is "+weekdayLbl(addDaysIso(r.next,r.cycle))+", <b>"+td+"</b> away."+hol;
+      else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+") — "+(r.tdLeft?"<b>"+td+"</b> left to trade":"<b>no trading days</b> left before it")+"."+hol+" Cancel before then if you don't want another cycle.";
+      else msg="↻ Next rebill in "+r.left+" days — <b>"+td+"</b> left to trade, of "+r.tdCycle+" this cycle."+hol;
       head='<button type="button" class="secbtn" id="billEnd">Mark ended</button>';
       dates='<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+' <span class="bn">· '+(r.left===0?"now":r.left+"d")+'</span></div></div>'+
         '<div class="item"><div class="k">Trading days left</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+r.tdLeft+' <span class="bn">of '+r.tdCycle+' · Mon–Fri</span></div></div>';
@@ -2305,7 +2338,7 @@
         '<div class="pomsg'+(r.tone?" "+r.tone:"")+'">'+msg+'</div>';
     }else{
       head='<span class="bbtns"><button type="button" class="secbtn" id="billResume">Resume</button><button type="button" class="secbtn" id="billOff">Remove</button></span>';
-      var held=weekdaysBetween(b.bought,addDaysIso(b.ended,1));
+      var held=tradingDaysBetween(b.bought,addDaysIso(b.ended,1));
       dates='<div class="item"><div class="k">Ended</div><div class="v edit" id="billEnded">'+weekdayLbl(b.ended)+'</div></div>'+
         '<div class="item"><div class="k">Trading days</div><div class="v">'+held+' <span class="bn">Mon–Fri</span></div></div>';
       tail='<div class="pomsg">■ Subscription ended — '+held+' trading day'+(held===1?"":"s")+', '+n+' charge'+(n===1?"":"s")+(spent!=null?', <b>'+fmtc(spent)+'</b> all in':'')+'. No more rebills are counted; tap Resume if it\'s still billing.</div>';
