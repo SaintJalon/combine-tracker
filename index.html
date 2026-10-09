@@ -326,7 +326,7 @@
   .bill .bh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
   .bill .bh h4{margin:0;font-size:11.5px;font-weight:800;color:var(--accent);letter-spacing:.14em;text-transform:uppercase}
   .bill .note{font-size:10.5px;color:var(--muted2);margin-top:8px;line-height:1.55}
-  .bill .grid{margin-top:12px}
+  .plan.bill .grid{margin-top:12px;grid-template-columns:repeat(4,1fr)}
   .bill .bufbar{margin:12px 0 0}
   .bill .bbtns{display:flex;gap:6px}
   .bill .bn{font-size:10.5px;font-weight:600;color:var(--muted2)}
@@ -801,7 +801,7 @@
     .sel{grid-template-columns:repeat(2,1fr)}
     .mmin{grid-template-columns:repeat(2,1fr)}
     .psprices.show{grid-template-columns:1fr}
-    .plan .grid{grid-template-columns:repeat(2,1fr)}
+    .plan .grid,.plan.bill .grid{grid-template-columns:repeat(2,1fr)}
     .srow .time{width:112px;font-size:12px}.srow .desc{font-size:12px}
     .srow{gap:10px;padding:12px 13px}
     .calcell{min-height:54px;padding:5px 6px}
@@ -2238,11 +2238,26 @@
   // ---- rebill tracker: opt-in per account; firms rebill every `cycle` days from the purchase date ----
   // state.billing[id] = {bought, cycle, price?, first?, ended?}; `ended` freezes the charge count once the subscription stops.
   function billingOf(id){return state.billing&&state.billing[id]&&state.billing[id].bought?state.billing[id]:null;}
-  // left = days until the next rebill (0 on a rebill day); day/cycleNo = where we are in the billing cycle.
+  // left = calendar days until the next rebill (0 on a rebill day). tdLeft / tdCycle = Mon–Fri days you can
+  // still trade before the next charge / in the whole cycle — the billing cycle counts weekends, you can't trade them.
   function rebillInfo(b){
     var cyc=b.cycle||30,e=Math.max(0,daysBetween(b.bought)),k=Math.floor(e/cyc);
-    var n=(e>0&&e%cyc===0)?k:k+1,left=n*cyc-e;
-    return {cycle:cyc,left:left,next:addDaysIso(b.bought,n*cyc),day:e-k*cyc+1,cycleNo:k+1,tone:left<=1?"bad":(left<=5?"warn":"")};
+    var n=(e>0&&e%cyc===0)?k:k+1,left=n*cyc-e,next=addDaysIso(b.bought,n*cyc),t=isoDate();
+    var due=left===0?addDaysIso(next,cyc):next; // on a rebill day the cycle you're trading in started today
+    return {cycle:cyc,left:left,next:next,tone:left<=1?"bad":(left<=5?"warn":""),
+      tdLeft:weekdaysBetween(todayTradeable()?t:addDaysIso(t,1),due),tdCycle:weekdaysBetween(addDaysIso(due,-cyc),due)};
+  }
+  // Mon–Fri days in [a, b).
+  function weekdaysBetween(a,b){
+    var n=0,d=new Date(a+"T00:00:00"),end=new Date(b+"T00:00:00");
+    for(;d<end;d.setDate(d.getDate()+1)){var w=d.getDay();if(w!==0&&w!==6)n++;}
+    return n;
+  }
+  // Today stays a trading day until your schedule's last block (the 2:00 PM hard stop by default).
+  function todayTradeable(){
+    var w=new Date().getDay(),stop=null;if(w===0||w===6)return false;
+    schRows().forEach(function(r){var tm=parseSchedTime(r.t);if(tm){var e=tm.end!=null?tm.end:tm.start;if(stop===null||e>stop)stop=e;}});
+    return stop===null||nowCSTMinutes()<stop;
   }
   // Charges paid: the purchase plus every rebill up to today (or the end date); a rebill day counts as charged.
   function billCharges(b){var e=daysBetween(b.bought)-(b.ended?daysBetween(b.ended):0);return 1+Math.floor(Math.max(0,e)/(b.cycle||30));}
@@ -2275,20 +2290,25 @@
     var n=billCharges(b),spent=billSpent(b),head,dates,tail;
     var money='<div class="item"><div class="k">Rebill price</div><div class="v edit" id="billPrice">'+(b.price!=null?fmtc(b.price):"Set")+'</div></div>'+
       '<div class="item"><div class="k">First payment</div><div class="v edit" id="billFirst"'+(b.first==null?' style="color:var(--muted2)"':'')+'>'+(b.first!=null?fmtc(b.first):"Same")+'</div></div>'+
-      '<div class="item"><div class="k">Total spent</div><div class="v">'+(spent!=null?fmtc(spent):"—")+' <span class="bn">· '+n+' charge'+(n===1?"":"s")+'</span></div></div>';
+      '<div class="item"><div class="k">Total spent</div><div class="v">'+(spent!=null?fmtc(spent):"—")+'</div></div>'+
+      '<div class="item"><div class="k">Charges</div><div class="v">'+n+'</div></div>';
     if(!b.ended){
       var r=rebillInfo(b),pct=Math.round((r.cycle-r.left)/r.cycle*100),col=r.tone==="bad"?"red":(r.tone==="warn"?"amber":"green"),msg;
-      if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+". The next one after that is "+weekdayLbl(addDaysIso(r.next,r.cycle))+".";
-      else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+"). Cancel before then if you don't want another cycle.";
-      else msg="↻ Next rebill in <b>"+r.left+" days</b> — day "+r.day+" of "+r.cycle+", cycle "+r.cycleNo+".";
+      var td=r.tdLeft+" trading day"+(r.tdLeft===1?"":"s");
+      if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+". The next one is "+weekdayLbl(addDaysIso(r.next,r.cycle))+", <b>"+td+"</b> away.";
+      else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+") — "+(r.tdLeft?"<b>"+td+"</b> left to trade":"<b>no trading days</b> left before it")+". Cancel before then if you don't want another cycle.";
+      else msg="↻ Next rebill in "+r.left+" days — <b>"+td+"</b> left to trade, of "+r.tdCycle+" this cycle.";
       head='<button type="button" class="secbtn" id="billEnd">Mark ended</button>';
-      dates='<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+'</div></div>';
+      dates='<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+' <span class="bn">· '+(r.left===0?"now":r.left+"d")+'</span></div></div>'+
+        '<div class="item"><div class="k">Trading days left</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+r.tdLeft+' <span class="bn">of '+r.tdCycle+' · Mon–Fri</span></div></div>';
       tail='<div class="bufbar"><div class="fill" style="width:'+pct+'%;background:var(--'+col+')"></div></div>'+
         '<div class="pomsg'+(r.tone?" "+r.tone:"")+'">'+msg+'</div>';
     }else{
       head='<span class="bbtns"><button type="button" class="secbtn" id="billResume">Resume</button><button type="button" class="secbtn" id="billOff">Remove</button></span>';
-      dates='<div class="item"><div class="k">Ended</div><div class="v edit" id="billEnded">'+weekdayLbl(b.ended)+'</div></div>';
-      tail='<div class="pomsg">■ Subscription ended — '+n+' charge'+(n===1?"":"s")+(spent!=null?', <b>'+fmtc(spent)+'</b> all in':'')+'. No more rebills are counted; tap Resume if it\'s still billing.</div>';
+      var held=weekdaysBetween(b.bought,addDaysIso(b.ended,1));
+      dates='<div class="item"><div class="k">Ended</div><div class="v edit" id="billEnded">'+weekdayLbl(b.ended)+'</div></div>'+
+        '<div class="item"><div class="k">Trading days</div><div class="v">'+held+' <span class="bn">Mon–Fri</span></div></div>';
+      tail='<div class="pomsg">■ Subscription ended — '+held+' trading day'+(held===1?"":"s")+', '+n+' charge'+(n===1?"":"s")+(spent!=null?', <b>'+fmtc(spent)+'</b> all in':'')+'. No more rebills are counted; tap Resume if it\'s still billing.</div>';
     }
     host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4>'+head+'</div>'+
       '<div class="grid">'+
@@ -3229,7 +3249,7 @@
       var sub=f.name+" · "+pl.name+" · "+a.size.toUpperCase();
       var badge=(a.id===state.leaderId)?'<span class="badge lead">★ Leader</span>':(a.follow&&leaderAcct()&&a.id!==state.leaderId?'<span class="badge foll">⇄ Follows</span>':"");
       var bl=billingOf(a.id);
-      if(bl&&!bl.ended){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="Rebills '+(rb.left===0?"today":weekdayLbl(rb.next))+'">↻ '+(rb.left===0?"today":rb.left+"d")+'</span>';}
+      if(bl&&!bl.ended){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="'+(rb.left===0?"Rebills today":rb.tdLeft+" trading day"+(rb.tdLeft===1?"":"s")+" left · rebills "+weekdayLbl(rb.next)+" (in "+rb.left+" day"+(rb.left===1?"":"s")+")")+'">↻ '+(rb.left===0?"today":rb.tdLeft+" td")+'</span>';}
       html+='<div class="acch'+(a.id===state.activeId?" active":"")+'" data-id="'+a.id+'" title="'+(a.id===state.activeId?"Tap to rename":"Switch to this account")+'">'+
         '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span>'+badge+'</div>'+
         '<div class="achbtns">'+
@@ -4361,7 +4381,7 @@
     bl.className="hblock "+(st?String(st.c||"off"):"off");
     bl.textContent=st?(st.l||"Block"):"Off-hours";
     bl.title=st?(st.t+(st.d?" — "+st.d:"")):"No schedule block right now";
-    if(key!==lastBlockKey){var first=lastBlockKey===null;lastBlockKey=key;if(!first&&!editSch)renderSched();}
+    if(key!==lastBlockKey){var first=lastBlockKey===null;lastBlockKey=key;if(!first&&!editSch)renderSched();if(!first&&!document.querySelector("#billPanel input")){renderBilling();renderAcctBar();}}
     var gr=entryGuardCheck(),hard=!!(st&&st.c==="no");
     gd.className="hguard "+(gr.length?(hard?"bad":"warn"):"ok");
     gd.textContent=gr.length?("Guard: "+gr.length+" flag"+(gr.length>1?"s":"")):"Guard: clear";
