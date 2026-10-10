@@ -1727,8 +1727,14 @@
   function renderGroup(){
     var head=document.getElementById("grpHead"),host=document.getElementById("grpCard"),L=leaderAcct();
     var members=L?state.accounts.filter(function(a){return a.id===L.id||a.follow;}):[];
-    if(members.length<2){head.style.display="none";host.style.display="none";host.innerHTML="";return;}
-    head.style.display="";host.style.display=head.classList.contains("collapsed")?"none":"";
+    // always on screen, so it's findable: until a leader has followers it explains how to set one up
+    if(members.length<2){
+      host.innerHTML='<div class="note" style="margin-top:0">Your combined P&amp;L shows here once accounts follow each other. '+
+        (state.accounts.length<2?'Add your other accounts with <b>＋ Add account</b> at the top, then pick':'Pick')+
+        ' a <b>Leader</b> under <b>Copy trading</b> and tick the accounts that follow it — today, this month and all time then total across all of them.</div>'+
+        (state.accounts.length>=2?'<button type="button" class="secbtn" id="grpSetup" style="margin-top:10px">Set up copy trading ›</button>':'');
+      return;
+    }
     var t=isoDate(),mk=t.slice(0,7),tot={day:0,month:0,all:0},undated=0,rows="";
     function cell(v){return '<span class="gv '+(v>0?"g":(v<0?"r":"m"))+'">'+fmt(v)+'</span>';}
     function stat(lbl,v,sub){return '<div class="stat"><div class="sl">'+lbl+'</div><div class="sv '+(v>0?"g":(v<0?"r":""))+'">'+fmt(v)+'</div><div class="ss">'+sub+'</div></div>';}
@@ -1749,6 +1755,12 @@
       '<div class="note">'+esc(L.name)+' leads; followers count their own days plus scaled copies. All time covers each account\'s current run'+(undated?' · '+undated+' logged day'+(undated===1?"":"s")+' without a date count in All time only':'')+'.</div>';
   }
 
+  document.getElementById("grpCard").addEventListener("click",function(e){
+    if(!e.target.closest("#grpSetup"))return;
+    var h=document.querySelector(".acctprog>h2.section");if(h&&h.classList.contains("collapsed"))h.click();
+    var cp=document.getElementById("copyPanel");cp.scrollIntoView({behavior:"smooth",block:"center"});
+    cp.classList.remove("flash");void cp.offsetWidth;cp.classList.add("flash");
+  });
   function dayTargets(){
     var c=cfg(),w=tpl(c.days).w,ws=w.reduce(function(a,b){return a+b;},0),T=c.target,out=[],acc=0;
     for(var i=0;i<w.length;i++){var v=(i<w.length-1)?Math.round(w[i]/ws*T):(T-acc);out.push(v);acc+=v;}
