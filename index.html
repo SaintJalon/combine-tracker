@@ -526,6 +526,15 @@
   .wk .calnav{flex-wrap:wrap;row-gap:8px}
   .wk .calbtn:disabled{opacity:.3;cursor:default;box-shadow:none}
   .wk .statgrid{margin:4px 0 10px}
+  .grp .statgrid{grid-template-columns:repeat(3,1fr);margin:4px 0 10px}
+  .grp .grow{display:flex;align-items:center;gap:8px;font-size:12px;padding:8px 0;border-top:1px solid var(--line)}
+  .grp .grow .gn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:700}
+  .grp .grow .gn small{font-weight:600;color:var(--muted2);margin-left:6px;text-transform:uppercase;letter-spacing:.06em;font-size:9.5px}
+  .grp .grow .gv{width:74px;text-align:right;font-weight:700}
+  .grp .grow .gv.g{color:var(--green)}.grp .grow .gv.r{color:var(--red)}.grp .grow .gv.m{color:var(--muted2)}
+  .grp .grow.gh{border-top:none;padding-top:2px;font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em}
+  .grp .grow.gh .gn,.grp .grow.gh .gv{color:var(--muted2);font-weight:700}
+  .grp .note{font-size:10.5px;color:var(--muted2);margin-top:8px;line-height:1.55}
   .wk .g{color:var(--green)}.wk .r{color:var(--red)}
   .wk .atrow .an{min-width:104px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
   .wk .atrow .am{color:var(--text)}
@@ -774,6 +783,8 @@
     .days{grid-template-columns:repeat(3,1fr)}
     .kpis{grid-template-columns:repeat(3,1fr)}
     .statgrid{grid-template-columns:repeat(2,1fr)}
+    .grp .statgrid{grid-template-columns:repeat(3,1fr)}
+    .grp .grow .gv{width:62px}
   }
   @media(max-width:760px){
     body{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
@@ -1004,6 +1015,12 @@
     </div>
 
     <div class="breachbar" id="breachBar"></div>
+
+    <!-- shown only while a leader has followers; own wrapper so folding it folds just the group -->
+    <div class="grpwrap">
+      <h2 class="section" id="grpHead">Copy Group — Combined P&amp;L</h2>
+      <div class="eqcard grp" id="grpCard"></div>
+    </div>
 
     <!-- the day log lives on Core; own wrapper so folding "Push to Target" folds only its cards -->
     <div class="corelog">
@@ -1290,7 +1307,6 @@
   var DD_APEX_EOD="<b>End-of-day</b> trailing: the threshold is recalculated once a day at 4:59 PM ET from your highest closing balance and never moves down; intraday swings don't move it, but touching it intraday still fails the account. It keeps trailing for the whole evaluation (it would only stop at your profit-target balance, which is where you pass). The daily loss limit is a soft stop: hitting it liquidates and pauses you for the day, it doesn't fail the eval. No consistency rule and no minimum days in the evaluation.";
   var DD_APEX_INTRA="<b>Intraday</b> trailing: the threshold follows your highest balance in real time, open profit included, and never moves down — give back an unrealized gain and the floor has already moved up, so watch your live buffer. It trails for the whole evaluation. No daily loss limit, no consistency rule and no minimum days in the evaluation.";
   var DD_TPT="<b>End-of-day</b> trailing: the drawdown is recalculated at each day's close from your highest closing balance, not on open positions, and locks for good once it reaches your starting balance. No daily loss limit in the Test. A <b>50% consistency rule</b> applies: no single day can be half or more of your profit — break it and you don't fail, you just keep trading until your best day is under 50%. Minimum 3 trading days (Tests bought before Aug 17, 2026 keep 5).";
-  var DD_TRADEIFY_LVL="<b>Static</b> drawdown (Level Up): every level starts on a fresh $50,000 balance with a floor that never moves — profit doesn't carry over between levels. Touching the floor ends the run, except on the checkpoint levels (3 and 5). No daily loss limit. Payouts at levels 2, 4, 6, 8, 9 and 10. $80 per attempt, 5 lifetime attempts, Tradovate only.";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor rises with your end-of-day balance and applies in real time, then locks for good at <b>$100 above your starting balance</b> once your closing balance clears the drawdown by $100. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit — plan on at least 3 trading days.";
 
   // Build a day-plan for any number of days: weights ramp up (build small → push big),
@@ -1401,19 +1417,7 @@
         "150k":S("Lucid","Daily Intraday",150000,{target:9000,maxloss:4500,dd:"Intraday trailing",ddDesc:DD_LUCID_DAILY_INTRA,cons:"50%",consPct:50,dll:"$2,700 soft · if ON",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"})
       }}
     }},
-    tradeify:{name:"Tradeify",planOrder:["growth","select","levelup"],plans:{
-      levelup:{name:"Level Up",order:["lvl1","lvl2","lvl3","lvl4","lvl5","lvl6","lvl7","lvl8","lvl9","lvl10"],sizes:{
-        "lvl1":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 1 (evaluation)",target:1500,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl2":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 2 ($1,000 payout)",target:1500,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl3":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 3 (checkpoint)",target:2000,maxloss:1250,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl4":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 4 ($2,000 payout)",target:2500,maxloss:1250,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl5":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 5 (checkpoint)",target:3000,maxloss:1500,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl6":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 6 ($3,000 payout)",target:3000,maxloss:1250,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl7":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 7 (evaluation)",target:4000,maxloss:1500,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl8":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 8 ($4,000 payout)",target:4000,maxloss:1250,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl9":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 9 ($10,000 payout)",target:5000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
-        "lvl10":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 10 ($15,000 payout)",target:6000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false})
-      }},
+    tradeify:{name:"Tradeify",planOrder:["growth","select"],plans:{
       growth:{name:"Growth",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("Tradeify","Growth",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$600 soft",contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 1 to pass",minShort:"1",locks:false}),
         "50k":S("Tradeify","Growth",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$1,250 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 1 to pass",minShort:"1",locks:false}),
@@ -1709,6 +1713,40 @@
       }
       state.logs["acct:"+a.id]=out;
     });
+  }
+
+  // ---- copy group: the leader plus every account following it, P&L combined ----
+  // A day's date lives in the journal of the account it was logged on; a follower's copied
+  // day borrows the leader's date for the same day number.
+  function acctDayDate(a,d,L){
+    var j=(state.journal&&state.journal["acct:"+a.id])||{};
+    if(j[d]&&j[d].date)return j[d].date;
+    if(L&&a.follow&&a.id!==L.id){var lj=(state.journal&&state.journal["acct:"+L.id])||{};if(lj[d]&&lj[d].date)return lj[d].date;}
+    return null;
+  }
+  function renderGroup(){
+    var head=document.getElementById("grpHead"),host=document.getElementById("grpCard"),L=leaderAcct();
+    var members=L?state.accounts.filter(function(a){return a.id===L.id||a.follow;}):[];
+    if(members.length<2){head.style.display="none";host.style.display="none";host.innerHTML="";return;}
+    head.style.display="";host.style.display=head.classList.contains("collapsed")?"none":"";
+    var t=isoDate(),mk=t.slice(0,7),tot={day:0,month:0,all:0},undated=0,rows="";
+    function cell(v){return '<span class="gv '+(v>0?"g":(v<0?"r":"m"))+'">'+fmt(v)+'</span>';}
+    function stat(lbl,v,sub){return '<div class="stat"><div class="sl">'+lbl+'</div><div class="sv '+(v>0?"g":(v<0?"r":""))+'">'+fmt(v)+'</div><div class="ss">'+sub+'</div></div>';}
+    members.forEach(function(a){
+      var log=state.logs["acct:"+a.id]||{},r={day:0,month:0,all:0},d,v,dt;
+      for(d in log){
+        if(!log.hasOwnProperty(d))continue;v=+log[d]||0;r.all+=v;
+        dt=acctDayDate(a,d,L);if(!dt){if(v)undated++;continue;}
+        if(dt===t)r.day+=v;if(dt.slice(0,7)===mk)r.month+=v;
+      }
+      tot.day+=r.day;tot.month+=r.month;tot.all+=r.all;
+      var stage=(state.stage&&state.stage[a.id])||"eval";
+      rows+='<div class="grow"><span class="gn">'+(a.id===L.id?"★ ":"⇄ ")+esc(a.name)+'<small>'+stage+'</small></span>'+cell(r.day)+cell(r.month)+cell(r.all)+'</div>';
+    });
+    var mon=new Date(t+"T00:00:00").toLocaleDateString(undefined,{month:"short"});
+    host.innerHTML='<div class="statgrid">'+stat("Today",tot.day,weekdayLbl(t))+stat("This month",tot.month,mon)+stat("All time",tot.all,members.length+" accounts")+'</div>'+
+      '<div class="grow gh"><span class="gn">Account</span><span class="gv">Today</span><span class="gv">Month</span><span class="gv">All</span></div>'+rows+
+      '<div class="note">'+esc(L.name)+' leads; followers count their own days plus scaled copies. All time covers each account\'s current run'+(undated?' · '+undated+' logged day'+(undated===1?"":"s")+' without a date count in All time only':'')+'.</div>';
   }
 
   function dayTargets(){
@@ -3482,7 +3520,7 @@
     });
   });
 
-  function renderAll(){syncFollowers();renderCopyPanel();renderAcctBar();renderPlan();renderBilling();renderDays();refreshProgress();renderStats();renderMM();renderPS();renderRules();renderCalendar();}
+  function renderAll(){syncFollowers();renderCopyPanel();renderGroup();renderAcctBar();renderPlan();renderBilling();renderDays();refreshProgress();renderStats();renderMM();renderPS();renderRules();renderCalendar();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
@@ -3912,7 +3950,7 @@
   document.getElementById("discEdit").addEventListener("click",function(){editDisc=!editDisc;renderRules();});
 
   // re-check the date when the PWA comes back to the foreground (midnight rollover)
-  document.addEventListener("visibilitychange",function(){if(!document.hidden){renderChecklist();renderAcctBar();renderBilling();}});
+  document.addEventListener("visibilitychange",function(){if(!document.hidden){renderChecklist();renderAcctBar();renderBilling();renderGroup();}});
 
   // ---- backup: export / import all data ----
   document.getElementById("btnExport").addEventListener("click",function(){

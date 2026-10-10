@@ -55,7 +55,7 @@ The app is split into five programs (bottom bar on a phone, top bar on desktop �
 
 | Program | What's in it |
 |---|---|
-| **01 Core** | Firm · plan · size picker, rebill tracker and copy trading at the top, then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
+| **01 Core** | Firm · plan · size picker, rebill tracker and copy trading at the top, the Copy Group's combined P&L (today / month / all time) when a leader has followers, then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
 | **02 Intel** | Weekly Review (week net, best/worst day and setup, rule breaks, Coach Co's one fix for next week), stats, equity curve, by-setup table, searchable trade log, R-distribution, weekday / week / month breakdowns |
 | **03 Protocol** | Pre-trade checklist, daily schedule, discipline score + trade cap + cooldown, your rules |
 | **04 Armory** | Position size, money management, risk lab |
