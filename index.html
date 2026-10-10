@@ -1275,7 +1275,9 @@
 (function(){
   // Drawdown descriptions, checked against each firm's own help center / product pages (Sep 2026).
   var TS_DD="<b>End-of-day</b> trailing: the Maximum Loss Limit trails your highest end-of-day balance (not intraday peaks), never moves down, and locks for good at your starting balance once it gets there. It's watched in real time, unrealized P&L included, so touching it intraday liquidates the account. The number that matters is your <b>buffer = balance − current floor</b>. Under $500 buffer, drop to micros or stop.";
-  var TS_LABS25="<b>Static</b> Maximum Loss Limit (Topstep Labs 25K): the floor sits at $24,000 and never moves — no trailing, no ratchet. Keep the balance above it at all times and that's the whole drawdown rule.";
+  var TS_LABS25="<b>Static</b> Maximum Loss Limit (Topstep Labs 25K): the floor sits at $24,000 and never moves — no trailing, no ratchet. Keep the balance above it at all times and that's the whole drawdown rule. The $500 daily loss limit is mandatory on this Combine.";
+  var TS_LABS50="<b>Static</b> Maximum Loss Limit (Topstep Labs 50K): the floor sits at $48,000 and never moves — every dollar of profit is extra room. The $1,000 daily loss limit is mandatory on this Combine.";
+  var DD_MFFU_STUDIO="<b>Static</b> Max Loss Limit (Studio): the floor never moves — no trailing and no end-of-day reset, in the evaluation or sim funded. Micros only. No daily loss limit, no consistency rule and no minimum days.";
   var DD_MFFU_RAPID="<b>Intraday</b> trailing: the Max Loss follows your equity high-water mark in real time, open profits included, and locks for good at <b>starting balance + $100</b>. Give back an unrealized gain and the floor has already moved up — watch your live buffer, not just closed P&L. No daily loss limit and no consistency rule.";
   var DD_MFFU_EOD="<b>End-of-day</b> trailing: the Max Loss only moves at the session close, up to each new closing high, and locks for good at <b>starting balance + $100</b>. Intraday dips don't move it, but touching it intraday still breaches.";
   var DD_MFFU_BUILDER=DD_MFFU_EOD+" The daily loss limit is a soft pause, not a breach. Builder 50K is sold with a <b>$1,500 or $2,000</b> Max Loss Limit — tap Max Loss above to match yours.";
@@ -1311,8 +1313,8 @@
   }
 
   // per-trade risk/stop (your personal rules, scaled by account size)
-  var RS={25000:{risk:75,stop:150},50000:{risk:100,stop:200},75000:{risk:150,stop:300},100000:{risk:200,stop:400},150000:{risk:300,stop:600}};
-  var SZLABEL={25000:"25K",50000:"50K",75000:"75K",100000:"100K",150000:"150K"};
+  var RS={10000:{risk:30,stop:60},20000:{risk:60,stop:120},25000:{risk:75,stop:150},50000:{risk:100,stop:200},75000:{risk:150,stop:300},100000:{risk:200,stop:400},150000:{risk:300,stop:600}};
+  var SZLABEL={10000:"10K",20000:"20K",25000:"25K",50000:"50K",75000:"75K",100000:"100K",150000:"150K"};
   function S(firmName,planName,size,o){
     return Object.assign({
       title:firmName+" — "+planName+" "+SZLABEL[size],
@@ -1327,15 +1329,22 @@
   // Plan/size keys are stable: saved accounts store them, so never rename one — mark it legacy instead.
   // lockOff: the trailing floor locks at starting balance + lockOff (0 = locks at the starting balance).
   var FIRMS={
-    topstep:{name:"TopStep",planOrder:["combine"],plans:{
-      combine:{name:"Combine",order:["25k","50k","100k","150k"],sizes:{
-        "25k":S("TopStep","Combine",25000,{target:2000,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS25,cons:"55%",consPct:55,consRaises:true,dll:"Optional",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false}),
+    topstep:{name:"TopStep",planOrder:["combine","static"],plans:{
+      combine:{name:"Combine",order:["50k","100k","150k"],sizes:{
         "50k":S("TopStep","Combine",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"55%",consPct:55,consRaises:true,dll:"Optional $1,000",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2"}),
         "100k":S("TopStep","Combine",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"55%",consPct:55,consRaises:true,dll:"Optional $2,000",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"}),
         "150k":S("TopStep","Combine",150000,{target:9000,maxloss:4500,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"55%",consPct:55,consRaises:true,dll:"Optional $3,000",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2"})
+      }},
+      static:{name:"Static",order:["25k","50k"],sizes:{
+        "25k":S("TopStep","Static",25000,{target:2000,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS25,cons:"55%",consPct:55,consRaises:true,dll:"$500 · mandatory",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false}),
+        "50k":S("TopStep","Static",50000,{target:4000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS50,cons:"55%",consPct:55,consRaises:true,dll:"$1,000 · mandatory",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2",locks:false})
       }}
     }},
-    mffu:{name:"MyFundedFutures",planOrder:["rapid","rapideod","pro","builder","flex","core"],plans:{
+    mffu:{name:"MyFundedFutures",planOrder:["rapid","rapideod","pro","builder","studio","flex","core"],plans:{
+      studio:{name:"Studio",order:["10k","20k"],sizes:{
+        "10k":S("MyFundedFutures","Studio",10000,{target:1000,maxloss:500,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"1",locks:false}),
+        "20k":S("MyFundedFutures","Studio",20000,{target:2000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"1",locks:false})
+      }},
       rapid:{name:"Rapid",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("MyFundedFutures","Rapid",25000,{target:1500,maxloss:1000,dd:"Intraday trailing",ddDesc:DD_MFFU_RAPID,contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 2 to pass",minShort:"2",lockOff:100}),
         "50k":S("MyFundedFutures","Rapid",50000,{target:3000,maxloss:2000,dd:"Intraday trailing",ddDesc:DD_MFFU_RAPID,contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2",lockOff:100}),
@@ -1461,6 +1470,8 @@
       if(state.targets[old])state.targets["acct:"+id]=state.targets[old];
       if(state.maxloss[old])state.maxloss["acct:"+id]=state.maxloss[old];
     }
+    // TopStep 25K (the static Labs Combine) moved from the Combine plan to Static; logs are keyed by account, so nothing else moves
+    state.accounts.forEach(function(x){if(x.firm==="topstep"&&x.plan==="combine"&&x.size==="25k")x.plan="static";});
     var a=activeAcct();
     if(!a){a=state.accounts[0];state.activeId=a.id;}
     state.firm=a.firm;state.plan=a.plan;state.size=a.size;
