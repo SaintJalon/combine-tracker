@@ -1290,6 +1290,7 @@
   var DD_APEX_EOD="<b>End-of-day</b> trailing: the threshold is recalculated once a day at 4:59 PM ET from your highest closing balance and never moves down; intraday swings don't move it, but touching it intraday still fails the account. It keeps trailing for the whole evaluation (it would only stop at your profit-target balance, which is where you pass). The daily loss limit is a soft stop: hitting it liquidates and pauses you for the day, it doesn't fail the eval. No consistency rule and no minimum days in the evaluation.";
   var DD_APEX_INTRA="<b>Intraday</b> trailing: the threshold follows your highest balance in real time, open profit included, and never moves down — give back an unrealized gain and the floor has already moved up, so watch your live buffer. It trails for the whole evaluation. No daily loss limit, no consistency rule and no minimum days in the evaluation.";
   var DD_TPT="<b>End-of-day</b> trailing: the drawdown is recalculated at each day's close from your highest closing balance, not on open positions, and locks for good once it reaches your starting balance. No daily loss limit in the Test. A <b>50% consistency rule</b> applies: no single day can be half or more of your profit — break it and you don't fail, you just keep trading until your best day is under 50%. Minimum 3 trading days (Tests bought before Aug 17, 2026 keep 5).";
+  var DD_TRADEIFY_LVL="<b>Static</b> drawdown (Level Up): every level starts on a fresh $50,000 balance with a floor that never moves — profit doesn't carry over between levels. Touching the floor ends the run, except on the checkpoint levels (3 and 5). No daily loss limit. Payouts at levels 2, 4, 6, 8, 9 and 10. $80 per attempt, 5 lifetime attempts, Tradovate only.";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor rises with your end-of-day balance and applies in real time, then locks for good at <b>$100 above your starting balance</b> once your closing balance clears the drawdown by $100. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit — plan on at least 3 trading days.";
 
   // Build a day-plan for any number of days: weights ramp up (build small → push big),
@@ -1342,8 +1343,8 @@
     }},
     mffu:{name:"MyFundedFutures",planOrder:["rapid","rapideod","pro","builder","studio","flex","core"],plans:{
       studio:{name:"Studio",order:["10k","20k"],sizes:{
-        "10k":S("MyFundedFutures","Studio",10000,{target:1000,maxloss:500,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"1",locks:false}),
-        "20k":S("MyFundedFutures","Studio",20000,{target:2000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"1",locks:false})
+        "10k":S("MyFundedFutures","Studio",10000,{target:1000,maxloss:500,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"—",locks:false}),
+        "20k":S("MyFundedFutures","Studio",20000,{target:2000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"—",locks:false})
       }},
       rapid:{name:"Rapid",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("MyFundedFutures","Rapid",25000,{target:1500,maxloss:1000,dd:"Intraday trailing",ddDesc:DD_MFFU_RAPID,contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 2 to pass",minShort:"2",lockOff:100}),
@@ -1400,7 +1401,19 @@
         "150k":S("Lucid","Daily Intraday",150000,{target:9000,maxloss:4500,dd:"Intraday trailing",ddDesc:DD_LUCID_DAILY_INTRA,cons:"50%",consPct:50,dll:"$2,700 soft · if ON",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"})
       }}
     }},
-    tradeify:{name:"Tradeify",planOrder:["growth","select"],plans:{
+    tradeify:{name:"Tradeify",planOrder:["growth","select","levelup"],plans:{
+      levelup:{name:"Level Up",order:["lvl1","lvl2","lvl3","lvl4","lvl5","lvl6","lvl7","lvl8","lvl9","lvl10"],sizes:{
+        "lvl1":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 1 (evaluation)",target:1500,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl2":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 2 ($1,000 payout)",target:1500,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl3":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 3 (checkpoint)",target:2000,maxloss:1250,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl4":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 4 ($2,000 payout)",target:2500,maxloss:1250,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl5":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 5 (checkpoint)",target:3000,maxloss:1500,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl6":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 6 ($3,000 payout)",target:3000,maxloss:1250,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl7":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 7 (evaluation)",target:4000,maxloss:1500,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl8":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 8 ($4,000 payout)",target:4000,maxloss:1250,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl9":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 9 ($10,000 payout)",target:5000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "lvl10":S("Tradeify","Level Up",50000,{title:"Tradeify — Level Up · Level 10 ($15,000 payout)",target:6000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_LVL,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false})
+      }},
       growth:{name:"Growth",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("Tradeify","Growth",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$600 soft",contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 1 to pass",minShort:"1",locks:false}),
         "50k":S("Tradeify","Growth",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$1,250 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 1 to pass",minShort:"1",locks:false}),
@@ -1416,16 +1429,16 @@
     }},
     apex:{name:"Apex",planOrder:["eod","intraday"],plans:{
       eod:{name:"EOD",order:["25k","50k","100k","150k"],sizes:{
-        "25k":S("Apex","EOD",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$500 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"1",locks:false}),
-        "50k":S("Apex","EOD",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$1,000 soft",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"no minimum",minShort:"1",locks:false}),
-        "100k":S("Apex","EOD",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$1,500 soft",contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"no minimum",minShort:"1",locks:false}),
-        "150k":S("Apex","EOD",150000,{target:9000,maxloss:4000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$2,000 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"1",locks:false})
+        "25k":S("Apex","EOD",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$500 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "50k":S("Apex","EOD",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$1,000 soft",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "100k":S("Apex","EOD",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$1,500 soft",contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "150k":S("Apex","EOD",150000,{target:9000,maxloss:4000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$2,000 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"—",locks:false})
       }},
       intraday:{name:"Intraday",order:["25k","50k","100k","150k"],sizes:{
-        "25k":S("Apex","Intraday",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"1",locks:false}),
-        "50k":S("Apex","Intraday",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"no minimum",minShort:"1",locks:false}),
-        "100k":S("Apex","Intraday",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"no minimum",minShort:"1",locks:false}),
-        "150k":S("Apex","Intraday",150000,{target:9000,maxloss:4000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"1",locks:false})
+        "25k":S("Apex","Intraday",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "50k":S("Apex","Intraday",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "100k":S("Apex","Intraday",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"no minimum",minShort:"—",locks:false}),
+        "150k":S("Apex","Intraday",150000,{target:9000,maxloss:4000,maxlossLabel:"Trailing Threshold",dd:"Intraday trailing",ddDesc:DD_APEX_INTRA,contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"—",locks:false})
       }}
     }},
     tpt:{name:"Take Profit Trader",planOrder:["test"],plans:{
