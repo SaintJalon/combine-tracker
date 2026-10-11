@@ -320,7 +320,7 @@
   .copy .frow .fn{flex:1;min-width:0}
   .copy .frow .fn b{color:var(--text)}
   .copy .frow .sc{font-size:10.5px;color:var(--muted2)}
-  .copy .frow input{width:18px;height:18px;flex-shrink:0;cursor:pointer}
+  .copy .frow input[type=checkbox]{width:18px;height:18px;flex-shrink:0;cursor:pointer}
   .copy .note{font-size:10.5px;color:var(--muted2);margin-top:9px;line-height:1.55}
   .bill{margin:0 0 8px;padding:14px 16px}
   .bill .bh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -1659,9 +1659,7 @@
   }
 
   // ---- copy trading: mirror one of my accounts into the others ----
-  var SIZE$={ "25k":25000,"50k":50000,"100k":100000,"150k":150000 };
   function acctById(id){for(var i=0;i<state.accounts.length;i++){if(state.accounts[i].id===id)return state.accounts[i];}return null;}
-  function sizeDollars(a){return SIZE$[a.size]||FIRMS[a.firm].plans[a.plan].sizes[a.size].size;}
   function leaderAcct(){return state.leaderId?acctById(state.leaderId):null;}
   function activeFollowLeader(){
     var a=activeAcct();if(!a||!a.follow)return null;
@@ -1698,18 +1696,18 @@
     for(var d in log){if(log.hasOwnProperty(d)&&!rec.own.hasOwnProperty(d))set[d]=1;}
     return set;
   }
-  // Rebuild each follower's log = its own days + a live scaled copy of every leader day.
+  // Rebuild each follower's log = its own days + a live 1:1 copy of every leader day.
   function syncFollowers(){
     var L=leaderAcct();if(!L)return;
     if(L.follow)setFollow(L.id,false); // a leader can't follow itself
-    var lead=state.logs["acct:"+L.id]||{},ls=sizeDollars(L);
+    var lead=state.logs["acct:"+L.id]||{};
     state.accounts.forEach(function(a){
       if(a.id===L.id||!a.follow)return;
-      var rec=followRec(a),ratio=sizeDollars(a)/ls,out=Object.assign({},rec.own),d;
+      var rec=followRec(a),out=Object.assign({},rec.own),d;
       for(d in lead){
         if(!lead.hasOwnProperty(d))continue;
         if(rec.own.hasOwnProperty(d))continue; // your own day wins, never overwritten
-        out[d]=Math.round(lead[d]*ratio);
+        out[d]=lead[d]; // 1:1 — a copier places the same trade on every account
       }
       state.logs["acct:"+a.id]=out;
     });
@@ -1752,7 +1750,7 @@
     var mon=new Date(t+"T00:00:00").toLocaleDateString(undefined,{month:"short"});
     host.innerHTML='<div class="statgrid">'+stat("Today",tot.day,weekdayLbl(t))+stat("This month",tot.month,mon)+stat("All time",tot.all,members.length+" accounts")+'</div>'+
       '<div class="grow gh"><span class="gn">Account</span><span class="gv">Today</span><span class="gv">Month</span><span class="gv">All</span></div>'+rows+
-      '<div class="note">'+esc(L.name)+' leads; followers count their own days plus scaled copies. All time covers each account\'s current run'+(undated?' · '+undated+' logged day'+(undated===1?"":"s")+' without a date count in All time only':'')+'.</div>';
+      '<div class="note">'+esc(L.name)+' leads; followers count their own days plus 1:1 copies. All time covers each account\'s current run'+(undated?' · '+undated+' logged day'+(undated===1?"":"s")+' without a date count in All time only':'')+'.</div>';
   }
 
   document.getElementById("grpCard").addEventListener("click",function(e){
@@ -1813,7 +1811,7 @@
     var c=cfg(),P=livePlan(),t=P.live,phases=tpl(c.days).p,log=curLog(),ML=c.maxloss;
     var followL=activeFollowLeader(),copied=copiedDaySet();
     var cb=document.getElementById("copyBar");
-    if(followL){cb.className="copybar on";cb.innerHTML="⇄ <b>Currently following "+esc(followL.name)+"</b> — your own logged days stay put; every other day mirrors "+esc(followL.name)+" live (scaled) and updates when it changes. Log or override any day to make it yours.";}
+    if(followL){cb.className="copybar on";cb.innerHTML="⇄ <b>Currently following "+esc(followL.name)+"</b> — your own logged days stay put; every other day mirrors "+esc(followL.name)+" live (1:1) and updates when it changes. Log or override any day to make it yours.";}
     else{cb.className="copybar";cb.innerHTML="";}
     var buildCount=phases.filter(function(p){return p==="build";}).length;
     var w1=document.getElementById("week1"),w2=document.getElementById("week2");
@@ -1925,7 +1923,7 @@
           renderPS();
         });
         var ed=div.querySelector(".editor");
-        function persist(){syncFollowers();save().then(function(){renderDays();autoFundArmed=true;refreshProgress();renderStats();renderCalendar();});}
+        function persist(){syncFollowers();save().then(function(){renderDays();autoFundArmed=true;refreshProgress();renderStats();renderCalendar();renderGroup();});}
         ed.querySelector(".save").addEventListener("click",function(ev){
           ev.stopPropagation();var inp=ed.querySelector(".netin");if(inp.readOnly)return;
           var v=parseFloat(inp.value);setDayNet(d,isNaN(v)?null:v);openDay=d;persist();
@@ -3412,14 +3410,12 @@
       html+='<div class="fol">';
       state.accounts.forEach(function(a){
         if(a.id===L.id)return;
-        var ratio=sizeDollars(a)/sizeDollars(L);
-        var pct=Math.round(ratio*100);
-        html+='<div class="frow"><div class="fn"><b>'+esc(a.name)+'</b> <span class="sc">· copies at '+pct+'% of leader ('+a.size.toUpperCase()+' vs '+L.size.toUpperCase()+')</span></div>'+
+        html+='<div class="frow"><div class="fn"><b>'+esc(a.name)+'</b> <span class="sc">· copies 1:1</span></div>'+
           '<input type="checkbox" data-fol="'+a.id+'"'+(a.follow?" checked":"")+'></div>';
       });
-      html+='</div><div class="note">Followers keep their own logged days. Every other day mirrors '+esc(L.name)+' (scaled to their size) and <b>updates whenever '+esc(L.name)+' changes</b> — tagged ⇄ copied. Log or edit any day to override a copy; unfollow to drop the copies and keep just your own.</div>';
+      html+='</div><div class="note">Followers keep their own logged days. Every other day mirrors '+esc(L.name)+' 1:1 — same P&amp;L, the way a trade copier places the same trade — and <b>updates whenever '+esc(L.name)+' changes</b> — tagged ⇄ copied. Log or edit any day to override a copy; unfollow to drop the copies and keep just your own.</div>';
     }else{
-      html+='<div class="note">Pick a leader account above. Your other accounts can then follow it — each logged day copies over, scaled to their size.</div>';
+      html+='<div class="note">Pick a leader account above. Your other accounts can then follow it — each logged day copies over 1:1.</div>';
     }
     host.innerHTML=html;
   }
