@@ -534,6 +534,9 @@
   .grp .grow .gv.g{color:var(--green)}.grp .grow .gv.r{color:var(--red)}.grp .grow .gv.m{color:var(--muted2)}
   .grp .grow.gh{border-top:none;padding-top:2px;font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em}
   .grp .grow.gh .gn,.grp .grow.gh .gv{color:var(--muted2);font-weight:700}
+  .grp .grow.gout{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2)}
+  .grp .grow.gx .gn{color:var(--muted);font-weight:600}
+  .grp .grow.gx .secbtn{flex-shrink:0}
   .grp .note{font-size:10.5px;color:var(--muted2);margin-top:8px;line-height:1.55}
   .wk .g{color:var(--green)}.wk .r{color:var(--red)}
   .wk .atrow .an{min-width:104px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
@@ -1748,6 +1751,13 @@
       var stage=(state.stage&&state.stage[a.id])||"eval";
       rows+='<div class="grow"><span class="gn">'+(a.id===L.id?"★ ":"⇄ ")+esc(a.name)+'<small>'+stage+'</small></span>'+cell(r.day)+cell(r.month)+cell(r.all)+'</div>';
     });
+    // accounts outside the group, listed so one can be added right here instead of up in Copy trading
+    var out=state.accounts.filter(function(a){return a.id!==L.id&&!a.follow;});
+    if(out.length){
+      rows+='<div class="grow gh gout"><span class="gn">Not in the group</span></div>'+out.map(function(a){
+        return '<div class="grow gx"><span class="gn">'+esc(a.name)+'<small>'+((state.stage&&state.stage[a.id])||"eval")+'</small></span><button type="button" class="secbtn" data-gadd="'+a.id+'">＋ Add</button></div>';
+      }).join("");
+    }
     var mon=new Date(t+"T00:00:00").toLocaleDateString(undefined,{month:"short"});
     host.innerHTML='<div class="statgrid">'+stat("Today",tot.day,weekdayLbl(t))+stat("This month",tot.month,mon)+stat("All time",tot.all,members.length+" accounts")+'</div>'+
       '<div class="grow gh"><span class="gn">Account</span><span class="gv">Today</span><span class="gv">Month</span><span class="gv">All</span></div>'+rows+
@@ -1755,6 +1765,8 @@
   }
 
   document.getElementById("grpCard").addEventListener("click",function(e){
+    var add=e.target.closest("[data-gadd]");
+    if(add){setFollow(add.getAttribute("data-gadd"),true);save().then(renderAll);return;}
     if(!e.target.closest("#grpSetup"))return;
     var h=document.querySelector(".acctprog>h2.section");if(h&&h.classList.contains("collapsed"))h.click();
     var cp=document.getElementById("copyPanel");cp.scrollIntoView({behavior:"smooth",block:"center"});
@@ -4679,7 +4691,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v65";
+var APP_BUILD="v66";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
