@@ -1561,7 +1561,7 @@
     var lg=curLog();
     if(v===null||isNaN(v))delete lg[d];else{lg[d]=v;var jd=dayJ(d);if(!jd.date)jd.date=isoDate();}
     var fa=activeAcct();
-    if(fa&&fa.follow){var rec=followRec(fa);if(v===null||isNaN(v))delete rec.own[d];else rec.own[d]=v;}
+    if(fa&&fa.follow){var rec=followRec(fa);if(v===null||isNaN(v))delete rec.own[d];else{rec.own[d]=v;var cj=curJournal()[d];if(cj&&cj.copied)delete cj.copied;}}
   }
 
   // ---- month calendar: a real month grid over the same Day 1..N log/journal ----
@@ -1688,6 +1688,7 @@
     }else{
       var rec=state.follow[k];
       if(rec)state.logs[k]=Object.assign({},rec.own);   // restore your own days only
+      var uj=state.journal&&state.journal[k];if(uj)for(var ud in uj){if(uj.hasOwnProperty(ud)&&uj[ud]&&uj[ud].copied)delete uj[ud];}
       delete state.follow[k];
       a.follow=false;
     }
@@ -1701,36 +1702,44 @@
     return set;
   }
   // Rebuild each follower's log = its own days + a live 1:1 copy of every leader day.
+  // Copies line up by DATE, not day number: the follower's own days keep their slots untouched
+  // (an account that already traded before following loses nothing), a leader day on a date the
+  // follower already logged is skipped (your own day wins), and every other leader day fills the
+  // next free slot, in date order, with its date stamped in the follower's journal (flagged copied).
   function syncFollowers(){
     var L=leaderAcct();if(!L)return;
     if(L.follow)setFollow(L.id,false); // a leader can't follow itself
-    var lead=state.logs["acct:"+L.id]||{};
+    if(!state.journal)state.journal={};
+    var lead=state.logs["acct:"+L.id]||{},lj=state.journal["acct:"+L.id]||{};
+    var ldays=Object.keys(lead).map(function(d){return{d:d,date:(lj[d]&&lj[d].date)||null};});
+    ldays.sort(function(x,y){if(x.date!==y.date){if(!x.date)return 1;if(!y.date)return -1;return x.date<y.date?-1:1;}return x.d-y.d;});
     state.accounts.forEach(function(a){
       if(a.id===L.id||!a.follow)return;
-      var rec=followRec(a),out=Object.assign({},rec.own),d;
-      for(d in lead){
-        if(!lead.hasOwnProperty(d))continue;
-        if(rec.own.hasOwnProperty(d))continue; // your own day wins, never overwritten
-        out[d]=lead[d]; // 1:1 — a copier places the same trade on every account
-      }
-      state.logs["acct:"+a.id]=out;
+      var k="acct:"+a.id,rec=followRec(a),out=Object.assign({},rec.own),fj=state.journal[k]||(state.journal[k]={}),ownDates={},slot=1,d;
+      for(d in fj){if(fj.hasOwnProperty(d)&&fj[d]&&fj[d].copied)delete fj[d];} // copy slots are rebuilt below
+      for(d in rec.own){if(rec.own.hasOwnProperty(d)&&fj[d]&&fj[d].date)ownDates[fj[d].date]=1;}
+      ldays.forEach(function(x){
+        if(x.date&&ownDates[x.date])return; // you logged that date yourself: yours wins
+        while(out.hasOwnProperty(slot)||(fj[slot]&&fj[slot].date))slot++;
+        out[slot]=lead[x.d]; // 1:1 — a copier places the same trade on every account
+        if(x.date)fj[slot]={note:"",trades:[],date:x.date,copied:true};
+      });
+      state.logs[k]=out;
     });
   }
 
   // ---- copy group: the leader plus every account following it, P&L combined ----
-  // A day's date lives in the journal of the account it was logged on; a follower's copied
-  // day borrows the leader's date for the same day number.
+  // A day's date lives in the account's journal (syncFollowers stamps it on copied days).
   function acctDayDate(a,d,L){
     var j=(state.journal&&state.journal["acct:"+a.id])||{};
     if(j[d]&&j[d].date)return j[d].date;
-    if(L&&a.follow&&a.id!==L.id){var lj=(state.journal&&state.journal["acct:"+L.id])||{};if(lj[d]&&lj[d].date)return lj[d].date;}
     return null;
   }
   function renderGroup(){
     var head=document.getElementById("grpHead"),host=document.getElementById("grpCard"),L=leaderAcct();
     var members=L?state.accounts.filter(function(a){return a.id===L.id||a.follow;}):[];
     // always on screen, so it's findable: until a leader has followers it explains how to set one up
-    if(members.length<2){
+    if(!L){ // no leader yet; once one is picked the card lists every account so the rest can be added in one tap
       host.innerHTML='<div class="note" style="margin-top:0">Your combined P&amp;L shows here once accounts follow each other. '+
         (state.accounts.length<2?'Add your other accounts with <b>＋ Add account</b> at the top, then pick':'Pick')+
         ' a <b>Leader</b> under <b>Copy trading</b> and tick the accounts that follow it — today, this month and all time then total across all of them.</div>'+
@@ -1766,7 +1775,7 @@
 
   document.getElementById("grpCard").addEventListener("click",function(e){
     var add=e.target.closest("[data-gadd]");
-    if(add){setFollow(add.getAttribute("data-gadd"),true);save().then(renderAll);return;}
+    if(add){setFollow(add.getAttribute("data-gadd"),true);syncFollowers();save().then(renderAll);return;}
     if(!e.target.closest("#grpSetup"))return;
     var h=document.querySelector(".acctprog>h2.section");if(h&&h.classList.contains("collapsed"))h.click();
     var cp=document.getElementById("copyPanel");cp.scrollIntoView({behavior:"smooth",block:"center"});
@@ -3629,12 +3638,12 @@
     if(e.target.id==="leadSel"){
       state.leaderId=e.target.value||null;
       var L=leaderAcct();if(L&&L.follow)setFollow(L.id,false);
-      save().then(renderAll);return;
+      syncFollowers();save().then(renderAll);return;
     }
     var fol=e.target.getAttribute("data-fol");
     if(fol){
       setFollow(fol,e.target.checked);
-      save().then(renderAll);return;
+      syncFollowers();save().then(renderAll);return;
     }
   });
 
@@ -4691,7 +4700,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v66";
+var APP_BUILD="v67";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
