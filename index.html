@@ -1269,6 +1269,7 @@
 
     <h2 class="section">Backup &amp; Export</h2>
     <div class="rules">
+      <div class="swlbl" style="margin:0 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">App version <b class="appbuild"></b><button type="button" class="secbtn" id="btnUpdate">↻ Check for updates</button></div>
       <div class="swlbl" id="backupLast" style="margin:0 0 12px"></div>
       <div class="edbar" style="padding:0">
         <button type="button" class="primary" id="btnExport">↓ Export backup</button>
@@ -1281,7 +1282,7 @@
   </section>
 
   <footer class="footer">
-    Trading Tracker // Matrix build<br>
+    Trading Tracker // Matrix build <span class="appbuild"></span><br>
     all data stays on this device · keys <span class="kbd">1</span>–<span class="kbd">5</span> switch programs · <span class="kbd">0</span> system<br>
     <span class="q">“There is no spoon.”</span>
   </footer>
@@ -4677,6 +4678,16 @@
 })();
 </script>
 <script>
+// Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
+var APP_BUILD="v65";
+document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
+document.getElementById("btnUpdate").addEventListener("click",function(){
+  var b=this;b.disabled=true;b.textContent="Checking…";
+  // a reload fetches the page fresh from the network (the worker bypasses every cache for it)
+  var go=function(){location.reload();};
+  if('serviceWorker' in navigator)navigator.serviceWorker.getRegistration().then(function(r){return r&&r.update();}).then(go,go);
+  else go();
+});
 if('serviceWorker' in navigator){
   // If a new worker takes over an already-controlled page, the HTML on screen is
   // the old build — reload once so a deploy actually shows up. Guarded so the
@@ -4690,6 +4701,8 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register('./service-worker.js').then(function(reg){
       reg.update();
       setInterval(function(){reg.update();},60*60*1000);
+      // a home-screen app is usually resumed, not relaunched, so also check each time it comes back
+      document.addEventListener('visibilitychange',function(){if(!document.hidden)reg.update();});
     }).catch(function(){});
   });
 }
