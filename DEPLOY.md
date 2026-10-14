@@ -6,6 +6,7 @@ Your logged P&L is saved on the device (localStorage).
 
 ## Files
 - `index.html` — the app
+- `rules.js` — the prop-firm math (consistency-adjusted target, tomorrow's cap, end-of-day floor); `node tests/rules.test.js` checks it
 - `manifest.json` — makes it installable
 - `service-worker.js` — offline support + faster loads
 - `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` — home-screen icons

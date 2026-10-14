@@ -321,6 +321,8 @@
   .copy .frow .fn b{color:var(--text)}
   .copy .frow .sc{font-size:10.5px;color:var(--muted2)}
   .copy .frow input[type=checkbox]{width:18px;height:18px;flex-shrink:0;cursor:pointer}
+  .copy .frow .cx{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--muted2);flex-shrink:0}
+  .copy .frow .cx input{background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:3px 4px;font-size:11px;max-width:128px}
   .copy .note{font-size:10.5px;color:var(--muted2);margin-top:9px;line-height:1.55}
   .bill{margin:0 0 8px;padding:14px 16px}
   .bill .bh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -1078,7 +1080,7 @@
       <div class="grid">
         <div class="item"><div class="k">Drawdown</div><div class="v" id="pDD">EOD trailing</div></div>
         <div class="item"><div class="k">Consistency</div><div class="v edit" id="pCons">50%</div></div>
-        <div class="item"><div class="k">Daily loss limit</div><div class="v" id="pDLL">$2,000 soft</div></div>
+        <div class="item"><div class="k">Daily loss limit</div><div class="v edit" id="pDLL">$2,000 soft</div></div>
         <div class="item"><div class="k">Starting floor</div><div class="v" id="pFloor">$97,000</div></div>
         <div class="item"><div class="k">Contracts</div><div class="v" id="pContracts">10 minis</div></div>
         <div class="item"><div class="k">Min days</div><div class="v" id="pMin">5</div></div>
@@ -1292,6 +1294,7 @@
 
 </div>
 
+<script src="rules.js"></script>
 <script>
 (function(){
   // Drawdown descriptions, checked against each firm's own help center / product pages (Sep 2026).
@@ -1403,7 +1406,7 @@
         "150k":S("Lucid","Pro",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_LUCID,dll:"$2,700 soft · optional",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"1+ day",minShort:"1+"})
       }},
       flex:{name:"Flex",order:["25k","50k","100k","150k"],sizes:{
-        "25k":S("Lucid","Flex",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID,cons:"50%",consPct:50,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2"}),
+        "25k":S("Lucid","Flex",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID,cons:"50%",consPct:50,dll:"$600 soft",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2"}),
         "50k":S("Lucid","Flex",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LUCID,cons:"50%",consPct:50,contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2"}),
         "100k":S("Lucid","Flex",100000,{target:6000,maxloss:3000,dd:"EOD trailing",ddDesc:DD_LUCID,cons:"50%",consPct:50,contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"min 2 to pass",minShort:"2"}),
         "150k":S("Lucid","Flex",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_LUCID,cons:"50%",consPct:50,contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"})
@@ -1512,7 +1515,7 @@
     var a=acctById(id);if(!a)return null;
     var newId=genId(),oldK="acct:"+id,newK="acct:"+newId;
     state.accounts.push({id:newId,name:(a.name+" copy").slice(0,24),firm:a.firm,plan:a.plan,size:a.size});
-    ["logs","targets","maxloss","stops","consPct","days","journal","balance","mm"].forEach(function(m){
+    ["logs","targets","maxloss","stops","consPct","days","journal","balance","mm","dllAmt"].forEach(function(m){
       if(state[m]&&state[m][oldK]!==undefined)state[m][newK]=JSON.parse(JSON.stringify(state[m][oldK]));
     });
     ["maxTrades","stage","payout","attempts","attemptMeta","planning","payoutGoal","payouts","billing"].forEach(function(m){
@@ -1533,7 +1536,29 @@
     c.autoDays=daysToTarget(c.size,c.target,c.minShort);
     c.daysManual=!!(state.days&&state.days[k]);
     c.days=c.daysManual?state.days[k]:c.autoDays;
+    // Daily loss limit in dollars: the plan's soft/mandatory limit (opt-in ones stay off), or this account's own setting.
+    var dm=/\$([\d,]+)/.exec(c.dll||"");
+    c.dllAmt=(dm&&/soft|mandatory/i.test(c.dll)&&!/optional|if on/i.test(c.dll))?+dm[1].replace(/,/g,""):0;
+    if(state.dllAmt&&state.dllAmt[k]!=null){c.dllAmt=state.dllAmt[k];c.dll=c.dllAmt>0?fmt(c.dllAmt)+" soft":"None";}
+    // Consistency doesn't fail you for a big day — the profit target rises until the best day fits:
+    // effective target = max(base, best day / consistency %). Evaluations only; funded payouts have their own rule.
+    c.baseTarget=c.target;c.bestDay=0;
+    if(c.consPct>0&&stageOf()!=="funded"){var cs=countedStats(c);c.bestDay=cs.best>0?cs.best:0;c.target=CTRules.effectiveTarget(c.baseTarget,c.bestDay,c.consPct/100);}
+    c.targetRaised=c.target>c.baseTarget;
     return c;
+  }
+  // Fix 4: an account can have a start date (set for followers that opened after the leader).
+  // Its days dated before that never count — not as trading days, toward consistency, or on the roadmap.
+  function beforeStart(d){var a=activeAcct(),jd=a&&a.start?(curJournal()[d]):null;return !!(jd&&jd.date&&jd.date<a.start);}
+  function countedStats(c){
+    var log=curLog(),r={total:0,best:-Infinity,days:0};
+    for(var d=1;d<=c.days;d++){if(!(d in log)||beforeStart(d))continue;r.total+=log[d];r.days++;if(log[d]>r.best)r.best=log[d];}
+    return r;
+  }
+  function consNote(c,total,best){
+    var pct=c.consPct/100,cap=CTRules.tomorrowCap(total,best,pct);
+    return {raised:c.targetRaised?"Target <b>"+fmt(c.target)+"</b> (base "+fmt(c.baseTarget)+", raised by "+c.consPct+"% consistency, best day "+fmt(c.bestDay)+"). ":"",
+      cap:cap,keep:"Keep tomorrow under <b>"+fmt(cap)+"</b> to avoid raising the target."};
   }
   function curLog(){if(!state.logs[modeKey()])state.logs[modeKey()]={};return state.logs[modeKey()];}
   // per-day journal: { "3": { note:"", trades:[{p:120,rr:2,s:"OB reclaim"}, ...] } }
@@ -1720,6 +1745,7 @@
       for(d in rec.own){if(rec.own.hasOwnProperty(d)&&fj[d]&&fj[d].date)ownDates[fj[d].date]=1;}
       ldays.forEach(function(x){
         if(x.date&&ownDates[x.date])return; // you logged that date yourself: yours wins
+        if(a.start&&x.date&&x.date<a.start)return; // the account didn't exist yet
         while(out.hasOwnProperty(slot)||(fj[slot]&&fj[slot].date))slot++;
         out[slot]=lead[x.d]; // 1:1 — a copier places the same trade on every account
         if(x.date)fj[slot]={note:"",trades:[],date:x.date,copied:true};
@@ -1802,7 +1828,7 @@
       else tgt=(suf[i]>0)?Math.round(remaining*w[i]/suf[i]):remaining;
       live.push(tgt);
       d=i+1;
-      if(d in log){banked+=log[d];totalLogged+=log[d];}
+      if((d in log)&&!beforeStart(d)){banked+=log[d];totalLogged+=log[d];}
       else banked+=tgt;
       cum.push(banked);
     }
@@ -1813,9 +1839,31 @@
     try{
       var raw=null;
       try{raw=localStorage.getItem(KEY);}catch(e){raw=mem.s||null;}
+      // a copy of the stored state, untouched, before any v67 migration runs (written once)
+      try{if(raw&&typeof raw==="string"&&localStorage.getItem("ct_backup_before_v67")==null)localStorage.setItem("ct_backup_before_v67",raw);}catch(e){}
       if(raw)state=Object.assign(state,(typeof raw==="string")?JSON.parse(raw):raw);
     }catch(e){if(mem.s)state=Object.assign(state,mem.s);}
+    if(migrateV67()){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
     ensureAccounts();
+  }
+  // v67, once: the LUCID 014/015/016 followers opened on 2026-10-13 but carry a $0 placeholder day on
+  // 10/12. Give them that start date, drop the $0 day-1 entry from their log and own-days record, and
+  // renumber their remaining days so logs, own days and journal (with its dates) stay lined up.
+  function migrateV67(){
+    if(state.mig67||!Array.isArray(state.accounts))return false;
+    state.accounts.forEach(function(a){
+      if(!a||!/lucid/i.test((a.name||"")+" "+(a.firm||""))||!/(^|\D)0?1[456](\D|$)/.test(a.name||""))return;
+      if(!a.start)a.start="2026-10-13";
+      var k="acct:"+a.id,log=state.logs&&state.logs[k],rec=state.follow&&state.follow[k],own=rec&&rec.own,j=state.journal&&state.journal[k];
+      var zero=function(o){return o&&o.hasOwnProperty("1")&&(+o["1"]||0)===0;};
+      if(!zero(log)&&!zero(own))return;
+      var jd=j&&j["1"]&&j["1"].date;if(jd&&jd>=a.start)return; // day 1 is dated inside the account's life: leave it
+      if(log)delete log["1"];if(own)delete own["1"];if(j)delete j["1"];
+      var keys={};[log,own,j].forEach(function(o){if(o)Object.keys(o).forEach(function(x){keys[x]=1;});});
+      var map={};Object.keys(keys).map(Number).sort(function(x,y){return x-y;}).forEach(function(x,i){map[x]=i+1;});
+      [log,own,j].forEach(function(o){if(!o)return;var src=Object.assign({},o);Object.keys(o).forEach(function(x){delete o[x];});Object.keys(src).forEach(function(x){o[map[x]]=src[x];});});
+    });
+    state.mig67=true;return true;
   }
   var undoSnapshot=null;
   async function save(){
@@ -1866,7 +1914,7 @@
     hd1.insertAdjacentHTML("beforeend",'<span class="chev">▾</span>');
     hd2.insertAdjacentHTML("beforeend",'<span class="chev">▾</span>');
     if(hd2.classList.contains("collapsed"))w2.style.display="none";
-    var stopBreaches=0,maxBreaches=0,guardReasons=entryGuardCheck();
+    var stopBreaches=0,maxBreaches=0,dllHits=0,guardReasons=entryGuardCheck();
     for(var i=0;i<c.days;i++){
       var d=i+1,target=t[i],cumv=P.cum[i],phase=phases[i];
       var isCopied=!!copied[d];
@@ -1878,7 +1926,10 @@
         else{div.classList.add("loss");check='<span class="dst loss">✕ Miss</span>';pc="pnl-loss";}
         var notes="";
         if(val<=-ML){div.classList.add("breach");notes=' <span class="flag max">✕ max-loss breach</span>';maxBreaches++;}
-        else if(val<=-c.stop){notes=' <span class="flag stop">▲ over daily stop</span>';stopBreaches++;}
+        else{
+          if(c.dllAmt>0&&val<=-c.dllAmt){notes=' <span class="flag stop">◼ hit daily loss limit — paused</span>';dllHits++;}
+          if(val<=-c.stop){notes+=' <span class="flag stop">▲ over daily stop</span>';stopBreaches++;}
+        }
         actualHtml='Actual: <b class="'+pc+'">'+fmt(val)+'</b>'+(isCopied?' <span class="copytag">⇄ copied</span>':'')+notes;
       }
       var jj=(state.journal[modeKey()]||{})[d]||null;
@@ -2005,6 +2056,7 @@
     }
     var bb=document.getElementById("breachBar");
     if(maxBreaches>0){bb.className="breachbar on bad";bb.innerHTML="✕ "+maxBreaches+" day"+(maxBreaches>1?"s":"")+" hit your Max Loss ("+fmt(ML)+") — that ends the account. Reset and protect the floor.";}
+    else if(dllHits>0){bb.className="breachbar on warn";bb.innerHTML="▲ "+dllHits+" day"+(dllHits>1?"s":"")+" hit the "+fmt(c.dllAmt)+" daily loss limit — that pauses trading for the day; the account stays open."+(stopBreaches>0?" "+stopBreaches+" went past your hard daily stop (-"+fmt(c.stop)+").":"");}
     else if(stopBreaches>0){bb.className="breachbar on warn";bb.innerHTML="▲ "+stopBreaches+" day"+(stopBreaches>1?"s":"")+" went past your hard daily stop (-"+fmt(c.stop)+"). Keep losers inside the stop.";}
     else{bb.className="breachbar";bb.innerHTML="";}
   }
@@ -2016,8 +2068,7 @@
   var autoFundArmed=false;
   function refreshProgress(){
     var armed=autoFundArmed;autoFundArmed=false;
-    var c=cfg(),T=c.target,log=curLog(),total=0,daysLogged=0,best=-Infinity;
-    for(var d=1;d<=c.days;d++){if(d in log){total+=log[d];daysLogged++;if(log[d]>best)best=log[d];}}
+    var c=cfg(),T=c.target,cs=countedStats(c),total=cs.total,daysLogged=cs.days,best=cs.best;
     var pct=Math.max(0,Math.min(100,(total/T)*100)),remaining=Math.max(0,T-total),daysLeft=c.days-daysLogged;
     var pace=daysLeft>0?remaining/daysLeft:0;
     document.getElementById("pTotal").textContent=fmt(total);
@@ -2030,14 +2081,14 @@
     var el=document.getElementById("pConsist"),consPct=c.consPct;el.className="consistency";
     var cv=document.getElementById("pConvert");
     if(daysLogged===0||total<=0){el.style.display="none";cv.className="convertbar";cv.innerHTML="";return;}
-    var share=best/total,cap=consPct/100,consOK=(consPct===0)||(share<=cap),passed=(total>=T)&&consOK;
+    // the target already carries the consistency rule (raised to best day ÷ cap), so reaching it is a clean pass
+    var share=best/total,passed=total>=T;
     if(consPct===0){el.classList.add("none");el.innerHTML="No consistency rule on this plan — your best day can be any size. Still keep losers small; the Max Loss is the only thing that ends the run.";}
-    else if(total>=T){
-      if(share>cap){el.classList.add("bad");el.innerHTML="◎ Target hit — but best day ("+fmt(best)+") is "+Math.round(share*100)+"% of total, over the "+consPct+"% cap. Add green days to dilute it before you pass.";}
-      else{el.classList.add("ok");el.innerHTML="◎ Target hit and consistency clean (best day "+Math.round(share*100)+"% of total). Done.";}
-    } else {
-      if(share>cap){el.classList.add("warn");el.innerHTML="Consistency watch: best day "+fmt(best)+" = "+Math.round(share*100)+"% of total so far (cap "+consPct+"%). Keep stacking days so no single day finishes above "+fmt(cap*T)+".";}
-      else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total. Cap is "+consPct+"% — keep any one day under "+fmt(cap*T)+".";}
+    else{
+      var cn=consNote(c,total,best);
+      if(total>=T){el.classList.add("ok");el.innerHTML="◎ "+cn.raised+"Target hit with consistency clean (best day "+Math.round(share*100)+"% of total). Done.";}
+      else if(c.targetRaised){el.classList.add("warn");el.innerHTML=cn.raised+"Best day is "+Math.round(share*100)+"% of total (cap "+consPct+"%). "+cn.keep;}
+      else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total (cap "+consPct+"%). "+cn.keep;}
     }
     if(passed&&stageOf()!=="funded"){
       if(armed&&!(state.autoFund&&state.autoFund[state.activeId]===false)){
@@ -2109,15 +2160,23 @@
   }
   // Live buffer vs the trailing/static drawdown floor.
   function renderBuffer(){
-    var c=cfg(),log=curLog(),host=document.getElementById("bufCard"),k=modeKey();
-    var total=0,run=0,hwm=c.size,d;
-    for(d=1;d<=c.days;d++){if(d in log){total+=log[d];run+=log[d];if(c.size+run>hwm)hwm=c.size+run;}}
+    var c=cfg(),log=curLog(),j=curJournal(),host=document.getElementById("bufCard"),k=modeKey();
+    var days=[],total=0,d;
+    for(d=1;d<=c.days;d++){if(!(d in log)||beforeStart(d))continue;total+=log[d];days.push({d:d,date:(j[d]&&j[d].date)||null,net:log[d]});}
+    days.sort(function(x,y){var a=x.date||"",b=y.date||"";return a<b?-1:(a>b?1:x.d-y.d);});
     var autoBal=c.size+total;
     var bal=(state.balance&&state.balance[k])?state.balance[k]:autoBal;
-    var ddl=(c.dd||"").toLowerCase(),isStatic=ddl.indexOf("static")>=0;
-    var floor;
+    var ddl=(c.dd||"").toLowerCase(),isStatic=ddl.indexOf("static")>=0,isIntra=ddl.indexOf("intraday")>=0;
+    // End-of-day trailing only moves on a finished day's close: days before today, or today after the
+    // 4:00 PM CT session close. Until then today's result shows as where the floor moves if you finish here.
+    // Intraday trailing has already moved with every high, so it counts today straight away.
+    var floor,prospective=null;
     if(isStatic)floor=c.size-c.maxloss;
-    else{var trail=hwm-c.maxloss;floor=c.locks?Math.min(c.size+(c.lockOff||0),trail):trail;}
+    else{
+      var closed=isIntra||nowCSTMinutes()>=16*60;
+      var F=CTRules.eodFloor({size:c.size,maxloss:c.maxloss,locks:c.locks,lockOff:c.lockOff,days:days,today:isoDate(),closed:closed,balance:bal});
+      floor=F.floor;if(!closed&&Math.round(F.prospective)!==Math.round(floor))prospective=F.prospective;
+    }
     var buffer=bal-floor;
     var cls=buffer<=0?"r":(buffer<500?"a":"g");
     var pct=Math.max(0,Math.min(100,(buffer/c.maxloss)*100));
@@ -2126,7 +2185,7 @@
     if(buffer<=0){mcls="bad";msg="✕ Floor breached — this ends the account.";}
     else if(buffer<500){mcls="warn";msg="▲ Under $500 buffer — drop to micros or stop for the day.";}
     else{mcls="ok";msg="Healthy buffer. Keep any single loss well inside it.";}
-    var floorNote=isStatic?"static — fixed":(c.locks?(floor>=c.size+(c.lockOff||0)?(c.lockOff?"locked at start + "+fmt(c.lockOff):"locked at start"):"trailing up"):"trailing");
+    var floorNote=prospective!=null?"moves to "+fmt(prospective)+" at close if you finish here":isStatic?"static — fixed":(c.locks?(floor>=c.size+(c.lockOff||0)?(c.lockOff?"locked at start + "+fmt(c.lockOff):"locked at start"):"trailing up"):"trailing");
     var balNote=(state.balance&&state.balance[k])?"tap to edit · your entry":"tap to edit · auto from P&L";
     host.innerHTML=
       '<div class="bh"><span class="bttl">Buffer to floor</span><span class="bbig '+cls+'">'+fmt(buffer)+'</span></div>'+
@@ -2807,14 +2866,12 @@
   function cpct(v){return '<span class="cnum">'+Math.round(v)+'%</span>';}
   function pl(n,s,p){return n+" "+(n===1?s:(p||s+"s"));}
   function paceInfo(){
-    var c=cfg(),log=curLog(),total=0,daysLogged=0;
-    for(var d=1;d<=c.days;d++){if(d in log){total+=log[d];daysLogged++;}}
+    var c=cfg(),cs=countedStats(c),total=cs.total,daysLogged=cs.days;
     var remaining=Math.max(0,c.target-total),daysLeft=c.days-daysLogged;
     return{total:total,remaining:remaining,daysLeft:daysLeft,pace:daysLeft>0?remaining/daysLeft:0,target:c.target};
   }
   function consistencyRisk(){
-    var c=cfg(),log=curLog(),total=0,best=-Infinity,daysLogged=0;
-    for(var d=1;d<=c.days;d++){if(d in log){total+=log[d];daysLogged++;if(log[d]>best)best=log[d];}}
+    var c=cfg(),cs=countedStats(c),total=cs.total,best=cs.best,daysLogged=cs.days;
     if(!daysLogged||total<=0||c.consPct===0)return{risk:false};
     var share=best/total,cap=c.consPct/100;
     return{risk:share>cap,share:share,cap:cap};
@@ -3017,7 +3074,7 @@
     if(a.tier==="new")return coachPick(FOCUS_MSG.new,seed+"new");
     var pi=paceInfo(),c=cfg(),s=a.stats;
     var severeRecent=!!(a.recent&&(a.recent.net<=-c.maxloss||a.recent.tilt));
-    var vars={cap:maxTradesOf(),consCap:fmt((c.consPct/100)*c.target),
+    var vars={cap:maxTradesOf(),consCap:fmt(CTRules.tomorrowCap(countedStats(c).total,c.bestDay,c.consPct/100)),
       pace:fmt(Math.max(0,pi.pace)),daysLeft:pl(pi.daysLeft,"day")};
     var tpl;
     if(severeRecent)tpl=coachPick(FOCUS_MSG.severeRecent,seed+"severe");
@@ -3371,6 +3428,7 @@
     renderPlanSel();
     renderSizeSel();
     document.getElementById("kTarget").textContent=fmt(T);
+    document.getElementById("kTarget").nextElementSibling.textContent=c.targetRaised?"base "+fmt(c.baseTarget)+" · +consistency · tap to edit":"tap to edit";
     document.getElementById("kMaxloss").textContent="-"+fmt(ML);
     document.getElementById("kMaxLabel").textContent=c.maxlossLabel;
     document.getElementById("kDays").textContent=c.days;
@@ -3391,8 +3449,7 @@
     var floor=c.size-ML;
     document.getElementById("pFloor").textContent=(c.dd.toLowerCase().indexOf("static")>=0)?(fmt(floor)+" (fixed)"):(c.locks?(fmt(floor)+" → locks "+fmt(c.size+(c.lockOff||0))):(fmt(floor)+" → trails"));
     document.getElementById("coDD").innerHTML="<b>Drawdown ("+c.dd+"):</b> "+c.ddDesc;
-    if(c.consPct>0&&c.consRaises){document.getElementById("coCons").innerHTML="<b>"+c.consPct+"% consistency target:</b> keep your best day at or under "+c.consPct+"% of your total profit — under <b>"+fmt(c.consPct/100*T)+"</b> on a clean pass. Go over and the account doesn't fail: the Profit Target rises to best day ÷ "+(c.consPct/100)+". The fix for a big day is always more green days, never trimming.";}
-    else if(c.consPct>0){document.getElementById("coCons").innerHTML="<b>"+c.consPct+"% consistency rule:</b> your single best day can't exceed "+c.consPct+"% of total profit — keep any one day under <b>"+fmt(c.consPct/100*T)+"</b>. The fix for a big day is always to add more green days, never trim.";}
+    if(c.consPct>0){var cn=consNote(c,countedStats(c).total,c.bestDay);document.getElementById("coCons").innerHTML="<b>"+c.consPct+"% consistency:</b> your best day can be at most "+c.consPct+"% of total profit. Go over and the account doesn't fail — the Profit Target rises to best day ÷ "+(c.consPct/100)+". "+cn.raised+cn.keep+" The fix for a big day is always more green days, never trimming.";}
     else{document.getElementById("coCons").innerHTML="<b>No consistency rule:</b> one big day is fine on this plan. The only thing that ends the eval is touching the Max Loss Limit — protect the floor and keep losers contained.";}
   }
 
@@ -3433,6 +3490,7 @@
       state.accounts.forEach(function(a){
         if(a.id===L.id)return;
         html+='<div class="frow"><div class="fn"><b>'+esc(a.name)+'</b> <span class="sc">· copies 1:1</span></div>'+
+          '<label class="cx" title="Account start date — earlier days are never copied or counted">from<input type="date" data-start="'+a.id+'" value="'+(a.start||"")+'"></label>'+
           '<input type="checkbox" data-fol="'+a.id+'"'+(a.follow?" checked":"")+'></div>';
       });
       html+='</div><div class="note">Followers keep their own logged days. Every other day mirrors '+esc(L.name)+' 1:1 — same P&amp;L, the way a trade copier places the same trade — and <b>updates whenever '+esc(L.name)+' changes</b> — tagged ⇄ copied. Log or edit any day to override a copy; unfollow to drop the copies and keep just your own.</div>';
@@ -3596,7 +3654,7 @@
       if(victim&&(await mxConfirm('Delete "'+victim.name+'" and its P&L log?\n\nThis cannot be undone from the app — export a backup first if you might want it back.',{title:"✕ Delete account",tone:"danger",okText:"Delete"}))){
         state.accounts=state.accounts.filter(function(x){return x.id!==del;});
         delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
-        if(state.stops)delete state.stops["acct:"+del];if(state.consPct)delete state.consPct["acct:"+del];
+        if(state.stops)delete state.stops["acct:"+del];if(state.consPct)delete state.consPct["acct:"+del];if(state.dllAmt)delete state.dllAmt["acct:"+del];
         if(state.follow)delete state.follow["acct:"+del];
         if(state.attempts)delete state.attempts[del];if(state.attemptMeta)delete state.attemptMeta[del];
         if(state.maxTrades)delete state.maxTrades[del];if(state.stage)delete state.stage[del];if(state.payout)delete state.payout[del];
@@ -3640,6 +3698,8 @@
       var L=leaderAcct();if(L&&L.follow)setFollow(L.id,false);
       syncFollowers();save().then(renderAll);return;
     }
+    var sd=e.target.getAttribute("data-start");
+    if(sd){var sa=acctById(sd);if(sa){if(e.target.value)sa.start=e.target.value;else delete sa.start;syncFollowers();save().then(renderAll);}return;}
     var fol=e.target.getAttribute("data-fol");
     if(fol){
       setFollow(fol,e.target.checked);
@@ -3647,10 +3707,23 @@
     }
   });
 
-  editKpi("kTarget",function(){return cfg().target;},function(v){state.targets[modeKey()]=v;});
+  editKpi("kTarget",function(){return cfg().baseTarget;},function(v){state.targets[modeKey()]=v;});
   editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
   editKpi("kStop",function(){return cfg().stop;},function(v){state.stops[modeKey()]=v;});
 
+  // Daily loss limit ($): the program's soft limit, separate from your personal hard daily stop. 0 = none.
+  (function(){
+    var el=document.getElementById("pDLL");
+    el.addEventListener("click",function(){
+      if(el.querySelector("input"))return;
+      el.innerHTML='<input type="number" inputmode="numeric" min="0" value="'+(cfg().dllAmt||0)+'">';
+      var inp=el.querySelector("input");inp.focus();inp.select();
+      function commit(){var v=parseFloat(inp.value);
+        if(!isNaN(v)&&v>=0){if(!state.dllAmt)state.dllAmt={};state.dllAmt[modeKey()]=Math.round(v);}
+        save().then(renderAll);}
+      inp.addEventListener("blur",commit);inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
+    });
+  })();
   // Consistency %: 0 is a valid value (no consistency rule), so this needs its
   // own tiny editor rather than reusing editKpi() (which rejects zero/blank).
   (function(){
@@ -3928,7 +4001,7 @@
     t=t.replace(/\{risk\}/g,"<b>"+fmt(c.risk)+"</b>")
        .replace(/\{stop\}/g,"<b>"+fmt(c.stop)+"</b>")
        .replace(/\{contracts\}/g,"<b>"+esc(c.contractsShort)+"</b>")
-       .replace(/\{bestday\}/g,"<b>"+(c.consPct>0?fmt(c.consPct/100*c.target):"no cap")+"</b>");
+       .replace(/\{bestday\}/g,"<b>"+(c.consPct>0?fmt(CTRules.tomorrowCap(countedStats(c).total,c.bestDay,c.consPct/100)):"no cap")+"</b>");
     return t.replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>");
   }
   function boxEditing(key){return key==="disc"?editDisc:editRules;}

@@ -8,7 +8,8 @@ const ASSETS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+  './rules.js'
 ];
 
 // Fetch with the HTTP cache bypassed. GitHub Pages serves `cache-control:
