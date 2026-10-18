@@ -124,6 +124,16 @@ t('a gap through the stop fills at the open; a gap through the target gets the o
 t('no stop or target set: never exits', () => {
   assert.strictEqual(R.barExit('long', B(100, 200, 1, 100), null, null), null);
 });
+t('buy limit: fills at its price only when traded through by a tick; a gap down fills at the open', () => {
+  assert.strictEqual(R.limitFill('long', B(100, 101, 95, 96), 95, 0.25), null);      // touch only
+  assert.strictEqual(R.limitFill('long', B(100, 101, 94.75, 96), 95, 0.25), 95);     // a tick through
+  assert.strictEqual(R.limitFill('long', B(93, 94, 92, 93), 95, 0.25), 93);          // opened below
+});
+t('sell limit mirrors it', () => {
+  assert.strictEqual(R.limitFill('short', B(100, 105, 99, 104), 105, 0.25), null);
+  assert.strictEqual(R.limitFill('short', B(100, 105.25, 99, 104), 105, 0.25), 105);
+  assert.strictEqual(R.limitFill('short', B(107, 108, 106, 107), 105, 0.25), 107);
+});
 t('daily-stop price: NQ long, $400 room → 20 points; off-tick rounds to the next tick beyond', () => {
   assert.strictEqual(R.lossLimitPrice('long', 17000, 1, 20, 400, 0.25), 16980);
   assert.strictEqual(R.lossLimitPrice('long', 17000, 1, 20, 403, 0.25), 16979.75);

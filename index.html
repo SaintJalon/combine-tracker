@@ -795,6 +795,11 @@
   .rphud .rprule.bad{color:var(--red)}.rphud .rprule.warn{color:var(--amber)}
   .rpchart{position:relative;height:clamp(300px,54vh,580px);border:1px solid var(--line);border-radius:2px;overflow:hidden}
   .rpctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+  .rptap{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border:1px dashed var(--line2);border-radius:2px;font-size:12px;color:var(--muted)}
+  .rptap b{color:var(--text)}
+  .rptap button{padding:8px 12px;border-radius:2px;border:1px solid var(--line2);background:transparent;color:var(--text);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+  .rptap .buy{background:var(--blue);border-color:var(--blue);color:#fff}.rptap .sell{background:var(--red);border-color:var(--red);color:#fff}
+  .rptap .x{margin-left:auto}
   .rpbtn{background:transparent;color:var(--muted);border:1px solid var(--line2);border-radius:2px;padding:8px 14px;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
   .rpbtn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);box-shadow:var(--glow);min-width:96px}
   .rpbtn.ghost{margin-left:auto}
@@ -1343,6 +1348,7 @@
     <div class="rpstage" id="rpStage" hidden>
       <div class="rphud" id="rpHud"></div>
       <div class="rpchart" id="rpChart"></div>
+      <div class="rptap" id="rpTap" hidden></div>
       <div class="rpctl">
         <button type="button" class="rpbtn primary" id="rpPlay">▶ Play</button>
         <button type="button" class="rpbtn" id="rpStep" title="Next bar (→)">Step ›</button>
@@ -4640,7 +4646,7 @@
   function rpLiveSaved(){try{return JSON.parse(localStorage.getItem(RP_LIVE)||"null");}catch(e){return null;}}
   function rpPersist(){
     if(!rp||rp.done)return;
-    var o={clock:rpNow(),curT:rpCache.S.t[rp.cur]};["set","instr","step","day","ctx","startT","flatT","blind","R","slip","fee","pos","trades","realized","locked","lastExitT","events","startedAt"].forEach(function(k){o[k]=rp[k];});
+    var o={clock:rpNow(),curT:rpCache.S.t[rp.cur]};["set","instr","step","day","ctx","startT","flatT","blind","R","slip","fee","pos","order","trades","realized","locked","lastExitT","events","startedAt"].forEach(function(k){o[k]=rp[k];});
     try{localStorage.setItem(RP_LIVE,JSON.stringify(o));}catch(e){}
   }
   function rpPersistSoon(){if(!rpSaveT)rpSaveT=setTimeout(function(){rpSaveT=null;rpPersist();},1500);}
@@ -4676,16 +4682,16 @@
       startT:startT,flatT:flatT,blind:blind,
       R:src?src.R:(rpc.rules?{stop:+c.stop||0,cap:maxTradesOf(),cool:cooldownMinOf(),acct:a?a.name:""}:null),
       slip:src?+src.slip||0:Math.max(0,+rpc.slip||0),fee:src?+src.fee||0:Math.max(0,+rpc.fee||0),
-      pos:src?src.pos:null,trades:src&&src.trades||[],realized:src&&src.realized||0,locked:!!(src&&src.locked),lastExitT:src?src.lastExitT:null,
+      pos:src?src.pos:null,order:src&&src.order||null,trades:src&&src.trades||[],realized:src&&src.realized||0,locked:!!(src&&src.locked),lastExitT:src?src.lastExitT:null,
       events:src&&src.events||[],startedAt:src?src.startedAt:Date.now(),done:false};
     document.getElementById("rpStage").hidden=false;document.getElementById("rpLive").hidden=false;document.getElementById("rpSum").hidden=true;
     rpMsg(src?"Resumed where you left off.":(blind?"Blind day loaded — the date shows when the session ends.":"Loaded "+rpDayLong(day)+"."),"");
     document.getElementById("rpActs").removeAttribute("data-k");document.getElementById("rpTrades").removeAttribute("data-n");
-    rpMakeChart();rpSyncTicket();rpRender();rpCtlSync();rpRenderSetup();rpPersist();
+    rpTapHide();rpMakeChart();rpSyncTicket();rpRender();rpCtlSync();rpRenderSetup();rpPersist();
     requestAnimationFrame(function(){document.getElementById("rpStage").scrollIntoView({block:"start",behavior:fxAnim()?"smooth":"auto"});});
   }
   function rpHide(){
-    rpPlay(false);
+    rpPlay(false);rpTapHide();
     if(rpChart){rpChart.remove();rpChart=rpSeries=rpVol=rpMarks=null;}
     rp=null;rpLines=[];rpCandles=[];
     document.getElementById("rpStage").hidden=true;
@@ -4720,6 +4726,9 @@
     rpVol=rpChart.addSeries(L.HistogramSeries,{priceFormat:{type:"volume"},priceScaleId:"vol",lastValueVisible:false,priceLineVisible:false});
     rpChart.priceScale("vol").applyOptions({scaleMargins:{top:.82,bottom:0}});
     rpMarks=L.createSeriesMarkers(rpSeries,[]);
+    // a quick second tap reaches the chart as a double-click, so both pick a limit price
+    var onTap=function(pr){if(pr&&pr.point)rpTap(rpSeries.coordinateToPrice(pr.point.y));};
+    rpChart.subscribeClick(onTap);rpChart.subscribeDblClick(onTap);
     rpLines=[];
     rpSetData(true);
   }
@@ -4756,9 +4765,10 @@
   function rpLinesSync(){
     if(!rpSeries)return;
     rpLines.forEach(function(l){rpSeries.removePriceLine(l);});rpLines=[];
-    var p=rp.pos;if(!p)return;
-    var LS=window.LightweightCharts.LineStyle,C=rpCol;
+    var p=rp.pos,LS=window.LightweightCharts.LineStyle,C=rpCol;
     function add(px,color,style,title){if(px!=null&&isFinite(px))rpLines.push(rpSeries.createPriceLine({price:px,color:color,lineWidth:1,lineStyle:style,axisLabelVisible:true,title:title}));}
+    if(rp.order&&!rp.done){var o=rp.order;add(o.price,o.side==="long"?C.blue:C.red,LS.LargeDashed,(o.side==="long"?"Buy lmt ":"Sell lmt ")+o.qty);}
+    if(!p)return;
     add(p.entry,C.blue,LS.Solid,(p.side==="long"?"Long ":"Short ")+p.qty);
     add(p.stop,C.red,LS.Dashed,"Stop");
     add(p.target,C.green,LS.Dashed,"Target");
@@ -4785,15 +4795,59 @@
     if(which!=="tp")p.stop=sl>0?rpRound(p.entry-d*sl,tick):null;
     if(which!=="sl")p.target=tp>0?rpRound(p.entry+d*tp,tick):null;
   }
+  function rpQty(){return Math.max(1,Math.round(+rpc.qty||1));}
+  function rpSetupTag(){return String(document.getElementById("rpSetupIn").value||"").trim();}
+  // Open a position at px; the stop / target come from the ticket's points.
+  function rpFill(side,px,t,qty,setup,how){
+    var ins=rpInstr(rp.instr),p={side:side,qty:qty,entry:px,tIn:t,setup:setup,mfe:0,mae:0,how:how};
+    rpBrackets(p);p.stop0=p.stop;rp.pos=p;
+    rpMsg((how==="limit"?"Limit filled: ":"")+(side==="long"?"Bought ":"Sold ")+qty+" @ "+rpPx(px,ins)+(p.stop!=null?" · stop "+rpPx(p.stop,ins):"")+(p.target!=null?" · target "+rpPx(p.target,ins):""),"ok");
+    rpMarksSync();rpLinesSync();
+  }
   // Market orders fill at the last price, moved against you by the slippage setting.
   function rpOrder(side){
     if(!rp||rp.done||rp.pos)return;
     var why=rpBlocked();if(why){rpMsg(why,"bad");return;}
-    var ins=rpInstr(rp.instr),qty=Math.max(1,Math.round(+rpc.qty||1)),b=rpLast(),d=side==="long"?1:-1;
-    var p={side:side,qty:qty,entry:rpRound(b.c+d*rp.slip*ins.t,ins.t),tIn:b.t,setup:String(document.getElementById("rpSetupIn").value||"").trim(),mfe:0,mae:0};
-    rpBrackets(p);p.stop0=p.stop;rp.pos=p;
-    rpMsg((side==="long"?"Bought ":"Sold ")+qty+" @ "+rpPx(p.entry,ins)+(p.stop!=null?" · stop "+rpPx(p.stop,ins):"")+(p.target!=null?" · target "+rpPx(p.target,ins):""),"ok");
-    rpMarksSync();rpLinesSync();rpRender();rpPersist();
+    var ins=rpInstr(rp.instr),b=rpLast(),d=side==="long"?1:-1;
+    rp.order=null;rpTapHide();
+    rpFill(side,rpRound(b.c+d*rp.slip*ins.t,ins.t),b.t,rpQty(),rpSetupTag(),"market");
+    rpRender();rpPersist();
+  }
+  // ---- limit orders: tap the chart for a price, confirm, and it rests until price trades through it ----
+  var rpTapPx=null;
+  function rpTap(px){
+    if(!rp||rp.done||px==null||!isFinite(px))return;
+    var el=document.getElementById("rpTap"),ins=rpInstr(rp.instr);
+    if(rp.pos){rpTapHide();rpMsg("You're in a trade — flatten first to work a limit entry.","warn");return;}
+    px=rpRound(px,ins.t);var last=rpLast().c;
+    if(px===last){rpTapHide();return;}
+    var side=px<last?"long":"short",why=rpBlocked();rpTapPx=px;
+    el.innerHTML='<span>'+(side==="long"?"Buy":"Sell")+' limit <b>'+rpQty()+' @ '+rpPx(px,ins)+'</b> · '+(Math.abs(px-last)).toFixed(rpDec(ins.t))+' pts '+(side==="long"?"below":"above")+' the market</span>'+
+      '<button type="button" class="'+(side==="long"?"buy":"sell")+'" data-rp="limit" data-side="'+side+'"'+(why?" disabled":"")+'>'+(rp.order?"Move order":"Place")+'</button>'+
+      '<button type="button" class="x" data-rp="tapx" aria-label="Dismiss">✕</button>'+(why?'<span class="r">'+esc(why)+'</span>':'');
+    el.hidden=false;
+  }
+  function rpTapHide(){rpTapPx=null;var el=document.getElementById("rpTap");if(el){el.hidden=true;el.innerHTML="";}}
+  function rpPlaceLimit(side){
+    if(!rp||rp.done||rp.pos||rpTapPx==null)return;
+    var why=rpBlocked();if(why){rpMsg(why,"bad");return;}
+    var ins=rpInstr(rp.instr),last=rpLast().c;
+    if(side==="long"?rpTapPx>=last:rpTapPx<=last){rpTapHide();rpMsg("Price has moved past that level — tap the chart again.","warn");return;}
+    rp.order={side:side,price:rpTapPx,qty:rpQty(),setup:rpSetupTag(),t:rpNow()};
+    rpTapHide();rpMsg((side==="long"?"Buy":"Sell")+" limit "+rp.order.qty+" @ "+rpPx(rp.order.price,ins)+" working — it fills when price trades through it.","ok");
+    rpLinesSync();rpRender();rpPersist();
+  }
+  function rpCancelOrder(msg){if(!rp||!rp.order)return;rp.order=null;rpLinesSync();if(msg)rpMsg(msg,"");}
+  // A working limit against the bar just revealed. Its stop is checked on the fill bar too (the
+  // conservative read); its target only from the next bar.
+  function rpLimitBar(b){
+    var o=rp.order,ins=rpInstr(rp.instr),px=RPX.limitFill(o.side,b,o.price,ins.t);
+    if(px==null)return;
+    rp.order=null;
+    var why=rpBlocked();if(why){rpLinesSync();rpMsg("Limit cancelled — "+why,"warn");return;}
+    rpFill(o.side,px,b.t,o.qty,o.setup,"limit");
+    var p=rp.pos,x=RPX.barExit(p.side,b,p.stop,null);
+    if(x&&(p.side==="long"?b.l<p.stop:b.h>p.stop))rpClose(x.price,"stop",b.t);
   }
   // Close the open trade at px. Market and stop exits pay the slippage; a target is a limit order and doesn't.
   function rpClose(px,why,t){
@@ -4827,6 +4881,7 @@
       var b=RPX.bar(S,rp.cur);
       rpChartBar(b);
       if(rp.pos)rpExits(b);
+      else if(rp.order)rpLimitBar(b);
       if(b.t+rp.step>=rp.flatT){if(rp.pos)rpClose(b.c,"flat",b.t);rpFinish("Flat by "+rpHM(rp.flatT)+" CT");return;}
     }
     rpRender();rpPersistSoon();
@@ -4840,6 +4895,7 @@
   function rpFinish(reason){
     if(!rp||rp.done)return;
     rpPlay(false);
+    rp.order=null;rpTapHide();
     if(rp.pos){var b=rpLast();rpClose(b.c,"end",b.t);}
     rp.done=true;
     var sm=RPX.summarize(rp.trades);
@@ -4874,10 +4930,11 @@
   }
   // Rebuilt only when what they offer changes, so a button keeps its focus between bars.
   function rpActs(){
-    var el=document.getElementById("rpActs"),why=rp.pos?"":rpBlocked(),k=rp.done?"done":(rp.pos?"pos":"flat:"+why);
+    var el=document.getElementById("rpActs"),why=rp.pos?"":rpBlocked(),k=rp.done?"done":(rp.pos?"pos":(rp.order?"ord:":"flat:")+why);
     if(el.getAttribute("data-k")===k)return;
     el.setAttribute("data-k",k);el.title=why;
     if(rp.pos)el.innerHTML='<button type="button" data-rp="be">Stop → BE</button><button type="button" data-rp="flat">Flatten</button>';
+    else if(rp.order)el.innerHTML='<button type="button" data-rp="cancel">Cancel limit</button><button type="button" class="'+(rp.order.side==="long"?"buy":"sell")+'" data-rp="'+(rp.order.side==="long"?"buy":"sell")+'"'+(why?" disabled":"")+'>'+(rp.order.side==="long"?"Buy":"Sell")+' mkt</button>';
     else el.innerHTML='<button type="button" class="buy" data-rp="buy"'+(why||rp.done?" disabled":"")+'>Buy</button><button type="button" class="sell" data-rp="sell"'+(why||rp.done?" disabled":"")+'>Sell</button>';
     document.getElementById("rpWhy").textContent=rp.done?"":why;
   }
@@ -4957,7 +5014,7 @@
       '<label class="fchk"><input type="checkbox" data-rpc="blind"'+(rpc.blind?" checked":"")+'> Hide the date until the session ends — no hindsight</label>'+
       '<label class="fchk"><input type="checkbox" data-rpc="rules"'+(rpc.rules?" checked":"")+'> Trade under my rules from <b>'+esc(a?a.name:"this account")+'</b></label>'+
       '<div class="rprules">'+rules+'</div>'+
-      '<div class="edbar"><button type="button" class="primary" data-rp="start">▶ Load the program</button><span class="hint">Space plays / pauses · → steps one bar. Market orders fill at the last price; when one bar touches both your stop and target, the stop counts.</span></div>';
+      '<div class="edbar"><button type="button" class="primary" data-rp="start">▶ Load the program</button><span class="hint">Space plays / pauses · → steps one bar. Tap the chart to place a limit. Market orders fill at the last price, limits once price trades through them; when one bar touches both your stop and target, the stop counts.</span></div>';
   }
   function rpRenderData(){
     var el=document.getElementById("rpData");if(!el)return;
@@ -5042,6 +5099,9 @@
     else if(a==="discard"){if(await mxConfirm("Throw away the unfinished session? It won't go to your Sparring Log.",{title:"Discard session",tone:"danger",okText:"Discard"})){try{localStorage.removeItem(RP_LIVE);}catch(err){}rpRenderSetup();}}
     else if(a==="buy"||a==="sell"){rpOrder(a==="buy"?"long":"short");b.blur();}
     else if(a==="flat"&&rp&&rp.pos){var lb=rpLast();rpClose(lb.c,"market",lb.t);rpRender();rpPersist();b.blur();}
+    else if(a==="limit"){rpPlaceLimit(b.getAttribute("data-side"));}
+    else if(a==="tapx"){rpTapHide();}
+    else if(a==="cancel"){rpCancelOrder("Limit cancelled.");rpRender();rpPersist();b.blur();}
     else if(a==="be"&&rp&&rp.pos){
       var p=rp.pos,last=rpLast().c;
       if(p.side==="long"?last<=p.entry:last>=p.entry){rpMsg("Price isn't past your entry — a breakeven stop would fill right away.","warn");return;}
@@ -5474,7 +5534,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v68";
+var APP_BUILD="v69";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

@@ -112,7 +112,8 @@ the countdown stops but the spend stays in your totals (**Resume** undoes it, **
 3. **Set up the session.** Pick a day — or **Random day** with **Hide the date** on, so hindsight can't help you —
    the start time (default 08:30 CT), when you must be flat (default 2:00 PM CT), and how many prior days to show.
 4. **Trade it.** **Play** / **Step** (or Space and →). Buy / Sell fill at the last price; stop and target (in points)
-   rest as orders. With **Trade under my rules** on, your account's daily stop auto-flattens you (and locks the session),
+   rest as orders. **Tap the chart** to work a limit entry at that price (below the market buys, above sells): confirm
+   it, and it fills once price trades through it by a tick — tap again to move it, or **Cancel limit**. With **Trade under my rules** on, your account's daily stop auto-flattens you (and locks the session),
    and your trade cap and cooldown block new entries — the same rules as Core and Protocol.
 5. **Review.** At the end the date is revealed and the session goes to the **Sparring Log**: net, win rate, profit
    factor, a by-setup table, each trade's R and how far it went for / against you (MFE / MAE), and your notes.
