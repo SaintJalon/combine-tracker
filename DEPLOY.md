@@ -91,6 +91,15 @@ You can change that anytime in System.
 Each account keeps its own log, so running two at once won't mix them up.
 Tap the **Target** or **Max Loss** number on Core to match your dashboard if a firm changes its rules.
 
+**Copy trading:** pick a **Leader**, then tick the accounts that follow it. A new follower copies the leader's days
+from today on (**copying since**, editable); its own days are never touched. To switch leaders — say a TopStep 50K Static
+leads and your 100K follows — just pick the new leader: everyone following keeps the days they've copied so far as their
+own and stops following, then you tick who follows the new one.
+
+**Pass date:** every day you haven't traded yet shows the date it lands on (≈ Thu 10/22) if you trade each open session
+from here — today while the session is open, skipping weekends and market holidays — and the plan heading and calendar
+show the day you pass. Planned days appear on the month calendar with their target; the pass day is outlined.
+
 **Rebills & spend:** most evals are subscriptions that renew every 30 days from the day you bought them.
 Under the size picker on Core, tap **＋ Track purchase date** and pick the day you bought the account, then tap
 **Rebill price** to enter what each cycle costs (and **First payment** if you paid a different promo price up front).
@@ -139,3 +148,7 @@ level fills at the open. Add slippage (ticks) and fees (per contract, round trip
 
 Bars stay in this browser (IndexedDB) and are **not** part of Backup & Export — keep the CSVs. The Sparring Log is
 backed up. A session in progress is saved as you go; reopen Replay and tap **Resume**.
+
+**Share** in the Sparring Log sends a picture card of your stats and Coach Co's read through the phone's share sheet
+(on a computer it saves the card and copies a text summary); your notes stay private. **CSV** exports every sparring
+trade, notes included, for your own spreadsheet.
