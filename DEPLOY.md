@@ -91,14 +91,21 @@ You can change that anytime in System.
 Each account keeps its own log, so running two at once won't mix them up.
 Tap the **Target** or **Max Loss** number on Core to match your dashboard if a firm changes its rules.
 
-**Copy trading:** pick a **Leader**, then tick the accounts that follow it. A new follower copies the leader's days
-from today on (**copying since**, editable); its own days are never touched. To switch leaders — say a TopStep 50K Static
-leads and your 100K follows — just pick the new leader: everyone following keeps the days they've copied so far as their
-own and stops following, then you tick who follows the new one.
+**Copy trading — groups:** you can run several copy groups at once, each with its own leader — say your TopStep
+50K Static leads one group and your 100K leads another. In **Core → Copy trading**, the **Group** picker lists your
+groups; pick a free account under *Start a new group led by* to make it a leader. Each group only offers accounts that
+aren't already in a group (the rest are listed as taken). A new follower copies its leader from today on (**copying
+since**, editable); its own days are never touched. **Stop leading** ends a group: its followers keep every day they
+have — own and copied — and become free. The **Copy Group** card totals each group separately.
 
 **Pass date:** every day you haven't traded yet shows the date it lands on (≈ Thu 10/22) if you trade each open session
 from here — today while the session is open, skipping weekends and market holidays — and the plan heading and calendar
 show the day you pass. Planned days appear on the month calendar with their target; the pass day is outlined.
+
+**Rebill vs pass:** with a purchase date tracked (Rebill tracker), the plan checks the next rebill against your pass
+date. If the rebill lands first, a red warning above the calendar says when it charges, what it costs, how many trading
+days you have before it, and the per-day pace needed to pass first — next to your plan's pace — and the calendar marks
+the rebill day and the plan days after it. When you're ahead of it, a green line says so.
 
 **Rebills & spend:** most evals are subscriptions that renew every 30 days from the day you bought them.
 Under the size picker on Core, tap **＋ Track purchase date** and pick the day you bought the account, then tap
