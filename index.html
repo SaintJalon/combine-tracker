@@ -1843,48 +1843,61 @@
       if(ed){ed.classList.add("open");var inp=ed.querySelector(".netin");if(inp&&!inp.readOnly){inp.focus();inp.select();}}
     });
   }
-  // Where each unlogged plan day lands if you trade every open session from here: today while the
-  // session is still open, then each weekday that isn't a market holiday or already dated. {day: iso}
-  function projectedDates(){
-    var c=cfg(),log=curLog(),j=curJournal(),out={},used={},d,cur=new Date(isoDate()+"T00:00:00");
-    for(d=1;d<=c.days;d++)if(j[d]&&j[d].date)used[j[d].date]=1;
+  // The sessions still ahead: today while its session is open, then each weekday that isn't a market
+  // holiday, skipping dates this account already has a day on. The first n, as ISO dates.
+  function upcomingSessions(n){
+    var c=cfg(),j=curJournal(),used={},out=[],d,cur=new Date(isoDate()+"T00:00:00");
+    for(d in j)if(j.hasOwnProperty(d)&&j[d]&&j[d].date)used[j[d].date]=1;
     if(!todayTradeable()||used[isoDate()])cur.setDate(cur.getDate()+1);
-    for(d=1;d<=c.days;d++){
-      if((d in log)||(j[d]&&j[d].date))continue;
-      for(;;){var iso=isoOf(cur),w=cur.getDay();if(w!==0&&w!==6&&!holidayOn(iso)&&!used[iso])break;cur.setDate(cur.getDate()+1);}
-      out[d]=isoOf(cur);cur.setDate(cur.getDate()+1);
+    while(out.length<n){
+      var iso=isoOf(cur),w=cur.getDay();
+      if(w!==0&&w!==6&&!holidayOn(iso)&&!used[iso])out.push(iso);
+      cur.setDate(cur.getDate()+1);
     }
     return out;
   }
-  // The plan day that reaches the target (the "days to target" count, in order), or null.
-  function passDay(){
-    var c=cfg(),P=livePlan(),log=curLog(),total=0,acc=0,k;
-    for(k=1;k<=c.days;k++)if(k in log)total+=log[k];
-    var left=c.target-total;if(left<=0)return null;
-    for(k=1;k<=c.days;k++){if(k in log)continue;acc+=P.base[k-1];if(acc>=left)return k;}
-    return null;
+  // The plan days not traded yet, in order — each lands on the next session. {day: iso}
+  function openPlanDays(){var c=cfg(),log=curLog(),j=curJournal(),o=[];for(var d=1;d<=c.days;d++)if(!(d in log)&&!(j[d]&&j[d].date))o.push(d);return o;}
+  function projectedDates(){var o=openPlanDays(),up=upcomingSessions(o.length),out={};o.forEach(function(d,i){out[d]=up[i];});return out;}
+  // When you pass if you follow the plan — the day targets on the cards. The live plan spreads what's
+  // left over the remaining plan days, so that's the last plan day still carrying a target; never
+  // before the plan's minimum trading days; and if the plan is out of days while you're still short,
+  // the extra sessions it takes at the plan's average pace. Days before the account opened don't count.
+  // → {hit:true} once the target is in and the minimum met, else {iso, day (plan day, or null past the
+  //   plan), sessions, extra (sessions past the plan), minHeld, minD, left}
+  function passInfo(){
+    var c=cfg(),P=livePlan(),cs=countedStats(c),left=c.target-cs.total,open=openPlanDays();
+    var minD=parseInt(c.minShort,10);if(isNaN(minD))minD=0;
+    var minLeft=Math.max(0,minD-cs.days);
+    if(left<=0&&!minLeft)return{hit:true};
+    var n=0,extra=0,withTgt=open.filter(function(d){return P.live[d-1]>0;});
+    if(left>0){
+      if(withTgt.length)n=open.indexOf(withTgt[withTgt.length-1])+1;
+      else{extra=Math.max(1,Math.ceil(left/Math.max(1,c.target/c.days)));n=open.length+extra;}
+    }
+    var minHeld=minLeft>n;if(minHeld){n=minLeft;extra=Math.max(0,n-open.length);}
+    var up=upcomingSessions(n);
+    return{iso:up[n-1],day:n<=open.length?open[n-1]:null,sessions:n,extra:extra,minHeld:minHeld,minD:minD,left:left,up:up,open:open};
   }
   // The next rebill against the projected pass date: will this account pass before it charges again
   // (or resets)? Null without a tracked purchase date or a projection.
   function rebillDue(){var b=billingOf(state.activeId);if(!b||b.ended)return null;var r=rebillInfo(b);return r.left===0?addDaysIso(r.next,r.cycle):r.next;}
   function rebillVsPass(){
     var a=activeAcct(),b=a&&billingOf(a.id);if(!b||b.ended)return null;
-    var pd=passDay(),proj=projectedDates();if(!pd||!proj[pd])return null;
-    var rb=rebillInfo(b),due=rebillDue(),c=cfg(),log=curLog(),total=0,need=0,k;
-    for(k=1;k<=c.days;k++)if(k in log)total+=log[k];
-    for(k=1;k<=pd;k++)if(!(k in log))need++;
-    var left=c.target-total;
-    return{due:due,pass:proj[pd],late:proj[pd]>=due,td:rb.tdLeft,need:need,left:left,perDay:rb.tdLeft>0?left/rb.tdLeft:null,planPer:need?left/need:null,price:b.price};
+    var pi=passInfo();if(pi.hit||!pi.iso)return null;
+    var rb=rebillInfo(b),due=rebillDue(),left=Math.max(0,pi.left);
+    return{due:due,pass:pi.iso,late:pi.iso>=due,td:rb.tdLeft,need:pi.sessions,left:left,perDay:rb.tdLeft>0?left/rb.tdLeft:null,planPer:pi.sessions?left/pi.sessions:null,price:b.price};
   }
   function renderRebillWarn(){
     var el=document.getElementById("rbWarn");if(!el)return;
     var a=activeAcct(),r=rebillVsPass();
     if(!r){
-      var nudge=passDay()!=null&&a&&!billingOf(a.id);
+      var pi0=passInfo(),nudge=!pi0.hit&&a&&!billingOf(a.id);
       el.className="rbwarn"+(nudge?" hint":"");
       el.innerHTML=nudge?'↻ Track this account\'s purchase date (Rebill tracker, above) and the plan will warn you if the next rebill lands before you pass.':"";
       return;
     }
+    if(r.left<=0){el.className="rbwarn ok";el.innerHTML='↻ Target banked — you pass once the minimum trading days are in ≈ <b>'+weekdayLbl(r.pass)+'</b>'+(r.late?' — <span class="r">after the rebill on '+weekdayLbl(r.due)+'</span>':', ahead of the rebill on <b>'+weekdayLbl(r.due)+'</b>')+'.';if(r.late)el.className="rbwarn bad";return;}
     if(!r.late){el.className="rbwarn ok";el.innerHTML='↻ On plan you pass ≈ <b>'+weekdayLbl(r.pass)+'</b>, ahead of the rebill on <b>'+weekdayLbl(r.due)+'</b> ('+pl(r.td,"trading day")+' left before it).';return;}
     var cost=r.price!=null?' — that\'s another <b>'+fmtc(r.price)+'</b>':'';
     var pace=r.td>0?'To pass first you need <b>'+fmt(r.perDay)+'/day</b> over those '+pl(r.td,"day")+', against your plan\'s ~'+fmt(r.planPer)+'/day. Only push if your daily stop and the consistency rule still allow it — a forced day is how accounts fail.':'There are no trading days left before it — budget the rebill.';
@@ -1901,8 +1914,12 @@
     var daysInMonth=new Date(y,m+1,0).getDate();
     var rows=Math.ceil((mondayBack+daysInMonth)/7);
     var cur=new Date(y,m,1-mondayBack);
-    var todayIso=isoDate(),html="",monthTotal=0,openCount=0,proj=projectedDates(),pd=passDay(),planOn={},rvp=rebillVsPass(),rbDue=rebillDue();
-    for(var pk in proj)if(proj.hasOwnProperty(pk))planOn[proj[pk]]=+pk;
+    var todayIso=isoDate(),html="",monthTotal=0,openCount=0,pi=passInfo(),planOn={},extraOn={},rvp=rebillVsPass(),rbDue=rebillDue();
+    if(!pi.hit){
+      var up=upcomingSessions(Math.max(pi.sessions,pi.open.length));
+      pi.open.forEach(function(d,i){planOn[up[i]]=d;});
+      up.slice(pi.open.length,pi.sessions).forEach(function(iso){extraOn[iso]=1;}); // sessions past the plan
+    }
     for(var rw=0;rw<rows;rw++){
       for(var wd=0;wd<5;wd++){
         var inMonth=cur.getMonth()===m;
@@ -1919,8 +1936,12 @@
             content='<span class="cn">'+cur.getDate()+'</span><span class="cv">'+fmt(val)+'</span>';
           }else if(planOn[iso]){
             // a plan day not traded yet: when it falls if you trade every open session from here
-            var pdn=planOn[iso];cls.push("open","plan");if(pdn===pd)cls.push("passday");if(rbDue&&iso>=rbDue)cls.push("late");openCount++;
-            content='<span class="cn">'+cur.getDate()+'</span><span class="cplan">Day '+pdn+(pdn===pd?' · pass':'')+'</span><span class="cpt">+'+fmt(P.live[pdn-1])+'</span>';
+            var pdn=planOn[iso],isPass=iso===pi.iso;cls.push("open","plan");if(isPass)cls.push("passday");if(rbDue&&iso>=rbDue)cls.push("late");openCount++;
+            content='<span class="cn">'+cur.getDate()+'</span><span class="cplan">Day '+pdn+(isPass?' · pass':'')+'</span><span class="cpt">'+(P.live[pdn-1]>0?'+'+fmt(P.live[pdn-1]):'just trade')+'</span>';
+          }else if(extraOn[iso]){
+            // past the plan's days: what it takes at the plan's pace, or to reach the minimum days
+            var isPass2=iso===pi.iso;cls.push("open","plan","extra");if(isPass2)cls.push("passday");if(rbDue&&iso>=rbDue)cls.push("late");openCount++;
+            content='<span class="cn">'+cur.getDate()+'</span><span class="cplan">'+(isPass2?'Pass':'Extra')+'</span><span class="cpt">'+(pi.minHeld?'min days':'past plan')+'</span>';
           }else if(holidayOn(iso)){
             cls.push("hol");
             content='<span class="cn">'+cur.getDate()+'</span><span class="chol">closed</span>';
@@ -1937,7 +1958,7 @@
     }
     document.getElementById("calGrid").innerHTML=html;
     var T=c.target,statusTxt=(monthTotal>=T)?"◎ month covers the target":(openCount+" weekday"+(openCount===1?"":"s")+" open to log");
-    if(pd&&proj[pd])statusTxt+=" · on plan, passes ≈ <b>"+weekdayLbl(proj[pd])+"</b>"+(rvp&&rvp.late?' <span class="r">— after the rebill</span>':'');
+    if(!pi.hit&&pi.iso)statusTxt+=" · on plan, passes ≈ <b>"+weekdayLbl(pi.iso)+"</b>"+(pi.extra&&!pi.minHeld?" ("+pl(pi.extra,"day")+" past the plan)":"")+(pi.minHeld?" (min "+pi.minD+" days)":"")+(rvp&&rvp.late?' <span class="r">— after the rebill</span>':'');
     document.getElementById("calSum").innerHTML="<span>Month total <b>"+fmt(monthTotal)+"</b> / "+fmt(T)+"</span><span>"+statusTxt+"</span>";
   }
 
@@ -2166,23 +2187,16 @@
     var w1=document.getElementById("week1"),w2=document.getElementById("week2");
     var cols=(c.days<=6)?"days d3":"days";
     w1.className=cols;w2.className=cols;w1.innerHTML="";w2.innerHTML="";
-    // how many more days it takes to cover what's left, at the plan's own day targets
-    var loggedTotal=0;
-    for(var k=1;k<=c.days;k++){if(k in log)loggedTotal+=log[k];}
-    var left=c.target-loggedTotal,need=0,acc=0;
-    if(left>0){
-      for(var j=0;j<c.days;j++){
-        if(acc>=left)break;
-        if((j+1) in log)continue;
-        acc+=P.base[j];need++;
-      }
+    // when you pass if you follow the plan's day targets (passInfo): the same answer the calendar shows
+    var pi=passInfo(),proj=projectedDates(),pdn=pi.hit?null:pi.day,needTxt;
+    if(pi.hit)needTxt="target hit";
+    else if(!pi.iso)needTxt="";
+    else{
+      needTxt=pl(pi.sessions,"day")+" to pass";
+      if(pi.minHeld)needTxt+=" (min "+pi.minD+" days)";
+      else if(pi.extra)needTxt="plan's days are used up — ~"+pl(pi.extra,"more day")+" at plan pace";
+      needTxt+=" · passes ≈ "+weekdayLbl(pi.iso);
     }
-    var needTxt;
-    if(left<=0)needTxt="target hit";
-    else if(need===0)needTxt="all days logged — still "+fmt(left)+" short";
-    else needTxt=need+(need===1?" day":" days")+" to target";
-    var proj=projectedDates(),pdn=passDay();
-    if(pdn&&proj[pdn])needTxt+=" · passes ≈ "+weekdayLbl(proj[pdn]);
     var rbDue=rebillDue();renderRebillWarn();
     var hd1=document.getElementById("h1"),hd2=document.getElementById("h2");
     if(buildCount>0){
@@ -6056,7 +6070,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v76";
+var APP_BUILD="v77";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

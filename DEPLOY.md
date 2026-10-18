@@ -98,9 +98,13 @@ aren't already in a group (the rest are listed as taken). A new follower copies 
 since**, editable); its own days are never touched. **Stop leading** ends a group: its followers keep every day they
 have — own and copied — and become free. The **Copy Group** card totals each group separately.
 
-**Pass date:** every day you haven't traded yet shows the date it lands on (≈ Thu 10/22) if you trade each open session
-from here — today while the session is open, skipping weekends and market holidays — and the plan heading and calendar
-show the day you pass. Planned days appear on the month calendar with their target; the pass day is outlined.
+**Pass date:** following the plan's day targets (the cards — the live plan spreads what's left over your remaining plan
+days), you pass on the last plan day that still has a target. Every day you haven't traded yet shows the date it lands on
+(≈ Thu 10/22) if you trade each open session from here — today while the session is open, skipping weekends and market
+holidays. The pass date is never earlier than the firm's minimum trading days (days before an account's *opened* date
+don't count), and if the plan runs out of days while you're still short, the extra days it takes at the plan's average
+pace are added and shown on the calendar as **Extra**. The plan heading, day cards, calendar and rebill warning all use
+this one answer.
 
 **Rebill vs pass:** with a purchase date tracked (Rebill tracker), the plan checks the next rebill against your pass
 date. If the rebill lands first, a red warning above the calendar says when it charges, what it costs, how many trading
