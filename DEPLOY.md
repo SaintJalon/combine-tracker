@@ -110,7 +110,9 @@ days), you pass on the last plan day that still has a target. Every day you have
 holidays. The pass date is never earlier than the firm's minimum trading days (days before an account's *opened* date
 don't count), and if the plan runs out of days while you're still short, the extra days it takes at the plan's average
 pace are added and shown on the calendar as **Extra**. The plan heading, day cards, calendar and rebill warning all use
-this one answer.
+this one answer. A date only counts once the day has P&L: a day you haven't traded shows where the plan puts it
+(≈), whatever its date box says, and tapping a planned day on the calendar just opens it. A newly logged day gets today's
+date — or, logged on a weekend or holiday, the last session if it's free, else the next one.
 
 **Rebill vs pass:** with a purchase date tracked (Rebill tracker), the plan checks the next rebill against your pass
 date. If the rebill lands first, a red warning above the calendar says when it charges, what it costs, how many trading
