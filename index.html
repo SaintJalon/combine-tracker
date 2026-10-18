@@ -837,6 +837,8 @@
   .rpset .wide{grid-column:span 2}
   .rprules{font-size:12px;color:var(--muted);line-height:1.6;margin-top:4px}.rprules b{color:var(--text)}
   .rpsets{margin-bottom:12px}
+  .rpsub{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:4px 0 10px}
+  .rpsub~.rpsub{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
   .rpsets .atrow:first-child{border-top:none}
   .rpsets .atrow .x{margin-left:auto}
   .rphow{margin-top:12px;font-size:12px;color:var(--muted);line-height:1.65}
@@ -4567,7 +4569,8 @@
   function rpDayLbl(iso){var p=iso.split("-");return WKD[new Date(iso+"T00:00:00Z").getUTCDay()]+" "+(+p[1])+"/"+(+p[2])+"/"+p[0].slice(2);}
   function rpDayLong(iso){var dt=new Date(iso+"T00:00:00Z");return["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dt.getUTCDay()]+", "+MONTH_NAMES[dt.getUTCMonth()]+" "+dt.getUTCDate()+", "+dt.getUTCFullYear();}
   function rpStepLbl(s){return s%86400===0?(s/86400)+"D":(s%3600===0?(s/3600)+"h":(s%60===0?(s/60)+"m":s+"s"));}
-  function rpSetName(m){return m.instr+" · "+rpStepLbl(m.step)+" · "+rpDayLbl(m.days[0])+" → "+rpDayLbl(m.days[m.days.length-1])+" · "+m.days.length+" sessions";}
+  function rpSetLbl(m){return m.sym||(m.instr==="OTHER"?"Other":m.instr);}
+  function rpSetName(m){return rpSetLbl(m)+" · "+rpStepLbl(m.step)+" · "+rpDayLbl(m.days[0])+" → "+rpDayLbl(m.days[m.days.length-1])+" · "+m.days.length+" sessions";}
   // "HH:MM" CT on a session's day → UTC seconds. 17:00 and later mean the evening before, when that session opened.
   function rpAt(day,hm){var m=/^(\d{1,2}):(\d{2})/.exec(hm||"");if(!m)return null;var p=day.split("-"),H=+m[1];return RPX.zonedToUtc(+p[0],+p[1],+p[2]-(H>=17?1:0),H,+m[2],0,RPX.CT);}
 
@@ -4624,14 +4627,19 @@
       catch(e){errs.push(files[i].name+" — "+(e&&e.message||e));}
     }
     if(!S){mxAlert(errs.join("\n")||"Nothing to import.",bad);return;}
-    var P,ses,id;
+    await rpStore(S,{instr:rpc.impInstr,tz:tz,skipped:skipped,rolled:rolled,errs:errs});
+  }
+  // Save a series into the set for its instrument + bar size (merging), then report what landed.
+  async function rpStore(S,o){
+    var bad={title:"✕ Import failed",tone:"danger"},P,ses,id,step,instr=o.instr,tz=o.tz,skipped=o.skipped||0,rolled=!!o.rolled,errs=o.errs||[];
     try{
-      var step=RPX.detectStep(S);
+      step=RPX.detectStep(S);
       await rpLoadSets();
-      var same=rpSets.filter(function(m){return m.instr===rpc.impInstr&&m.step===step;})[0];
+      // stocks share the $1/pt "Other" instrument, so they're kept apart by ticker
+      var same=rpSets.filter(function(m){return m.instr===instr&&m.step===step&&(m.sym||"")===(o.sym||"");})[0];
       if(same){var old=await rpTx("bars","readonly",function(s){return s.bars.get(same.id);});if(old&&old.t)S=RPX.merge(old,S);}
       P=rpPack(S);ses=RPX.sessions(P);id=same?same.id:genId();
-      var meta={id:id,instr:rpc.impInstr,step:step,n:P.t.length,days:ses.map(function(x){return x.day;}),added:same?same.added:Date.now(),tz:tz};
+      var meta={id:id,instr:instr,sym:o.sym||"",step:step,n:P.t.length,days:ses.map(function(x){return x.day;}),added:same?same.added:Date.now(),tz:tz};
       await rpTx(["meta","bars"],"readwrite",function(s){s.bars.put(P,id);return s.meta.put(meta);});
       rpCache={id:id,S:P,sess:ses};rpc.set=id;rpc.day="";rpSaveCfg();
       await rpLoadSets();
@@ -4640,18 +4648,79 @@
     // when each session's first bar opens says whether the file's time zone was read right
     var opens={},mode=null;ses.slice(1).forEach(function(x){var k=rpHM(P.t[x.i0]);opens[k]=(opens[k]||0)+1;});
     Object.keys(opens).forEach(function(k){if(mode==null||opens[k]>opens[mode])mode=k;});
-    var lines=["Stored "+P.t.length.toLocaleString()+" "+rpStepLbl(step)+" bars of "+rpc.impInstr+" — "+ses.length+" sessions, "+rpDayLbl(ses[0].day)+" → "+rpDayLbl(ses[ses.length-1].day)+"."];
+    var lines=[(o.src?o.src+": ":"")+"Stored "+P.t.length.toLocaleString()+" "+rpStepLbl(step)+" bars of "+(o.sym||instr)+" — "+ses.length+" sessions, "+rpDayLbl(ses[0].day)+" → "+rpDayLbl(ses[ses.length-1].day)+"."];
     if(mode)lines.push("Sessions open at "+mode+" CT.");
     if(skipped)lines.push("Skipped "+skipped.toLocaleString()+" row"+(skipped===1?"":"s")+" that couldn't be read.");
     if(rolled)lines.push("The file had several contracts: each day keeps its most-traded one (the front month).");
     if(errs.length)lines.push("Not imported: "+errs.join("; "));
-    var off=mode&&mode!=="17:00"&&mode!=="08:30";
+    var off=!o.src&&mode&&mode!=="17:00"&&mode!=="08:30";
     if(off)lines.push("\nHeads up: CME futures open at 17:00 CT (or 08:30 for day-session data). If this data should too, its times were read in the wrong zone — delete it and import again with a different \"Times in the file\" setting.");
     mxAlert(lines.join("\n"),{title:off?"▲ Imported — check the times":"✓ Data imported",tone:off?"warn":null});
   }
+  // ---- download: Databento (CME futures) or Massive (US stocks / ETFs), called straight from the
+  // browser with the person's own key, which stays in this browser (not in backups) ----
+  var RP_KEYS="ct_replay_keys",RP_DB="https://hist.databento.com",RP_MS="https://api.massive.com";
+  var RP_SRC={databento:{n:"Databento",sym:"NQ"},massive:{n:"Massive",sym:"QQQ"}};
+  function rpKeys(){try{return JSON.parse(localStorage.getItem(RP_KEYS)||"{}")||{};}catch(e){return{};}}
+  function rpSetKey(src,v){var k=rpKeys();if(v)k[src]=v;else delete k[src];try{localStorage.setItem(RP_KEYS,JSON.stringify(k));}catch(e){}}
+  function rpQS(o){return Object.keys(o).map(function(k){return k+"="+encodeURIComponent(o[k]);}).join("&");}
+  // fetch, with the browser's opaque failures turned into something a person can act on
+  async function rpFetch(url,opts,who,ok429){
+    var r;
+    try{r=await fetch(url,Object.assign({cache:"no-store"},opts));}
+    catch(e){throw new Error("Couldn't reach "+who+". Either this device is offline, or "+who+" doesn't accept requests straight from a web page, which the browser then blocks. If you're online, use Import CSV instead.");}
+    if(r.status===429&&ok429)return r;
+    if(r.status===401||r.status===403)throw new Error(who+" refused the request ("+r.status+"). Check the API key is pasted right and that your plan covers this data.");
+    if(!r.ok){var t="";try{t=(await r.text()).slice(0,280);}catch(e){}throw new Error(who+" answered "+r.status+(t?": "+t:"."));}
+    return r;
+  }
+  async function rpDatabento(sym,from,to,key){
+    var q=RPX.databentoQuery(sym,from,to),auth={headers:{Authorization:"Basic "+btoa(key+":")}},cost=null;
+    // ask what it costs first, so nothing is charged without a yes
+    try{var cr=await rpFetch(RP_DB+"/v0/metadata.get_cost?"+rpQS(q),auth,"Databento");cost=parseFloat(await cr.text());}
+    catch(e){if(!/answered 4\d\d/.test(e.message))throw e;} // an unknown symbol etc. is reported by the download itself
+    if(cost!=null&&isFinite(cost)&&!(await mxConfirm("Databento will charge about $"+cost.toFixed(cost<0.01?4:2)+" of your credit for "+q.symbols+" 1-minute bars, "+from+" → "+to+".",{title:"↓ Databento",okText:"Download"})))return null;
+    var r=await rpFetch(RP_DB+"/v0/timeseries.get_range?"+rpQS(Object.assign({},q,{encoding:"csv",pretty_px:"true",pretty_ts:"true",map_symbols:"true"})),auth,"Databento");
+    var txt=await r.text();
+    if(!/\d/.test(txt.split(/\r?\n/).slice(1).join("")))throw new Error("Databento has no bars for "+q.symbols+" between "+from+" and "+to+".");
+    return RPX.parseCSV(txt,{tz:"UTC"});
+  }
+  async function rpMassive(sym,from,to,key,status){
+    var url=RP_MS+"/v2/aggs/ticker/"+encodeURIComponent(sym.toUpperCase())+"/range/1/minute/"+from+"/"+to+"?adjusted=true&sort=asc&limit=50000",all=[],pages=0,waits=0;
+    while(url&&pages<100){
+      var r=await rpFetch(url+"&apiKey="+encodeURIComponent(key),{},"Massive",true);
+      if(r.status===429){ // the free plan allows 5 calls a minute
+        if(++waits>8)throw new Error("Massive kept rate-limiting the download. Try a shorter range.");
+        status("Free-plan limit (5 calls a minute) — waiting 15 s…");await new Promise(function(res){setTimeout(res,15000);});continue;
+      }
+      var j=await r.json();all=all.concat(j.results||[]);pages++;
+      url=j.next_url?j.next_url.replace(/[?&]apiKey=[^&]*/,""):null;if(url&&url.indexOf("?")<0)url+="?";
+      status("Downloaded "+all.length.toLocaleString()+" bars…");
+    }
+    if(!all.length)throw new Error("Massive has no 1-minute bars for "+sym.toUpperCase()+" between "+from+" and "+to+".");
+    return{S:RPX.massiveToSeries(all),skipped:0,rolled:false};
+  }
+  async function rpDownload(btn){
+    var src=RP_SRC[rpc.dlSrc]?rpc.dlSrc:"databento",who=RP_SRC[src].n,sym=String(rpc.dlSym||RP_SRC[src].sym).trim(),from=rpc.dlFrom,to=rpc.dlTo,key=String(rpKeys()[src]||"").trim();
+    var bad={title:"✕ Download failed",tone:"danger"},st=document.getElementById("rpDlSt"),hint=st.textContent;
+    if(!key){mxAlert("Paste your "+who+" API key first. It's saved in this browser only — not in backups.",bad);return;}
+    if(!sym){mxAlert("Enter a symbol.",bad);return;}
+    if(!from||!to||from>to){mxAlert("Pick a From date on or before the To date.",bad);return;}
+    if(to>isoDate()){mxAlert("The To date can't be in the future.",bad);return;}
+    if((new Date(to)-new Date(from))/86400000>366){mxAlert("Download a year or less at a time.",bad);return;}
+    btn.disabled=true;st.textContent="Contacting "+who+"…";
+    try{
+      var r=src==="databento"?await rpDatabento(sym,from,to,key):await rpMassive(sym,from,to,key,function(t){st.textContent=t;});
+      if(!r)return;
+      var root=RPX.symbolRoot(sym),instr=src==="massive"?"OTHER":(INSTR.some(function(x){return x.k===root;})?root:rpc.impInstr);
+      st.textContent="Saving…";
+      await rpStore(r.S,{instr:instr,sym:instr==="OTHER"?sym.toUpperCase():"",tz:"UTC",skipped:r.skipped,rolled:r.rolled,src:"Downloaded from "+who});
+    }catch(e){mxAlert(String(e&&e.message||e),bad);}
+    finally{btn.disabled=false;var el=document.getElementById("rpDlSt");if(el)el.textContent=hint;}
+  }
   async function rpDeleteSet(id){
     var m=rpSetById(id);if(!m)return;
-    if(!(await mxConfirm("Delete the "+m.instr+" bars ("+m.days.length+" sessions) from this device? Your Sparring Log stays. You can import the CSV again any time.",{title:"✕ Delete data",tone:"danger",okText:"Delete"})))return;
+    if(!(await mxConfirm("Delete the "+rpSetLbl(m)+" bars ("+m.days.length+" sessions) from this device? Your Sparring Log stays. You can import the CSV again any time.",{title:"✕ Delete data",tone:"danger",okText:"Delete"})))return;
     if(rp&&rp.set===id)rpHide();
     var live=rpLiveSaved();if(live&&live.set===id){try{localStorage.removeItem(RP_LIVE);}catch(e){}}
     try{await rpTx(["meta","bars"],"readwrite",function(s){s.bars.delete(id);return s.meta.delete(id);});}catch(e){mxAlert("Couldn't delete: "+(e&&e.message||e),{title:"✕ Error",tone:"danger"});}
@@ -5109,15 +5178,30 @@
   function rpRenderData(){
     var el=document.getElementById("rpData");if(!el)return;
     var list=rpSets==null?'<div class="empty">Loading…</div>':(!rpSets.length?'<div class="empty">No bars on this device yet.</div>':
-      '<div class="rpsets">'+rpSets.map(function(m){return'<div class="atrow"><span class="ar m">'+esc(m.instr)+'</span><span class="am">'+rpStepLbl(m.step)+' · <b>'+rpDayLbl(m.days[0])+' → '+rpDayLbl(m.days[m.days.length-1])+'</b> · '+m.days.length+' sessions · '+m.n.toLocaleString()+' bars</span><button type="button" class="x" data-rpdel="'+esc(m.id)+'" aria-label="Delete '+esc(m.instr)+' data">✕</button></div>';}).join("")+'</div>');
+      '<div class="rpsets">'+rpSets.map(function(m){return'<div class="atrow"><span class="ar m">'+esc(rpSetLbl(m))+'</span><span class="am">'+rpStepLbl(m.step)+' · <b>'+rpDayLbl(m.days[0])+' → '+rpDayLbl(m.days[m.days.length-1])+'</b> · '+m.days.length+' sessions · '+m.n.toLocaleString()+' bars</span><button type="button" class="x" data-rpdel="'+esc(m.id)+'" aria-label="Delete '+esc(m.instr)+' data">✕</button></div>';}).join("")+'</div>');
     var opt=function(v,l,on){return'<option value="'+esc(v)+'"'+(on?" selected":"")+'>'+esc(l)+'</option>';};
+    var src=RP_SRC[rpc.dlSrc]?rpc.dlSrc:"databento",keys=rpKeys(),y=new Date();y.setDate(y.getDate()-1);
+    if(!rpc.dlTo)rpc.dlTo=isoDate(y);if(!rpc.dlFrom){var f=new Date(y);f.setDate(f.getDate()-30);rpc.dlFrom=isoDate(f);}
+    var dlHint=src==="databento"?"Real CME futures, 1-minute. NQ means the front month (NQ.c.0); NQH4 or NQ.FUT work too. Uses your Databento credit, and the cost is shown before anything is charged.":
+      "US stocks and ETFs, 1-minute with extended hours — QQQ tracks NQ, SPY tracks ES. The free plan covers about 2 years at 5 calls a minute. Saved as $1 per point (shares).";
     el.innerHTML=list+
+      '<div class="rpsub">Download bars</div>'+
+      '<div class="rpset">'+
+        '<label><span class="k">Source</span><select data-rpc="dlSrc">'+opt("databento","Databento · CME futures",src==="databento")+opt("massive","Massive · US stocks / ETFs",src==="massive")+'</select></label>'+
+        '<label><span class="k">Symbol</span><input type="text" data-rpc="dlSym" value="'+esc(rpc.dlSym||RP_SRC[src].sym)+'" placeholder="'+RP_SRC[src].sym+'" autocapitalize="characters" autocomplete="off" spellcheck="false"></label>'+
+        '<label><span class="k">From</span><input type="date" data-rpc="dlFrom" value="'+esc(rpc.dlFrom)+'"></label>'+
+        '<label><span class="k">To</span><input type="date" data-rpc="dlTo" value="'+esc(rpc.dlTo)+'"></label>'+
+        '<label class="wide"><span class="k">API key · this device only</span><input type="password" data-rpkey="'+src+'" value="'+esc(keys[src]||"")+'" placeholder="paste your '+RP_SRC[src].n+' key" autocomplete="off"></label>'+
+      '</div>'+
+      '<div class="edbar"><button type="button" class="primary" data-rp="dl">↓ Download</button><span class="hint" id="rpDlSt">'+dlHint+'</span></div>'+
+      '<div class="rpsub">Or import a CSV</div>'+
       '<div class="rpset">'+
         '<label><span class="k">Instrument</span><select data-rpc="impInstr">'+INSTR.concat([RP_OTHER]).map(function(x){return opt(x.k,x.n,x.k===rpc.impInstr);}).join("")+'</select></label>'+
         '<label class="wide"><span class="k">Times in the file, when they have no zone</span><select data-rpc="impTz">'+RP_TZS.map(function(x){return opt(x[0],x[1],x[0]===rpc.impTz);}).join("")+'</select></label>'+
       '</div>'+
       '<div class="edbar"><label class="secbtn primary">↑ Import CSV<input type="file" id="rpFile" accept=".csv,.txt,text/csv,text/plain" multiple style="display:none"></label><span class="hint">1-minute bars work best. More files of the same instrument merge into its set; overlapping bars are replaced.</span></div>'+
       '<details class="rphow"><summary>Where do I get real bars?</summary><ol>'+
+        '<li><b>Download above</b>: get an API key at <b>databento.com</b> (CME futures, pay per use; new accounts get free credit) or <b>massive.com</b> (stocks and ETFs, free plan), paste it, pick the dates and tap Download.</li>'+
         '<li><b>TradingView</b> (paid plans): put the chart on 1-minute, scroll back until the days you want are loaded, then <b>Export chart data…</b> from the layout menu. Either time format works.</li>'+
         '<li><b>Databento</b> (new accounts get free credit): dataset <b>GLBX.MDP3</b>, schema <b>OHLCV-1m</b>, symbol like <b>NQ.FUT</b>, encoding <b>CSV</b>. Spreads are dropped and each day keeps its front month.</li>'+
         '<li><b>NinjaTrader 8</b>: Tools → Historical Data → Export, 1 minute, last. Its times are in your computer\'s zone — pick that above.</li>'+
@@ -5178,13 +5262,19 @@
   document.getElementById("rpData").addEventListener("change",function(e){
     var t=e.target;
     if(t.id==="rpFile"){var fs=[].slice.call(t.files||[]);t.value="";if(fs.length)rpImport(fs);return;}
-    var k=t.getAttribute("data-rpc");if(k){rpc[k]=t.value;rpSaveCfg();}
+    if(t.hasAttribute("data-rpkey")){rpSetKey(t.getAttribute("data-rpkey"),t.value.trim());return;}
+    var k=t.getAttribute("data-rpc");if(!k)return;
+    // switching source swaps in that source's default symbol unless you typed your own
+    if(k==="dlSrc"&&(!rpc.dlSym||rpc.dlSym===(RP_SRC[rpc.dlSrc]||{}).sym))rpc.dlSym=RP_SRC[t.value].sym;
+    rpc[k]=k==="dlSym"?t.value.trim().toUpperCase():t.value;rpSaveCfg();
+    if(k==="dlSrc")rpRenderData();
   });
   document.getElementById("rpData").addEventListener("click",function(e){var b=e.target.closest("[data-rpdel]");if(b)rpDeleteSet(b.getAttribute("data-rpdel"));});
   document.getElementById("tab-replay").addEventListener("click",async function(e){
     var b=e.target.closest("[data-rp]");if(!b||b.disabled)return;
     var a=b.getAttribute("data-rp");
     if(a==="start")rpStart();
+    else if(a==="dl")rpDownload(b);
     else if(a==="resume"){var live=rpLiveSaved();if(live)rpStart(live);}
     else if(a==="discard"){if(await mxConfirm("Throw away the unfinished session? It won't go to your Sparring Log.",{title:"Discard session",tone:"danger",okText:"Discard"})){try{localStorage.removeItem(RP_LIVE);}catch(err){}rpRenderSetup();}}
     else if(a==="buy"||a==="sell"){rpOrder(a==="buy"?"long":"short");b.blur();}
@@ -5624,7 +5714,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v70";
+var APP_BUILD="v71";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

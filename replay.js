@@ -329,7 +329,40 @@
     return s;
   }
 
-  var api = { CT: CT, tzOffset: tzOffset, zonedToUtc: zonedToUtc, ctWall: ctWall, sessionDay: sessionDay,
+  // ---- data providers (the app calls them straight from the browser with the user's own key) ----
+  // Databento historical query for 1-minute CME bars. A bare root (NQ) means the continuous front month
+  // (NQ.c.0); NQ.c.1 / NQ.v.0 stay continuous, NQ.FUT is the parent (every contract — parseCSV keeps the
+  // front month), anything else is a raw contract symbol (NQH4). Dates are YYYY-MM-DD in CT; the window
+  // opens at 17:00 CT the evening before `from`, so the first session is whole.
+  function databentoQuery(symbol, from, to) {
+    var sym = String(symbol || '').trim().toUpperCase(), stype;
+    if (/^[A-Z0-9]{1,4}$/.test(sym) && !/[FGHJKMNQUVXZ]\d{1,2}$/.test(sym)) { sym += '.c.0'; stype = 'continuous'; }
+    else if (/^[A-Z0-9]{1,4}\.[CVN]\.\d+$/.test(sym)) { sym = sym.replace(/\.([CVN])\./, function (m, c) { return '.' + c.toLowerCase() + '.'; }); stype = 'continuous'; }
+    else if (/\.FUT$/.test(sym)) stype = 'parent';
+    else stype = 'raw_symbol';
+    var f = from.split('-'), t = to.split('-');
+    var start = zonedToUtc(+f[0], +f[1], +f[2] - 1, 17, 0, 0, CT), end = zonedToUtc(+t[0], +t[1], +t[2], 16, 0, 0, CT);
+    var iso = function (x) { return new Date(x * 1000).toISOString().replace('.000', ''); };
+    return { dataset: 'GLBX.MDP3', schema: 'ohlcv-1m', symbols: sym, stype_in: stype, start: iso(start), end: iso(end) };
+  }
+  // Massive (formerly Polygon) aggregates JSON → a series. Bar times there are unix milliseconds.
+  function massiveToSeries(results) {
+    var S = { t: [], o: [], h: [], l: [], c: [], v: [] };
+    (results || []).slice().sort(function (a, b) { return a.t - b.t; }).forEach(function (r) {
+      var t = Math.floor(r.t / 1000), n = S.t.length;
+      if (!isFinite(t) || !(r.o === r.o && r.c === r.c)) return;
+      if (n && S.t[n - 1] === t) return;
+      S.t.push(t); S.o.push(r.o); S.c.push(r.c); S.v.push(r.v || 0);
+      S.h.push(Math.max(r.o, r.h, r.l, r.c)); S.l.push(Math.min(r.o, r.h, r.l, r.c));
+    });
+    return S;
+  }
+  // The product root of a futures symbol: NQ.c.0 → NQ, MNQH4 / MNQH24 → MNQ, ES.FUT → ES.
+  function symbolRoot(sym) {
+    return String(sym || '').trim().toUpperCase().replace(/\.(C|V|N)\.\d+$|\.FUT$/, '').replace(/[FGHJKMNQUVXZ]\d{1,2}$/, '');
+  }
+
+  var api = { CT: CT, databentoQuery: databentoQuery, massiveToSeries: massiveToSeries, symbolRoot: symbolRoot, tzOffset: tzOffset, zonedToUtc: zonedToUtc, ctWall: ctWall, sessionDay: sessionDay,
     parseStamp: parseStamp, parseClock: parseClock, parseCSV: parseCSV, detectStep: detectStep, merge: merge,
     bar: bar, sessions: sessions, pushBar: pushBar, aggregate: aggregate, barExit: barExit, limitFill: limitFill,
     lossLimitPrice: lossLimitPrice, tradeNet: tradeNet, summarize: summarize };

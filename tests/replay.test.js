@@ -151,4 +151,23 @@ t('summary: wins, losses, win rate, profit factor', () => {
   assert.strictEqual(s.pf, 1.5);
 });
 
+// 5. Data providers
+t('Databento query: a bare root is the continuous front month, the window opens 17:00 CT the evening before', () => {
+  const q = R.databentoQuery('nq', '2024-03-11', '2024-03-15');
+  assert.deepStrictEqual(q, { dataset: 'GLBX.MDP3', schema: 'ohlcv-1m', symbols: 'NQ.c.0', stype_in: 'continuous',
+    start: '2024-03-10T22:00:00Z', end: '2024-03-15T21:00:00Z' }); // Sun 17:00 CDT → Fri 16:00 CDT
+  assert.strictEqual(R.databentoQuery('ES.v.1', '2024-01-02', '2024-01-02').symbols, 'ES.v.1');
+  assert.strictEqual(R.databentoQuery('ES.FUT', '2024-01-02', '2024-01-02').stype_in, 'parent');
+  assert.strictEqual(R.databentoQuery('NQH4', '2024-01-02', '2024-01-02').stype_in, 'raw_symbol');
+  assert.strictEqual(R.databentoQuery('NQ', '2024-01-02', '2024-01-02').start, '2024-01-01T23:00:00Z'); // 17:00 CST
+});
+t('Massive aggregates → sorted series in seconds, duplicates dropped', () => {
+  const S = R.massiveToSeries([{ t: 1704205860000, o: 2, h: 3, l: 1, c: 2.5, v: 10 }, { t: 1704205800000, o: 1, h: 2, l: 0.5, c: 2, v: 5 }, { t: 1704205800000, o: 9, h: 9, l: 9, c: 9 }]);
+  assert.deepStrictEqual(S.t, [1704205800, 1704205860]);
+  assert.deepStrictEqual(S.c, [2, 2.5]);
+});
+t('symbol roots', () => {
+  assert.deepStrictEqual(['NQ.c.0', 'MNQH4', 'mnqh24', 'ES.FUT', 'NQ', 'QQQ'].map(R.symbolRoot), ['NQ', 'MNQ', 'MNQ', 'ES', 'NQ', 'QQQ']);
+});
+
 console.log('\n' + n + ' passed');
