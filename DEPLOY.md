@@ -91,14 +91,21 @@ You can change that anytime in System.
 Each account keeps its own log, so running two at once won't mix them up.
 Tap the **Target** or **Max Loss** number on Core to match your dashboard if a firm changes its rules.
 
-**Copy trading:** pick a **Leader**, then tick the accounts that follow it. A new follower copies the leader's days
-from today on (**copying since**, editable); its own days are never touched. To switch leaders — say a TopStep 50K Static
-leads and your 100K follows — just pick the new leader: everyone following keeps the days they've copied so far as their
-own and stops following, then you tick who follows the new one.
+**Copy trading — groups:** you can run several copy groups at once, each with its own leader — say your TopStep
+50K Static leads one group and your 100K leads another. In **Core → Copy trading**, the **Group** picker lists your
+groups; pick a free account under *Start a new group led by* to make it a leader. Each group only offers accounts that
+aren't already in a group (the rest are listed as taken). A new follower copies its leader from today on (**copying
+since**, editable); its own days are never touched. **Stop leading** ends a group: its followers keep every day they
+have — own and copied — and become free. The **Copy Group** card totals each group separately.
 
 **Pass date:** every day you haven't traded yet shows the date it lands on (≈ Thu 10/22) if you trade each open session
 from here — today while the session is open, skipping weekends and market holidays — and the plan heading and calendar
 show the day you pass. Planned days appear on the month calendar with their target; the pass day is outlined.
+
+**Rebill vs pass:** with a purchase date tracked (Rebill tracker), the plan checks the next rebill against your pass
+date. If the rebill lands first, a red warning above the calendar says when it charges, what it costs, how many trading
+days you have before it, and the per-day pace needed to pass first — next to your plan's pace — and the calendar marks
+the rebill day and the plan days after it. When you're ahead of it, a green line says so.
 
 **Rebills & spend:** most evals are subscriptions that renew every 30 days from the day you bought them.
 Under the size picker on Core, tap **＋ Track purchase date** and pick the day you bought the account, then tap
@@ -136,7 +143,9 @@ the countdown stops but the spend stays in your totals (**Resume** undoes it, **
    **Drag** the stop, target or limit line to move it; a level on the wrong side of the market (where it would fill at
    once) snaps back. With **Trade under my rules** on, your account's daily stop auto-flattens you (and locks the session),
    and your trade cap and cooldown block new entries — the same rules as Core and Protocol.
-5. **Review.** At the end the date is revealed and **Coach Co** grades your execution (0–100): entries without a
+5. **Review.** The Sparring Log's stats break each setup down by how you got in — **market** or **limit** — and
+   compare the two overall (trades logged before V75 show as "not recorded"); Coach Co says which one is paying.
+   At the end the date is revealed and **Coach Co** grades your execution (0–100): entries without a
    stop, revenge entries, sizing up after a loss, losers past 1.2R, winners cut early, the daily stop — with the one
    fix for next session. Once you have 3+ sessions, Coach Co also reads the whole **Sparring Log**: whether you're
    improving, your most repeated leak, which setups pay, your weak hour and side, and the win rate your R sizes need.
