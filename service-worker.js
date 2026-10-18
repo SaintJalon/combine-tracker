@@ -1,7 +1,7 @@
 // Bump CACHE on every deploy. Changing this file is what makes the browser
 // re-install the worker at all — if it stays byte-identical, `install` never
 // re-runs and old caches are never purged.
-const CACHE = 'combine-tracker-v70';
+const CACHE = 'combine-tracker-v71';
 const ASSETS = [
   './',
   './index.html',
@@ -50,6 +50,9 @@ self.addEventListener('message', function (e) {
 self.addEventListener('fetch', function (e) {
   const req = e.request;
   if (req.method !== 'GET') return;
+  // Other sites (Replay's market-data downloads) go straight to the network: never cache an API
+  // response, or a URL that carries someone's key.
+  if (new URL(req.url).origin !== self.location.origin) return;
 
   // Page loads: always go to the network, bypassing the HTTP cache, and fall
   // back to the cached copy only when genuinely offline.

@@ -104,11 +104,18 @@ the countdown stops but the spend stays in your totals (**Resume** undoes it, **
 ## Replay — practice on real days
 **Replay** plays back a real trading day one bar at a time, so you can trade it without knowing what comes next.
 
-1. **Get bars.** Export 1-minute bars as a CSV — TradingView's *Export chart data…*, Databento (`GLBX.MDP3`, `OHLCV-1m`,
-   e.g. `NQ.FUT`), NinjaTrader, or any file with time / open / high / low / close columns. The card's
-   *Where do I get real bars?* has the steps.
-2. **Import.** Replay → Market Data: pick the instrument (it sets $ per point), say what zone the file's times are in if
-   they have none, and tap **Import CSV**. More files for the same instrument merge into one set.
+1. **Get bars — download them.** Replay → Market Data → **Download bars**: pick a source, paste your API key, choose
+   the symbol and dates, tap **Download**.
+   - **Databento** — real CME futures (`NQ` = front month, also `ES`, `MNQ`, a contract like `NQH4`, or `NQ.FUT`).
+     Pay-per-use from your Databento credit (new accounts get free credit); the cost is shown and confirmed first.
+   - **Massive** (formerly Polygon) — US stocks and ETFs on the free plan (`QQQ` tracks NQ, `SPY` tracks ES), about two
+     years of 1-minute bars, 5 calls a minute (the app waits out the limit). Saved at $1 per point, per ticker.
+
+   The key is stored in this browser only — never in Backup & Export. The app calls the provider straight from the
+   browser; if a provider doesn't allow that, the download says so — use a CSV instead.
+2. **…or import a CSV.** Export 1-minute bars — TradingView's *Export chart data…*, Databento, NinjaTrader, or any file
+   with time / open / high / low / close columns — pick the instrument (it sets $ per point) and the zone the file's
+   times are in if they have none, and tap **Import CSV**. More files for the same instrument merge into one set.
 3. **Set up the session.** Pick a day — or **Random day** with **Hide the date** on, so hindsight can't help you —
    the start time (default 08:30 CT), when you must be flat (default 2:00 PM CT), and how many prior days to show.
 4. **Trade it.** **Play** / **Step** (or Space and →). Buy / Sell fill at the last price; stop and target (in points)
