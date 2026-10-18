@@ -794,6 +794,8 @@
   .rphud .rppos.short{color:var(--red);border-color:var(--red-soft);background:var(--red-soft)}
   .rphud .rprule.bad{color:var(--red)}.rphud .rprule.warn{color:var(--amber)}
   .rpchart{position:relative;height:clamp(300px,54vh,580px);border:1px solid var(--line);border-radius:2px;overflow:hidden}
+  .rpchart.grab,.rpchart.grab *{cursor:ns-resize!important}
+  .rpchart.lines,.rpchart.lines *{touch-action:none} /* a finger on a line drags it instead of scrolling the page */
   .rpctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
   .rptap{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border:1px dashed var(--line2);border-radius:2px;font-size:12px;color:var(--muted)}
   .rptap b{color:var(--text)}
@@ -4691,7 +4693,7 @@
     requestAnimationFrame(function(){document.getElementById("rpStage").scrollIntoView({block:"start",behavior:fxAnim()?"smooth":"auto"});});
   }
   function rpHide(){
-    rpPlay(false);rpTapHide();
+    rpPlay(false);rpTapHide();document.getElementById("rpChart").classList.remove("lines");
     if(rpChart){rpChart.remove();rpChart=rpSeries=rpVol=rpMarks=null;}
     rp=null;rpLines=[];rpCandles=[];
     document.getElementById("rpStage").hidden=true;
@@ -4764,16 +4766,84 @@
   }
   function rpLinesSync(){
     if(!rpSeries)return;
-    rpLines.forEach(function(l){rpSeries.removePriceLine(l);});rpLines=[];
+    rpLines.forEach(function(l){rpSeries.removePriceLine(l);});rpLines=[];rpLineBy={};
     var p=rp.pos,LS=window.LightweightCharts.LineStyle,C=rpCol;
-    function add(px,color,style,title){if(px!=null&&isFinite(px))rpLines.push(rpSeries.createPriceLine({price:px,color:color,lineWidth:1,lineStyle:style,axisLabelVisible:true,title:title}));}
-    if(rp.order&&!rp.done){var o=rp.order;add(o.price,o.side==="long"?C.blue:C.red,LS.LargeDashed,(o.side==="long"?"Buy lmt ":"Sell lmt ")+o.qty);}
+    function add(px,color,style,title,key){if(px!=null&&isFinite(px)){var l=rpSeries.createPriceLine({price:px,color:color,lineWidth:key?2:1,lineStyle:style,axisLabelVisible:true,title:title});rpLines.push(l);if(key)rpLineBy[key]=l;}}
+    document.getElementById("rpChart").classList.toggle("lines",rpDragTargets().length>0);
+    if(rp.order&&!rp.done){var o=rp.order;add(o.price,o.side==="long"?C.blue:C.red,LS.LargeDashed,(o.side==="long"?"Buy lmt ":"Sell lmt ")+o.qty,"order");}
     if(!p)return;
     add(p.entry,C.blue,LS.Solid,(p.side==="long"?"Long ":"Short ")+p.qty);
-    add(p.stop,C.red,LS.Dashed,"Stop");
-    add(p.target,C.green,LS.Dashed,"Target");
+    add(p.stop,C.red,LS.Dashed,"Stop","stop");
+    add(p.target,C.green,LS.Dashed,"Target","target");
     add(rpLimitPx(),C.amber,LS.Dotted,"Daily stop");
   }
+
+  // ---- dragging the stop, target and working-limit lines ----
+  // The chart library can't drag a price line, so grabs are caught on the container in the capture
+  // phase: a press within a finger's width of a draggable line is kept from the chart (no pan) and
+  // moves the line instead. On release the level is checked against the market and committed.
+  var rpLineBy={},rpDrag=null,rpDragEnd=0;
+  function rpDragTargets(){
+    var t=[];if(!rp||rp.done)return t;
+    if(rp.pos){if(rp.pos.stop!=null)t.push(["stop",rp.pos.stop]);if(rp.pos.target!=null)t.push(["target",rp.pos.target]);}
+    else if(rp.order)t.push(["order",rp.order.price]);
+    return t;
+  }
+  function rpDragY(e){return e.clientY-rpChart.chartElement().getBoundingClientRect().top;}
+  function rpDragLabel(key,px){
+    var ins=rpInstr(rp.instr),p=rp.pos,ref=p?p.entry:rpLast().c,pts=Math.abs(px-ref).toFixed(rpDec(ins.t));
+    if(key==="order")return(rp.order.side==="long"?"Buy lmt ":"Sell lmt ")+rp.order.qty+" · "+pts+" pts";
+    return(key==="stop"?"Stop ":"Target ")+pts+" pts · "+rpUsd((key==="stop"?-1:1)*Math.abs(px-p.entry)*ins.pp*p.qty);
+  }
+  // A stop or limit on the wrong side of the market would fill at once — say so instead of moving it.
+  function rpDragCheck(key,px){
+    var last=rpLast().c,L=(key==="order"?rp.order.side:rp.pos.side)==="long";
+    if(key==="stop"&&(L?px>=last:px<=last))return"A stop on that side of the market would fill right away — use Flatten instead.";
+    if(key==="target"&&(L?px<=last:px>=last))return"A target on that side of the market would fill right away — use Flatten instead.";
+    if(key==="order"&&(L?px>=last:px<=last))return"A limit there would fill right away — use the market button instead.";
+    return"";
+  }
+  function rpDragStart(e){
+    if(!rpChart||!rp||rp.done||(e.pointerType==="mouse"&&e.button!==0))return;
+    var y=rpDragY(e),tol=e.pointerType==="touch"?18:8,best=null;
+    rpDragTargets().forEach(function(x){var ly=rpSeries.priceToCoordinate(x[1]);if(ly!=null&&Math.abs(ly-y)<=tol&&(!best||Math.abs(ly-y)<best.d))best={key:x[0],from:x[1],d:Math.abs(ly-y)};});
+    if(!best||!rpLineBy[best.key])return;
+    rpPlay(false);
+    rpDrag={key:best.key,from:best.from,px:best.from,id:e.pointerId};
+    rpChart.applyOptions({handleScroll:false,handleScale:false});
+    try{e.currentTarget.setPointerCapture(e.pointerId);}catch(err){}
+    e.stopPropagation();e.preventDefault();
+  }
+  function rpDragMove(e){
+    if(!rpDrag){if(e.pointerType==="mouse"&&rpChart){var y=rpDragY(e),hit=rpDragTargets().some(function(x){var ly=rpSeries.priceToCoordinate(x[1]);return ly!=null&&Math.abs(ly-y)<=8;});document.getElementById("rpChart").classList.toggle("grab",hit);}return;}
+    var px=rpSeries.coordinateToPrice(rpDragY(e));if(px==null)return;
+    rpDrag.px=rpRound(px,rpInstr(rp.instr).t);
+    rpLineBy[rpDrag.key].applyOptions({price:rpDrag.px,title:rpDragLabel(rpDrag.key,rpDrag.px)});
+    e.stopPropagation();e.preventDefault();
+  }
+  function rpDragStop(e){
+    if(!rpDrag)return;
+    var d=rpDrag,ins=rpInstr(rp.instr);rpDrag=null;rpDragEnd=Date.now();
+    rpChart.applyOptions({handleScroll:true,handleScale:true});
+    e.stopPropagation();
+    if(d.px===d.from||e.type==="pointercancel"){rpLinesSync();return;}
+    var why=rpDragCheck(d.key,d.px);
+    if(why){rpLinesSync();rpMsg(why,"warn");return;}
+    if(d.key==="order")rp.order.price=d.px;else rp.pos[d.key]=d.px;
+    rpLinesSync();rpPersist();
+    rpMsg((d.key==="order"?"Limit":d.key==="stop"?"Stop":"Target")+" moved to "+rpPx(d.px,ins)+" ("+rpDragLabel(d.key,d.px)+").","ok");
+  }
+  (function(){
+    var el=document.getElementById("rpChart");
+    el.addEventListener("pointerdown",rpDragStart,true);
+    el.addEventListener("pointermove",rpDragMove,true);
+    el.addEventListener("pointerup",rpDragStop,true);
+    el.addEventListener("pointercancel",rpDragStop,true);
+    // keep the chart's own mouse / touch handling out of a drag (they fire alongside pointer events)
+    ["mousedown","mousemove","mouseup","touchstart","touchmove","touchend"].forEach(function(t){
+      el.addEventListener(t,function(e){if(rpDrag||(t==="mouseup"||t==="touchend")&&Date.now()-rpDragEnd<50){e.stopPropagation();if((t==="touchstart"||t==="touchmove")&&e.cancelable)e.preventDefault();}},{capture:true,passive:false});
+    });
+  })();
 
   // ---- orders and fills ----
   // Where an open trade takes the session to your daily stop: it behaves like a stop order the platform holds.
@@ -4816,7 +4886,7 @@
   // ---- limit orders: tap the chart for a price, confirm, and it rests until price trades through it ----
   var rpTapPx=null;
   function rpTap(px){
-    if(!rp||rp.done||px==null||!isFinite(px))return;
+    if(!rp||rp.done||px==null||!isFinite(px)||rpDrag||Date.now()-rpDragEnd<400)return;
     var el=document.getElementById("rpTap"),ins=rpInstr(rp.instr);
     if(rp.pos){rpTapHide();rpMsg("You're in a trade — flatten first to work a limit entry.","warn");return;}
     px=rpRound(px,ins.t);var last=rpLast().c;
@@ -5014,7 +5084,7 @@
       '<label class="fchk"><input type="checkbox" data-rpc="blind"'+(rpc.blind?" checked":"")+'> Hide the date until the session ends — no hindsight</label>'+
       '<label class="fchk"><input type="checkbox" data-rpc="rules"'+(rpc.rules?" checked":"")+'> Trade under my rules from <b>'+esc(a?a.name:"this account")+'</b></label>'+
       '<div class="rprules">'+rules+'</div>'+
-      '<div class="edbar"><button type="button" class="primary" data-rp="start">▶ Load the program</button><span class="hint">Space plays / pauses · → steps one bar. Tap the chart to place a limit. Market orders fill at the last price, limits once price trades through them; when one bar touches both your stop and target, the stop counts.</span></div>';
+      '<div class="edbar"><button type="button" class="primary" data-rp="start">▶ Load the program</button><span class="hint">Space plays / pauses · → steps one bar. Tap the chart to place a limit; drag the stop, target or limit line to move it. Market orders fill at the last price, limits once price trades through them; when one bar touches both your stop and target, the stop counts.</span></div>';
   }
   function rpRenderData(){
     var el=document.getElementById("rpData");if(!el)return;
@@ -5534,7 +5604,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v69";
+var APP_BUILD="v70";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
