@@ -838,6 +838,12 @@
   .rprules{font-size:12px;color:var(--muted);line-height:1.6;margin-top:4px}.rprules b{color:var(--text)}
   .rpsets{margin-bottom:12px}
   .rpsub{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:4px 0 10px}
+  .rprelay{display:flex;align-items:flex-end;gap:10px;margin-bottom:4px}
+  .rprelay label{flex:1;min-width:0}
+  .rprelay .k{display:block;font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px}
+  .rprelay input{width:100%;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:9px 10px;font-size:13px;font-weight:700}
+  .rprelay .secbtn{min-height:40px}
+  @media(pointer:coarse),(max-width:760px){.rprelay input{font-size:16px}}
   .rpsub~.rpsub{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
   .rpsets .atrow:first-child{border-top:none}
   .rpsets .atrow .x{margin-left:auto}
@@ -4659,7 +4665,10 @@
   }
   // ---- download: Databento (CME futures) or Massive (US stocks / ETFs), called straight from the
   // browser with the person's own key, which stays in this browser (not in backups) ----
-  var RP_KEYS="ct_replay_keys",RP_DB="https://hist.databento.com",RP_MS="https://api.massive.com";
+  var RP_KEYS="ct_replay_keys",RP_UP={databento:"https://hist.databento.com",massive:"https://api.massive.com"};
+  // with a relay set (relay/worker.mjs, on Cloudflare), every call goes through it instead
+  function rpRelay(){return String(rpc.relay||"").trim().replace(/\/+$/,"");}
+  function rpBase(src){var r=rpRelay();return r?r+"/"+src:RP_UP[src];}
   var RP_SRC={databento:{n:"Databento",sym:"NQ"},massive:{n:"Massive",sym:"QQQ"}};
   function rpKeys(){try{return JSON.parse(localStorage.getItem(RP_KEYS)||"{}")||{};}catch(e){return{};}}
   function rpSetKey(src,v){var k=rpKeys();if(v)k[src]=v;else delete k[src];try{localStorage.setItem(RP_KEYS,JSON.stringify(k));}catch(e){}}
@@ -4668,8 +4677,10 @@
   async function rpFetch(url,opts,who,ok429){
     var r;
     try{r=await fetch(url,Object.assign({cache:"no-store"},opts));}
-    catch(e){throw new Error("Couldn't reach "+who+". Either this device is offline, or "+who+" doesn't accept requests straight from a web page, which the browser then blocks. If you're online, use Import CSV instead.");}
+    catch(e){throw new Error(rpRelay()?"Couldn't reach your relay at "+rpRelay()+". Check you're online and the address is right (tap Check), or clear the Relay field to go direct.":
+      "Couldn't reach "+who+". Either this device is offline, or "+who+" doesn't accept requests straight from a web page, which the browser then blocks.\n\nThe fix is the free relay: set it up once (relay/README.md in the repo, about 5 minutes on Cloudflare) and paste its address in the Relay field. Or use Import CSV.");}
     if(r.status===429&&ok429)return r;
+    if(r.status===403&&rpRelay()){var j403={};try{j403=await r.clone().json();}catch(e){}if(j403.error)throw new Error("The relay refused: "+j403.error);}
     if(r.status===401||r.status===403)throw new Error(who+" refused the request ("+r.status+"). Check the API key is pasted right and that your plan covers this data.");
     if(!r.ok){var t="";try{t=(await r.text()).slice(0,280);}catch(e){}throw new Error(who+" answered "+r.status+(t?": "+t:"."));}
     return r;
@@ -4677,16 +4688,16 @@
   async function rpDatabento(sym,from,to,key){
     var q=RPX.databentoQuery(sym,from,to),auth={headers:{Authorization:"Basic "+btoa(key+":")}},cost=null;
     // ask what it costs first, so nothing is charged without a yes
-    try{var cr=await rpFetch(RP_DB+"/v0/metadata.get_cost?"+rpQS(q),auth,"Databento");cost=parseFloat(await cr.text());}
+    try{var cr=await rpFetch(rpBase("databento")+"/v0/metadata.get_cost?"+rpQS(q),auth,"Databento");cost=parseFloat(await cr.text());}
     catch(e){if(!/answered 4\d\d/.test(e.message))throw e;} // an unknown symbol etc. is reported by the download itself
     if(cost!=null&&isFinite(cost)&&!(await mxConfirm("Databento will charge about $"+cost.toFixed(cost<0.01?4:2)+" of your credit for "+q.symbols+" 1-minute bars, "+from+" → "+to+".",{title:"↓ Databento",okText:"Download"})))return null;
-    var r=await rpFetch(RP_DB+"/v0/timeseries.get_range?"+rpQS(Object.assign({},q,{encoding:"csv",pretty_px:"true",pretty_ts:"true",map_symbols:"true"})),auth,"Databento");
+    var r=await rpFetch(rpBase("databento")+"/v0/timeseries.get_range?"+rpQS(Object.assign({},q,{encoding:"csv",pretty_px:"true",pretty_ts:"true",map_symbols:"true"})),auth,"Databento");
     var txt=await r.text();
     if(!/\d/.test(txt.split(/\r?\n/).slice(1).join("")))throw new Error("Databento has no bars for "+q.symbols+" between "+from+" and "+to+".");
     return RPX.parseCSV(txt,{tz:"UTC"});
   }
   async function rpMassive(sym,from,to,key,status){
-    var url=RP_MS+"/v2/aggs/ticker/"+encodeURIComponent(sym.toUpperCase())+"/range/1/minute/"+from+"/"+to+"?adjusted=true&sort=asc&limit=50000",all=[],pages=0,waits=0;
+    var url=rpBase("massive")+"/v2/aggs/ticker/"+encodeURIComponent(sym.toUpperCase())+"/range/1/minute/"+from+"/"+to+"?adjusted=true&sort=asc&limit=50000",all=[],pages=0,waits=0;
     while(url&&pages<100){
       var r=await rpFetch(url+"&apiKey="+encodeURIComponent(key),{},"Massive",true);
       if(r.status===429){ // the free plan allows 5 calls a minute
@@ -4694,11 +4705,24 @@
         status("Free-plan limit (5 calls a minute) — waiting 15 s…");await new Promise(function(res){setTimeout(res,15000);});continue;
       }
       var j=await r.json();all=all.concat(j.results||[]);pages++;
-      url=j.next_url?j.next_url.replace(/[?&]apiKey=[^&]*/,""):null;if(url&&url.indexOf("?")<0)url+="?";
+      // the next page's link points at Massive itself; keep its path and cursor but send it the same way (direct or relay)
+      if(j.next_url){var nu=new URL(j.next_url);nu.searchParams.delete("apiKey");url=rpBase("massive")+nu.pathname+"?"+nu.searchParams.toString();}else url=null;
       status("Downloaded "+all.length.toLocaleString()+" bars…");
     }
     if(!all.length)throw new Error("Massive has no 1-minute bars for "+sym.toUpperCase()+" between "+from+" and "+to+".");
     return{S:RPX.massiveToSeries(all),skipped:0,rolled:false};
+  }
+  async function rpCheckRelay(btn){
+    var r=rpRelay(),bad={title:"✕ Relay",tone:"danger"};
+    if(!r){mxAlert("Paste your relay's address first — it looks like https://ct-relay.yourname.workers.dev. Setup steps are in relay/README.md in the repo.",{title:"Relay"});return;}
+    if(!/^https:\/\/|^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(r)){mxAlert("The relay address should start with https://",bad);return;}
+    btn.disabled=true;
+    try{
+      var res=await fetch(r+"/",{cache:"no-store"}),j=await res.json();
+      if(j&&j.relay==="combine-tracker")mxAlert("The relay is working. Downloads now go through "+r+".",{title:"✓ Relay"});
+      else mxAlert("Something answered at that address, but it isn't the tracker's relay.",bad);
+    }catch(e){mxAlert("Couldn't reach a relay at "+r+". Check the address, and that the worker is deployed with the code from relay/worker.mjs.",bad);}
+    finally{btn.disabled=false;}
   }
   async function rpDownload(btn){
     var src=RP_SRC[rpc.dlSrc]?rpc.dlSrc:"databento",who=RP_SRC[src].n,sym=String(rpc.dlSym||RP_SRC[src].sym).trim(),from=rpc.dlFrom,to=rpc.dlTo,key=String(rpKeys()[src]||"").trim();
@@ -5193,6 +5217,7 @@
         '<label><span class="k">To</span><input type="date" data-rpc="dlTo" value="'+esc(rpc.dlTo)+'"></label>'+
         '<label class="wide"><span class="k">API key · this device only</span><input type="password" data-rpkey="'+src+'" value="'+esc(keys[src]||"")+'" placeholder="paste your '+RP_SRC[src].n+' key" autocomplete="off"></label>'+
       '</div>'+
+      '<div class="rprelay"><label><span class="k">Relay · optional, for when a direct download is blocked</span><input type="url" data-rpc="relay" value="'+esc(rpc.relay||"")+'" placeholder="https://ct-relay.yourname.workers.dev" autocomplete="off" autocapitalize="none" spellcheck="false"></label><button type="button" class="secbtn" data-rp="relay">Check</button></div>'+
       '<div class="edbar"><button type="button" class="primary" data-rp="dl">↓ Download</button><span class="hint" id="rpDlSt">'+dlHint+'</span></div>'+
       '<div class="rpsub">Or import a CSV</div>'+
       '<div class="rpset">'+
@@ -5266,7 +5291,7 @@
     var k=t.getAttribute("data-rpc");if(!k)return;
     // switching source swaps in that source's default symbol unless you typed your own
     if(k==="dlSrc"&&(!rpc.dlSym||rpc.dlSym===(RP_SRC[rpc.dlSrc]||{}).sym))rpc.dlSym=RP_SRC[t.value].sym;
-    rpc[k]=k==="dlSym"?t.value.trim().toUpperCase():t.value;rpSaveCfg();
+    rpc[k]=k==="dlSym"?t.value.trim().toUpperCase():(k==="relay"?t.value.trim().replace(/\/+$/,""):t.value);rpSaveCfg();
     if(k==="dlSrc")rpRenderData();
   });
   document.getElementById("rpData").addEventListener("click",function(e){var b=e.target.closest("[data-rpdel]");if(b)rpDeleteSet(b.getAttribute("data-rpdel"));});
@@ -5275,6 +5300,7 @@
     var a=b.getAttribute("data-rp");
     if(a==="start")rpStart();
     else if(a==="dl")rpDownload(b);
+    else if(a==="relay")rpCheckRelay(b);
     else if(a==="resume"){var live=rpLiveSaved();if(live)rpStart(live);}
     else if(a==="discard"){if(await mxConfirm("Throw away the unfinished session? It won't go to your Sparring Log.",{title:"Discard session",tone:"danger",okText:"Discard"})){try{localStorage.removeItem(RP_LIVE);}catch(err){}rpRenderSetup();}}
     else if(a==="buy"||a==="sell"){rpOrder(a==="buy"?"long":"short");b.blur();}
@@ -5714,7 +5740,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v71";
+var APP_BUILD="v72";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

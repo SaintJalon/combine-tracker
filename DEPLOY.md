@@ -8,6 +8,7 @@ Your logged P&L is saved on the device (localStorage).
 - `index.html` — the app
 - `rules.js` — the prop-firm math (consistency-adjusted target, tomorrow's cap, end-of-day floor); `node tests/rules.test.js` checks it
 - `replay.js` — the Replay math (CSV import, CT sessions, candles, stop / target fills); `node tests/replay.test.js` checks it
+- `relay/` — optional Cloudflare Worker that relays Replay's downloads (not part of the site; see its README); `node tests/relay.test.mjs` checks it
 - `lightweight-charts.js` — TradingView's open-source chart library (Apache 2.0, v5.2.1), used by Replay
 - `manifest.json` — makes it installable
 - `service-worker.js` — offline support + faster loads
@@ -112,7 +113,9 @@ the countdown stops but the spend stays in your totals (**Resume** undoes it, **
      years of 1-minute bars, 5 calls a minute (the app waits out the limit). Saved at $1 per point, per ticker.
 
    The key is stored in this browser only — never in Backup & Export. The app calls the provider straight from the
-   browser; if a provider doesn't allow that, the download says so — use a CSV instead.
+   browser. If a provider doesn't allow that, set up the free **relay** once (a Cloudflare Worker, about 5 minutes,
+   no terminal — steps in [`relay/README.md`](relay/README.md)), paste its address in **Relay** and tap **Check**;
+   downloads then go through it. It forwards only Replay's market-data calls, only for your site, and holds no key.
 2. **…or import a CSV.** Export 1-minute bars — TradingView's *Export chart data…*, Databento, NinjaTrader, or any file
    with time / open / high / low / close columns — pick the instrument (it sets $ per point) and the zone the file's
    times are in if they have none, and tap **Import CSV**. More files for the same instrument merge into one set.
