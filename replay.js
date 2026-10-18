@@ -491,6 +491,7 @@
     out.setups = groups(function (t) { return (t.setup || '').trim(); });
     out.hours = groups(function (t) { return new Date(ctWall(t.tIn) * 1000).getUTCHours(); });
     out.sides = groups(function (t) { return t.side; });
+    out.entries = groups(function (t) { return t.how || ''; });
     var wins = all.filter(function (t) { return t.r != null && t.r > 0; }).map(function (t) { return t.r; });
     var losses = all.filter(function (t) { return t.r != null && t.r < 0; }).map(function (t) { return -t.r; });
     out.trades = all.length;
@@ -502,7 +503,27 @@
     return out;
   }
 
-  var api = { CT: CT, reviewSession: reviewSession, reviewLog: reviewLog, databentoQuery: databentoQuery, massiveToSeries: massiveToSeries, symbolRoot: symbolRoot, tzOffset: tzOffset, zonedToUtc: zonedToUtc, ctWall: ctWall, sessionDay: sessionDay,
+  // ---- sparring stats by setup and by how the trade was entered ----
+  // A trade's `how` is 'market' or 'limit'; trades logged before entries were recorded have none and
+  // count as 'unknown' — shown as such, never guessed.
+  function statBlank(k) { return { k: k, n: 0, wins: 0, net: 0, rSum: 0, rN: 0 }; }
+  function statAdd(g, t) { g.n++; if (t.net > 0) g.wins++; g.net += t.net; if (t.r != null) { g.rSum += t.r; g.rN++; } }
+  function statDone(g) { g.net = Math.round(g.net * 100) / 100; g.winRate = g.n ? g.wins / g.n : 0; g.avgR = g.rN ? g.rSum / g.rN : null; g.per = g.n ? g.net / g.n : 0; delete g.rSum; delete g.rN; return g; }
+  // Trades → one row per entry type (market, limit, unknown), in that order, only those present.
+  function byEntry(trades) {
+    var m = {};
+    trades.forEach(function (t) { var e = t.how || 'unknown'; statAdd(m[e] || (m[e] = statBlank(e)), t); });
+    return ['market', 'limit', 'unknown'].filter(function (e) { return m[e]; }).map(function (e) { return statDone(m[e]); });
+  }
+  // Trades → one row per setup (best net first), each with .entries split as byEntry does.
+  function bySetup(trades) {
+    var m = {}, list = {};
+    trades.forEach(function (t) { var k = (t.setup || '').trim() || '(no setup)'; statAdd(m[k] || (m[k] = statBlank(k)), t); (list[k] || (list[k] = [])).push(t); });
+    return Object.keys(m).map(function (k) { var g = statDone(m[k]); g.entries = byEntry(list[k]); return g; })
+      .sort(function (a, b) { return b.net - a.net; });
+  }
+
+  var api = { CT: CT, byEntry: byEntry, bySetup: bySetup, reviewSession: reviewSession, reviewLog: reviewLog, databentoQuery: databentoQuery, massiveToSeries: massiveToSeries, symbolRoot: symbolRoot, tzOffset: tzOffset, zonedToUtc: zonedToUtc, ctWall: ctWall, sessionDay: sessionDay,
     isXlsx: isXlsx, xlsxToCSV: xlsxToCSV, parseStamp: parseStamp, parseClock: parseClock, parseCSV: parseCSV, detectStep: detectStep, merge: merge,
     bar: bar, sessions: sessions, pushBar: pushBar, aggregate: aggregate, barExit: barExit, limitFill: limitFill,
     lossLimitPrice: lossLimitPrice, tradeNet: tradeNet, summarize: summarize };

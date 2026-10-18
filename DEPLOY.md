@@ -136,7 +136,9 @@ the countdown stops but the spend stays in your totals (**Resume** undoes it, **
    **Drag** the stop, target or limit line to move it; a level on the wrong side of the market (where it would fill at
    once) snaps back. With **Trade under my rules** on, your account's daily stop auto-flattens you (and locks the session),
    and your trade cap and cooldown block new entries — the same rules as Core and Protocol.
-5. **Review.** At the end the date is revealed and **Coach Co** grades your execution (0–100): entries without a
+5. **Review.** The Sparring Log's stats break each setup down by how you got in — **market** or **limit** — and
+   compare the two overall (trades logged before V75 show as "not recorded"); Coach Co says which one is paying.
+   At the end the date is revealed and **Coach Co** grades your execution (0–100): entries without a
    stop, revenge entries, sizing up after a loss, losers past 1.2R, winners cut early, the daily stop — with the one
    fix for next session. Once you have 3+ sessions, Coach Co also reads the whole **Sparring Log**: whether you're
    improving, your most repeated leak, which setups pay, your weak hour and side, and the win rate your R sizes need.

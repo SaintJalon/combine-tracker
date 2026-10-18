@@ -205,7 +205,24 @@ t('log review: trend, most repeated leak, setups and hours with 3+ trades, break
   assert.ok(Math.abs(r.breakEven - 1 / 3) < 1e-9); // avg win 2R, avg loss 1R
 });
 
-// 7. Excel (.xlsx) exports read like CSVs (async: unzipping uses DecompressionStream)
+// 7. Stats by setup and entry type
+t('by setup: rows best first, each split into market / limit / not recorded', () => {
+  const rows = R.bySetup([
+    TR({ setup: 'ORB', how: 'limit', net: 100, r: 2 }), TR({ setup: 'ORB', how: 'limit', net: -50, r: -1 }),
+    TR({ setup: 'ORB', how: 'market', net: -50, r: -1 }), TR({ setup: 'Fade', net: -20, r: -1 }), TR({ setup: '', how: 'market', net: 5, r: null })
+  ]);
+  assert.deepStrictEqual(rows.map(x => [x.k, x.n, x.net]), [['(no setup)', 1, 5], ['ORB', 3, 0], ['Fade', 1, -20]]);
+  const orb = rows[1];
+  assert.deepStrictEqual(orb.entries.map(e => [e.k, e.n, e.wins, e.net, e.avgR]), [['market', 1, 0, -50, -1], ['limit', 2, 1, 50, 0.5]]);
+  assert.deepStrictEqual(rows[2].entries.map(e => e.k), ['unknown']); // logged before entry types were recorded
+});
+t('log review compares entry types once each has 3+ trades', () => {
+  const s1 = { trades: [TR({ how: 'limit', net: 40 }), TR({ how: 'limit', net: 40 }), TR({ how: 'limit', net: -20 }), TR({ how: 'market', net: -20 }), TR({ how: 'market', net: -20 }), TR({ how: 'market', net: 10 })] };
+  const r = R.reviewLog([s1]);
+  assert.deepStrictEqual(r.entries.map(e => [e.k, e.n, Math.round(e.per)]), [['limit', 3, 20], ['market', 3, -10]]);
+});
+
+// 8. Excel (.xlsx) exports read like CSVs (async: unzipping uses DecompressionStream)
 (async () => {
   const fs = require('fs'), path = require('path');
   const read = (f) => { const b = fs.readFileSync(path.join(__dirname, 'fixtures', f)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length); };
