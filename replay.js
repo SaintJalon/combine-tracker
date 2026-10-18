@@ -285,6 +285,19 @@
     return null;
   }
 
+  // Where a resting limit entry fills inside one bar, or null. A buy limit sits below the market: it fills
+  // at the open when the bar opens at or below it, otherwise only when price trades through it by at
+  // least a tick — a bare touch may not reach your place in the queue, so it isn't counted.
+  function limitFill(side, b, price, tick) {
+    var t = tick > 0 ? tick : 0;
+    if (side === 'long') {
+      if (b.o <= price) return b.o;
+      return b.l <= price - t + 1e-9 ? price : null;
+    }
+    if (b.o >= price) return b.o;
+    return b.h >= price + t - 1e-9 ? price : null;
+  }
+
   // Price at which an open trade takes the session's net to the daily stop. room = dollars this trade
   // can lose before that (stop + realized so far − this trade's fees). Rounded to the first tick at or
   // beyond it — where a platform's loss-limit liquidation would actually trigger.
@@ -318,7 +331,7 @@
 
   var api = { CT: CT, tzOffset: tzOffset, zonedToUtc: zonedToUtc, ctWall: ctWall, sessionDay: sessionDay,
     parseStamp: parseStamp, parseClock: parseClock, parseCSV: parseCSV, detectStep: detectStep, merge: merge,
-    bar: bar, sessions: sessions, pushBar: pushBar, aggregate: aggregate, barExit: barExit,
+    bar: bar, sessions: sessions, pushBar: pushBar, aggregate: aggregate, barExit: barExit, limitFill: limitFill,
     lossLimitPrice: lossLimitPrice, tradeNet: tradeNet, summarize: summarize };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.CTReplay = api;
