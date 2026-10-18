@@ -828,6 +828,9 @@
   .rptbl .setuptbl th:first-child,.rptbl .setuptbl td:first-child{padding-left:0}
   #rpTf button{text-transform:none}
   #rpSum{margin-top:14px}
+  .rpcoach{margin:12px 0 14px}
+  .eqcard .rpcoach .coachdonut{width:46px;height:46px;display:inline-block;overflow:hidden} /* not the chart-sized .eqcard svg */
+  .rpcoach .csecbody b{color:var(--text)}
   #rpSum h3{margin:0 0 12px;font-size:12px;font-weight:800;color:var(--accent);letter-spacing:.14em;text-transform:uppercase}
   #rpSum h3::before{content:"◆ ";font-size:10px}
   .rpreveal{font-size:13px;margin:0 0 12px;color:var(--muted)}.rpreveal b{color:var(--text)}
@@ -843,7 +846,6 @@
   .rprelay .k{display:block;font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px}
   .rprelay input{width:100%;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:9px 10px;font-size:13px;font-weight:700}
   .rprelay .secbtn{min-height:40px}
-  @media(pointer:coarse),(max-width:760px){.rprelay input{font-size:16px}}
   .rpsub~.rpsub{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
   .rpsets .atrow:first-child{border-top:none}
   .rpsets .atrow .x{margin-left:auto}
@@ -878,9 +880,9 @@
     #rpSpeed button,#rpTf button{min-height:38px;min-width:38px}
     .rplog .x,.rpsets .x{min-width:38px;min-height:38px}
     .rptap button{min-height:40px}
-    #rpSetup .edbar button,#rpData .edbar label.secbtn,#rpSum .edbar button{min-height:42px;display:inline-flex;align-items:center}
+    #rpSetup .edbar button,#rpData .edbar button,#rpData .edbar label.secbtn,#rpSum .edbar button{min-height:42px;display:inline-flex;align-items:center}
     .rphow summary{padding:10px 0}
-    .rpstage input,.rpset input,.rpset select,.rpnote{font-size:16px} /* iOS zooms into anything smaller */
+    .rpstage input,.rpset input,.rpset select,.rpnote,.rprelay input{font-size:16px} /* iOS zooms into anything smaller */
     .rplog .atrow{min-height:44px}
   }
   /* landscape phone: the chart takes the screen; the ticket is one scroll below */
@@ -4611,7 +4613,14 @@
     });
   }
   function rpPack(S){var o={};["t","o","h","l","c","v"].forEach(function(k){o[k]=Float64Array.from(S[k]);});return o;}
-  function rpReadText(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result);};r.onerror=function(){rej(r.error||new Error("Couldn't read the file."));};r.readAsText(f);});}
+  function rpReadBuf(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result);};r.onerror=function(){rej(r.error||new Error("Couldn't read the file."));};r.readAsArrayBuffer(f);});}
+  // a file's text: an Excel workbook (.xlsx, e.g. TradingView's export) is turned into CSV first
+  async function rpReadText(f){
+    var buf=await rpReadBuf(f),b=new Uint8Array(buf,0,Math.min(4,buf.byteLength));
+    if(RPX.isXlsx(buf))return RPX.xlsxToCSV(buf);
+    if(b[0]===0xd0&&b[1]===0xcf&&b[2]===0x11&&b[3]===0xe0)throw new Error("this is an old-style .xls workbook — open it and save it as .xlsx or CSV.");
+    return new TextDecoder().decode(buf);
+  }
   var rpLibP=null;
   function loadLWC(){
     if(window.LightweightCharts)return Promise.resolve(window.LightweightCharts);
@@ -5151,6 +5160,57 @@
     rpLogList().forEach(function(s){(s.trades||[]).forEach(function(t){tags.push(t.setup);});});
     document.getElementById("rpSetupList").innerHTML=uniqueSorted(tags.map(function(x){return String(x||"").trim();})).map(function(x){return'<option value="'+esc(x)+'">';}).join("");
   }
+  // ---- Coach Co reviews the sparring: one card per finished session, one across the whole log ----
+  // {n} → the leak's count; each leak has what happened and the one fix for next time.
+  var RP_COACH={
+    "daily-stop":{t:"Daily stop hit",what:"You hit the daily stop. The session wasn't lost on the last trade — it was lost on the trade where you stopped trading the plan. Find it in the list above.",fix:"After two losers in a row, stop and let 15 minutes of replay pass before the next entry."},
+    "no-stop":{t:"Entries without a stop",what:"{n} entr{ies} went in without a stop. In replay that costs nothing; on a funded account it's the trade that ends it.",fix:"Put your stop in the ticket before you press Buy or Sell — every single time."},
+    "revenge":{t:"Revenge entries",what:"{n} re-entr{ies} within 3 minutes of a losing exit. That's the loss placing the trade, not your setup.",fix:"After a loser, let at least 5 bars print before you're allowed back in."},
+    "size-up":{t:"Size up after a loss",what:"Size went up right after a loss. That's how a -$200 day turns into a -$800 day.",fix:"Size after a loser stays the same or goes down — never up."},
+    "deep-loss":{t:"Losers past the plan",what:"{n} loser{s} ran past 1.2R — the stop moved, or it wasn't where the plan put it.",fix:"Stops only ever move toward profit. Drag it the other way and you've changed the trade."},
+    "over-cap":{t:"Over the trade cap",what:"{n} trade{s} over your daily cap.",fix:"When the cap is hit, the session is over — End it and review instead."},
+    "cut-winner":{t:"Winners cut early",what:"{n} winner{s} closed by hand with at least twice as much on the table (MFE).",fix:"Set the target at entry and let it work. Trail the stop if you like — leave the target alone."},
+    "off-plan":{t:"Off plan",what:"You marked this session as not following your plan. Honest — now write which rule broke in the notes.",fix:"Before the next session, read your rules on Protocol once, out loud."}
+  };
+  var RP_GOOD={"sat-out":"No trades. If the day never showed you an A+ setup, sitting out was the right trade.","all-stops":"Every entry had a stop.","calm":"No revenge entries and no size-up after losses.","runner":"{n} winner{s} of 2R or more — that's where the money comes from."};
+  function rpPl(t,n){return t.replace(/\{n\}/g,n).replace(/\{s\}/g,n===1?"":"s").replace(/\{ies\}/g,n===1?"y":"ies");}
+  function rpTier(score){return score>=85?["good","Clean"]:(score>=65?["okay","Workable"]:["bad","Sloppy"]);}
+  function rpCoachHead(sub,label,score){
+    return'<div class="coachtop"><div class="coachav">CO</div><div class="coachid"><div class="coachname">Coach Co</div><div class="coachsub">'+sub+'</div></div>'+
+      '<div class="coachring"><div class="coachringtxt"><div class="coachgrade">'+label+'</div><div class="coachscoresub">execution</div></div>'+coachDonut(score)+'</div></div>';
+  }
+  function rpCoachSession(e){
+    var rv=RPX.reviewSession(e),tier=rpTier(rv.score),top=rv.leaks[0],html=rpCoachHead("Session review",tier[1],rv.score);
+    var msg=top?rpPl(RP_COACH[top.k].what,top.n):(e.n?"Clean execution. Whether it made money is the market's business — the process was yours, and it held.":rpPl(RP_GOOD["sat-out"],1));
+    html+='<div class="coachmsg">'+esc(msg)+'</div>';
+    var pts=rv.good.filter(function(g){return g.k!=="sat-out";}).map(function(g){return rpPl(RP_GOOD[g.k],g.n);}).concat(rv.leaks.slice(1).map(function(l){return"▲ "+RP_COACH[l.k].t+(l.n>1?" ×"+l.n:"");}));
+    if(pts.length)html+='<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>';
+    html+=coachSection("Fix for next session",esc(top?RP_COACH[top.k].fix:"Same again. Same rules, same size — repetition is the edge."));
+    return'<div class="coachcard rpcoach '+tier[0]+'">'+html+'</div>';
+  }
+  function rpCoachLog(){
+    var L=rpLogList();
+    if(L.length<3)return'<div class="coachcard rpcoach new">'+rpCoachHead(pl(L.length,"session")+" in the log","Standing by",null)+
+      '<div class="coachmsg">Finish '+(3-L.length)+' more session'+(3-L.length===1?"":"s")+' and I\'ll start reading patterns across them — what you repeat, which setups pay, and what time of day costs you.</div></div>';
+    var r=RPX.reviewLog(L),tier=rpTier(r.score),html=rpCoachHead(pl(r.n,"session")+" reviewed",tier[1],r.score),msg;
+    if(r.recent!=null){var d=r.recent-r.prior;msg=d>=8?"Your last sessions score "+r.recent+" against "+r.prior+" before. The work is showing — keep the same routine, don't add anything new.":(d<=-8?"Your last sessions score "+r.recent+" against "+r.prior+" before — you're slipping. Something changed; your notes from the last few sessions will say what.":"Your execution is steady at about "+r.score+". Steady is good — now take one leak off the list.");}
+    else msg="Execution averages "+r.score+" across "+pl(r.n,"session")+". Keep logging — after 6 I can tell you whether you're getting better.";
+    html+='<div class="coachmsg">'+esc(msg)+'</div>';
+    var top=r.leaks[0];
+    if(top)html+=coachSection("Your most repeated leak",'<b>'+esc(RP_COACH[top.k].t)+'</b> in '+top.sessions+' of '+r.n+' sessions. '+esc(RP_COACH[top.k].fix));
+    var edge=[];
+    if(r.setups.length){var b=r.setups[0],w=r.setups[r.setups.length-1];
+      edge.push(b.per>0?'Best setup: <b>'+esc(b.k)+'</b> — '+b.n+' trades, '+Math.round(b.winRate*100)+'% won, '+cnum(b.per)+' a trade.':
+        'No setup is paying in sparring yet — the least costly is <b>'+esc(b.k)+'</b> ('+b.n+' trades, '+cnum(b.per,"r")+' a trade). That\'s information, not failure: tighten what you call an A+ entry.');
+      if(r.setups.length>1&&w.per<0&&b.per>0)edge.push('Costing you: <b>'+esc(w.k)+'</b> — '+w.n+' trades, '+cnum(w.per,"r")+' a trade. Stop taking it until you can say why it should work.');}
+    if(r.avgWinR!=null)edge.push('Average winner <b>'+r.avgWinR.toFixed(2)+'R</b>, average loser <b>'+r.avgLossR.toFixed(2)+'R</b>: you need '+cpct(r.breakEven*100)+' winners to break even and you\'re at '+cpct(r.winRate*100)+'.');
+    if(edge.length)html+=coachSection("The edge · from your sparring",edge.join("<br>"));
+    if(r.hours.length>1){var hb=r.hours[0],hw=r.hours[r.hours.length-1],hl=function(h){return pad2(h)+":00–"+pad2(h)+":59 CT";};
+      if(hw.per<0)html+=coachSection("Time of day",'Your entries in <b>'+hl(hw.k)+'</b> lose '+cnum(hw.per,"r")+' a trade over '+hw.n+' trades; <b>'+hl(hb.k)+'</b> is your best hour ('+cnum(hb.per)+' a trade). Consider making the weak hour a no-trade block in your schedule.');}
+    if(r.sides.length===2&&Math.abs(r.sides[0].per-r.sides[1].per)>0){var sb=r.sides[0],sw=r.sides[1];if(sw.per<0)html+=coachSection("Long vs short",'<b>'+(sb.k==="long"?"Longs":"Shorts")+'</b> make '+cnum(sb.per)+' a trade; <b>'+(sw.k==="long"?"longs":"shorts")+'</b> lose '+cnum(sw.per,"r")+'. Your read of one direction is better — trade that one until the other catches up.');}
+    html+=coachSection("Next session focus",esc(top?RP_COACH[top.k].fix:"No repeated leak — keep the routine exactly as it is and add sessions."));
+    return'<div class="coachcard rpcoach '+tier[0]+'">'+html+'</div>';
+  }
   function rpSummary(e){
     var el=document.getElementById("rpSum"),ins=rpInstr(e.instr),sm=RPX.summarize(e.trades||[]);
     document.getElementById("rpLive").hidden=true;el.hidden=false;
@@ -5160,7 +5220,8 @@
       '<p class="rpreveal">'+(e.blind?'The day was <b>'+esc(rpDayLong(e.day))+'</b>. ':'')+esc(e.reason)+'.</p>'+
       '<div class="statgrid">'+tile("Net",rpUsd(e.net),e.net>0?"g":(e.net<0?"r":""))+tile("Trades",e.n,"",e.wins+" won")+
         tile("Win rate",e.n?Math.round(sm.winRate*100)+"%":"—","")+tile("Best / worst",e.n?rpUsd(sm.best)+" / "+rpUsd(sm.worst):"—","")+'</div>'+
-      '<div class="rprules">'+rule+(e.n?"":" No trades — sitting out a day you didn't like is a skill too.")+'</div>'+
+      '<div class="rprules">'+rule+'</div>'+
+      rpCoachSession(e)+
       rpTradesHtml(e.trades||[],ins)+
       '<textarea class="rpnote" data-rpnote="'+e.id+'" rows="2" placeholder="What did you see? What would you do differently next time?">'+esc(e.note||"")+'</textarea>'+
       '<label class="fchk"><input type="checkbox" data-rpfol="'+e.id+'"'+(e.followed?" checked":"")+'> Followed my plan</label>'+
@@ -5219,15 +5280,15 @@
       '</div>'+
       '<div class="rprelay"><label><span class="k">Relay · optional, for when a direct download is blocked</span><input type="url" data-rpc="relay" value="'+esc(rpc.relay||"")+'" placeholder="https://ct-relay.yourname.workers.dev" autocomplete="off" autocapitalize="none" spellcheck="false"></label><button type="button" class="secbtn" data-rp="relay">Check</button></div>'+
       '<div class="edbar"><button type="button" class="primary" data-rp="dl">↓ Download</button><span class="hint" id="rpDlSt">'+dlHint+'</span></div>'+
-      '<div class="rpsub">Or import a CSV</div>'+
+      '<div class="rpsub">Or import a file — CSV or Excel</div>'+
       '<div class="rpset">'+
         '<label><span class="k">Instrument</span><select data-rpc="impInstr">'+INSTR.concat([RP_OTHER]).map(function(x){return opt(x.k,x.n,x.k===rpc.impInstr);}).join("")+'</select></label>'+
         '<label class="wide"><span class="k">Times in the file, when they have no zone</span><select data-rpc="impTz">'+RP_TZS.map(function(x){return opt(x[0],x[1],x[0]===rpc.impTz);}).join("")+'</select></label>'+
       '</div>'+
-      '<div class="edbar"><label class="secbtn primary">↑ Import CSV<input type="file" id="rpFile" accept=".csv,.txt,text/csv,text/plain" multiple style="display:none"></label><span class="hint">1-minute bars work best. More files of the same instrument merge into its set; overlapping bars are replaced.</span></div>'+
+      '<div class="edbar"><label class="secbtn primary">↑ Import CSV / Excel<input type="file" id="rpFile" accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple style="display:none"></label><span class="hint">CSV or Excel (.xlsx), 1-minute bars work best. More files of the same instrument merge into its set; overlapping bars are replaced.</span></div>'+
       '<details class="rphow"><summary>Where do I get real bars?</summary><ol>'+
         '<li><b>Download above</b>: get an API key at <b>databento.com</b> (CME futures, pay per use; new accounts get free credit) or <b>massive.com</b> (stocks and ETFs, free plan), paste it, pick the dates and tap Download.</li>'+
-        '<li><b>TradingView</b> (paid plans): put the chart on 1-minute, scroll back until the days you want are loaded, then <b>Export chart data…</b> from the layout menu. Either time format works.</li>'+
+        '<li><b>TradingView</b> (paid plans): put the chart on 1-minute, scroll back until the days you want are loaded, then <b>Export chart data…</b> from the layout menu. The CSV or the Excel (.xlsx) file both work, with either time format.</li>'+
         '<li><b>Databento</b> (new accounts get free credit): dataset <b>GLBX.MDP3</b>, schema <b>OHLCV-1m</b>, symbol like <b>NQ.FUT</b>, encoding <b>CSV</b>. Spreads are dropped and each day keeps its front month.</li>'+
         '<li><b>NinjaTrader 8</b>: Tools → Historical Data → Export, 1 minute, last. Its times are in your computer\'s zone — pick that above.</li>'+
         '<li>Any CSV with a time and open / high / low / close (volume optional), e.g. <b>Date, Time, Open, High, Low, Close, Volume</b>.</li>'+
@@ -5242,7 +5303,7 @@
     var all=[],net=0,green=0,ruled=0,kept=0;
     L.forEach(function(s){all=all.concat(s.trades||[]);net+=s.net;if(s.net>0)green++;if(s.rules){ruled++;if(!s.locked)kept++;}});
     var sm=RPX.summarize(all),pf=sm.pf===Infinity?"∞":(sm.pf?sm.pf.toFixed(2):"—");
-    var html='<div class="statgrid">'+
+    var html=rpCoachLog()+'<div class="statgrid">'+
       tile("Sessions",L.length,"",green+" green · "+Math.round(green/L.length*100)+"%")+
       tile("Net",rpUsd(net),net>0?"g":(net<0?"r":""),"avg "+rpUsd(net/L.length)+" / session")+
       tile("Win rate",sm.n?Math.round(sm.winRate*100)+"%":"—","",sm.n+" trade"+(sm.n===1?"":"s"))+
@@ -5740,7 +5801,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v72";
+var APP_BUILD="v73";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
