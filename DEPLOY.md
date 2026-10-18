@@ -91,6 +91,12 @@ You can change that anytime in System.
 Each account keeps its own log, so running two at once won't mix them up.
 Tap the **Target** or **Max Loss** number on Core to match your dashboard if a firm changes its rules.
 
+**Coach Co day review:** every logged day gets a **CO** grade chip (0–100 execution). Open the day for Coach Co's
+review: what went wrong, worst first — max-loss breach, over your daily stop, the firm's daily loss limit, over your trade
+cap, revenge (tagged, or size up after a loser), moved stop, oversized, chased / mistimed entries, no setup, early exits,
+or a day big enough to raise your consistency target — what went right, and the one fix for tomorrow. It reads your
+trades and their mistake tags, so log trades (＋ Trade) for a real grade; a day logged as one number shows **CO –**.
+
 **Copy trading — groups:** you can run several copy groups at once, each with its own leader — say your TopStep
 50K Static leads one group and your 100K leads another. In **Core → Copy trading**, the **Group** picker lists your
 groups; pick a free account under *Start a new group led by* to make it a leader. Each group only offers accounts that

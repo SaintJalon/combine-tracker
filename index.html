@@ -861,6 +861,10 @@
   #rpTf button{text-transform:none}
   #rpSum{margin-top:14px}
   .rpcoach{margin:12px 0 14px}
+  .daycoach{margin:10px 0 4px;cursor:default}
+  .jbadge .cochip{font-weight:800;letter-spacing:.06em}
+  .jbadge .cochip.m{color:var(--muted2)}
+  .jbadge .cochip.g{background:var(--green-soft);color:var(--green)}.jbadge .cochip.a{background:var(--amber-soft);color:var(--amber)}.jbadge .cochip.r{background:var(--red-soft);color:var(--red)}
   .eqcard .rpcoach .coachdonut{width:46px;height:46px;display:inline-block;overflow:hidden} /* not the chart-sized .eqcard svg */
   .rpcoach .csecbody b{color:var(--text)}
   #rpSum h3{margin:0 0 12px;font-size:12px;font-weight:800;color:var(--accent);letter-spacing:.14em;text-transform:uppercase}
@@ -2177,6 +2181,40 @@
   function tagClass(p){return p==="close"?"close":(p==="push"?"push":"build");}
   function tagLabel(p){return p==="close"?"Close it":(p==="push"?"Push":"Build");}
 
+  // ---- Coach Co reviews each real trading day (CTRules.reviewDay): grade, what went wrong / right, one fix ----
+  var DAY_COACH={
+    "max-loss":{t:"Max-loss breach",what:"This day breached the account's max loss. That's the one rule that ends an account — nothing else on this list matters next to it.",fix:"Tomorrow: half size, your daily stop set in the platform before the first trade, and done the moment it's hit."},
+    "daily-stop":{t:"Over your daily stop",what:"You finished past your daily stop. The stop is the line where you stop trading — the loss after it is the expensive part.",fix:"Set the daily loss in your platform so it flattens you — then it's not a decision you make mid-tilt."},
+    "dll":{t:"Hit the daily loss limit",what:"You hit the firm's daily loss limit, which paused the account for the day.",fix:"Keep your own daily stop tighter than the firm's limit, so you never meet theirs."},
+    "over-cap":{t:"Over your trade cap",what:"{n} trade{s} past your daily cap. Past the cap you're trading the day, not your setups.",fix:"When the cap is hit, close the platform. The next setup comes tomorrow."},
+    "revenge":{t:"Revenge trading",what:"{n} revenge trade{s} — tagged, or size went up right after a loser. That's the loss placing trades.",fix:"After a loser: stand up, five minutes, same size or smaller on the next one."},
+    "moved-stop":{t:"Moved stop",what:"You moved a stop {n} time{s}. The stop you set before the trade was the honest one.",fix:"Stops only move toward profit. Set it, then take your hand off it."},
+    "oversized":{t:"Oversized",what:"You traded bigger than planned. One oversized loser can erase a week of good days.",fix:"Use the position-size calculator (Armory) before every entry tomorrow."},
+    "chase":{t:"Chased entries",what:"{n} chased or mistimed entr{ies} (chased, FOMO, early or late). The setup was right there — the timing wasn't.",fix:"Wait for your trigger candle to close. If you missed it, the trade is gone — let it go."},
+    "no-setup":{t:"No setup",what:"{n} trade{s} without a named setup. If you can't name it, it isn't one of yours.",fix:"Name the setup before you click. No name, no trade."},
+    "early-exit":{t:"Early exits",what:"{n} early exit{s}. Cutting winners short is how a good win rate still loses money.",fix:"Set the target at entry and let it work; trail the stop if you must."},
+    "cons-raise":{t:"Day too big for consistency",what:"This day was big enough to raise your consistency-adjusted target. You didn't fail — but you now need more total profit to pass.",fix:"Check tomorrow's cap on the progress card and stop once you're near it."}
+  };
+  var DAY_GOOD={plan:"Followed the plan.","in-cap":"Stayed inside the trade cap.",clean:"No mistakes tagged.",green:"Green day inside your stop."};
+  function dpl(t,n){return t.replace(/\{n\}/g,n).replace(/\{s\}/g,n===1?"":"s").replace(/\{ies\}/g,n===1?"y":"ies");}
+  function dayReview(c,val,jj){
+    var cons=c.consPct>0&&stageOf()!=="funded"&&val>0&&val/(c.consPct/100)>c.baseTarget;
+    return CTRules.reviewDay({net:val,trades:(jj&&jj.trades)||[],followed:!!(jj&&jj.followed)},{stop:c.stop,dll:c.dllAmt,maxloss:c.maxloss,cap:maxTradesOf(),consRaise:cons});
+  }
+  function dayCoachHtml(rv){
+    // a day logged as one number, with nothing broken, has nothing to grade — don't hand out a 100
+    if(!rv.itemized&&!rv.leaks.length)return'<div class="coachcard daycoach new"><div class="coachtop"><div class="coachav">CO</div><div class="coachid"><div class="coachname">Coach Co</div><div class="coachsub">Day review</div></div></div>'+
+      '<div class="coachmsg">This day is logged as one number, so there\'s nothing to grade yet — it stayed inside your stop, that\'s all I can see. Add its trades (＋ Trade) with setup names and mistake tags and I\'ll review how you traded it.</div></div>';
+    var tier=rv.score>=85?["good","Clean"]:(rv.score>=65?["okay","Workable"]:["bad","Sloppy"]),top=rv.leaks[0];
+    var msg=top?dpl(DAY_COACH[top.k].what,top.n):"Clean day. Whatever the P&L, the process held — that's the part you control.";
+    var pts=rv.good.map(function(g){return DAY_GOOD[g];}).concat(rv.leaks.slice(1).map(function(l){return"▲ "+DAY_COACH[l.k].t+(l.n>1?" ×"+l.n:"");}));
+    return'<div class="coachcard daycoach '+tier[0]+'"><div class="coachtop"><div class="coachav">CO</div><div class="coachid"><div class="coachname">Coach Co</div><div class="coachsub">Day review</div></div>'+
+      '<div class="coachring"><div class="coachringtxt"><div class="coachgrade">'+tier[1]+'</div><div class="coachscoresub">execution</div></div>'+coachDonut(rv.score)+'</div></div>'+
+      '<div class="coachmsg">'+esc(msg)+'</div>'+
+      (pts.length?'<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>':'')+
+      coachSection("Fix for tomorrow",esc(top?DAY_COACH[top.k].fix:"Same again tomorrow — same rules, same size."))+
+      (rv.itemized?'':'<div class="hint" style="margin-top:8px">Add this day\'s trades (＋ Trade) with their mistake tags for a fuller read.</div>')+'</div>';
+  }
   function renderDays(){
     var c=cfg(),P=livePlan(),t=P.live,phases=tpl(c.days).p,log=curLog(),ML=c.maxloss;
     var followL=activeFollowLeader(),copied=copiedDaySet();
@@ -2233,7 +2271,8 @@
       var wkLbl=jdate?'<small style="color:var(--muted2);font-weight:500;font-size:10px">'+weekdayLbl(jdate)+'</small>':
         (proj[d]?'<small class="proj" title="Projected: the next open session if you trade each one from here">≈ '+weekdayLbl(proj[d])+(d===pdn?' · pass':'')+(rbDue&&proj[d]>=rbDue?' <span class="r">· after rebill</span>':'')+'</small>':'');
       var cap=maxTradesOf(),tradeSum=hasTr?sumTrades(trs):null,locked=(tradeSum!=null&&tradeSum<=-c.stop),overCap=trs.length>cap,followed=!!(jj&&jj.followed);
-      var jbadge=(hasTr||jnote||followed||overCap)?'<div class="jbadge">'+(hasTr?'<span>≡ '+trs.length+' trade'+(trs.length>1?"s":"")+'</span>':'')+(overCap?'<span style="background:var(--red-soft);color:var(--red)">▲ over cap</span>':'')+(followed?'<span style="background:var(--green-soft);color:var(--green)">✓ plan</span>':'')+(jnote?'<span>✎ note</span>':'')+'</div>':'';
+      var drv=logged?dayReview(c,val,jj):null,dgraded=drv&&(drv.itemized||drv.leaks.length),dtier=dgraded?(drv.score>=85?"g":(drv.score>=65?"a":"r")):"m";
+      var jbadge=(hasTr||jnote||followed||overCap||drv)?'<div class="jbadge">'+(drv?'<span class="cochip '+dtier+'" title="Coach Co\'s execution grade for this day — open the day for the review">CO '+(dgraded?drv.score:"–")+'</span>':'')+(hasTr?'<span>≡ '+trs.length+' trade'+(trs.length>1?"s":"")+'</span>':'')+(overCap?'<span style="background:var(--red-soft);color:var(--red)">▲ over cap</span>':'')+(followed?'<span style="background:var(--green-soft);color:var(--green)">✓ plan</span>':'')+(jnote?'<span>✎ note</span>':'')+'</div>':'';
       var trowsHtml=trs.map(function(t,ti){
         var dk=d+":"+ti,open=!!openTradeDetail[dk];
         var sumTags=(t.mistakes&&t.mistakes.length)?(' <span class="tsum">'+t.mistakes.length+' tag'+(t.mistakes.length>1?"s":"")+'</span>'):"";
@@ -2280,6 +2319,7 @@
         '<div class="jtrades">'+trowsHtml+(locked?'':'<button type="button" class="addtrade">＋ Trade</button>')+'</div>'+
         (locked?'<div class="lockmsg">⊘ Daily stop hit ('+fmt(tradeSum)+'). Lock it in — no more trades today.</div>':'')+
         (overCap?'<div class="lockmsg amber">▲ '+trs.length+' trades — over your '+cap+'/day cap.</div>':'')+
+        (drv?dayCoachHtml(drv):'')+
         (guardReasons.length&&!locked?'<div class="lockmsg amber">⊘ Entry Guard: '+esc(guardReasons.join(" · "))+'</div>':'')+
         '<div class="jdrow"><span class="hint">Date</span><input class="jdate" type="date" value="'+esc(jdate)+'"></div>'+
         '<label class="fchk"><input type="checkbox" class="jfollowed"'+(followed?" checked":"")+'> Followed my plan today</label>'+
@@ -6070,7 +6110,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v77";
+var APP_BUILD="v78";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

@@ -36,7 +36,40 @@
     return { floor: floor, prospective: prospective, hwm: hwm };
   }
 
-  var api = { effectiveTarget: effectiveTarget, tomorrowCap: tomorrowCap, eodFloor: eodFloor };
+  // Coach Co's review of one real trading day. day = { net, trades: [{ p, qty, s, mistakes }], followed }
+  // (a day logged as a bare net has no trades); r = { stop, dll, maxloss, cap, consRaise } — consRaise:
+  // this day's size raised the consistency-adjusted target. → { score 0–100, leaks (worst first), good }.
+  function reviewDay(day, r) {
+    var T = day.trades || [], net = +day.net || 0, leaks = [], good = [], score = 100;
+    function leak(k, n, pen) { if (n > 0) { leaks.push({ k: k, n: n }); score -= pen; } }
+    function tagged(names) { var n = 0; T.forEach(function (t) { (t.mistakes || []).forEach(function (m) { if (names.indexOf(m) >= 0) n++; }); }); return n; }
+    var sizeUp = 0;
+    for (var i = 1; i < T.length; i++) {
+      var prev = parseFloat(T[i - 1].p), q0 = parseFloat(T[i - 1].qty), q1 = parseFloat(T[i].qty);
+      if (prev < 0 && q1 > q0) sizeUp++;
+    }
+    var maxBreach = r.maxloss > 0 && net <= -r.maxloss;
+    leak('max-loss', maxBreach ? 1 : 0, 40);
+    leak('daily-stop', !maxBreach && r.stop > 0 && net <= -r.stop ? 1 : 0, 25);
+    leak('dll', !maxBreach && r.dll > 0 && net <= -r.dll && !(r.stop > 0 && net <= -r.stop) ? 1 : 0, 15);
+    leak('over-cap', r.cap > 0 ? Math.max(0, T.length - r.cap) : 0, Math.min(20, Math.max(0, T.length - (r.cap || 0)) * 10));
+    var revenge = tagged(['Revenge']) + sizeUp;
+    leak('revenge', revenge, Math.min(30, revenge * 10));
+    var moved = tagged(['Moved stop']); leak('moved-stop', moved, Math.min(20, moved * 10));
+    leak('oversized', tagged(['Oversized']), 10);
+    var chase = tagged(['Chased', 'FOMO', 'Late entry', 'Early entry']); leak('chase', chase, Math.min(15, chase * 5));
+    var noSetup = tagged(['No setup']) + T.filter(function (t) { return !String(t.s || '').trim() && (t.mistakes || []).indexOf('No setup') < 0; }).length;
+    leak('no-setup', noSetup, Math.min(15, noSetup * 5));
+    var early = tagged(['Early exit']); leak('early-exit', early, Math.min(10, early * 5));
+    leak('cons-raise', r.consRaise ? 1 : 0, 10);
+    if (day.followed) good.push('plan');
+    if (T.length && r.cap > 0 && T.length <= r.cap) good.push('in-cap');
+    if (T.length && !leaks.some(function (l) { return ['revenge', 'moved-stop', 'oversized', 'chase', 'no-setup', 'early-exit'].indexOf(l.k) >= 0; })) good.push('clean');
+    if (net > 0 && !r.consRaise) good.push('green');
+    return { score: Math.max(0, score), leaks: leaks, good: good, itemized: T.length > 0 };
+  }
+
+  var api = { effectiveTarget: effectiveTarget, tomorrowCap: tomorrowCap, eodFloor: eodFloor, reviewDay: reviewDay };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.CTRules = api;
 })(this);
