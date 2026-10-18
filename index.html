@@ -861,6 +861,10 @@
   #rpTf button{text-transform:none}
   #rpSum{margin-top:14px}
   .rpcoach{margin:12px 0 14px}
+  .daycoach{margin:10px 0 4px;cursor:default}
+  .jbadge .cochip{font-weight:800;letter-spacing:.06em}
+  .jbadge .cochip.m{color:var(--muted2)}
+  .jbadge .cochip.g{background:var(--green-soft);color:var(--green)}.jbadge .cochip.a{background:var(--amber-soft);color:var(--amber)}.jbadge .cochip.r{background:var(--red-soft);color:var(--red)}
   .eqcard .rpcoach .coachdonut{width:46px;height:46px;display:inline-block;overflow:hidden} /* not the chart-sized .eqcard svg */
   .rpcoach .csecbody b{color:var(--text)}
   #rpSum h3{margin:0 0 12px;font-size:12px;font-weight:800;color:var(--accent);letter-spacing:.14em;text-transform:uppercase}
@@ -1778,9 +1782,24 @@
   var WKD=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   function weekdayLbl(iso){var dt=new Date(iso+"T00:00:00");if(isNaN(dt))return"";var p=iso.split("-");return WKD[dt.getDay()]+" "+parseInt(p[1],10)+"/"+parseInt(p[2],10);}
   // Write a day's net into the log (and mirror into a follower's own-days record).
+  function isTradingDate(iso){var w=new Date(iso+"T00:00:00").getDay();return w!==0&&w!==6&&!holidayOn(iso);}
+  // The date a newly logged day gets: today if it's a trading day no other logged day has; else the most
+  // recent session, if it's free (logging Friday on Saturday); else the next session (a Sunday-evening
+  // entry is Monday's session). Never a weekend the calendar doesn't show. Editable in the day.
+  function defaultLogDate(self){
+    var log=curLog(),j=curJournal(),used={},k,t=isoDate();
+    for(k in j)if(j.hasOwnProperty(k)&&+k!==self&&(k in log)&&j[k]&&j[k].date)used[j[k].date]=1;
+    if(isTradingDate(t)&&!used[t])return t;
+    var cur=new Date(t+"T00:00:00");
+    do{cur.setDate(cur.getDate()-1);}while(!isTradingDate(isoOf(cur)));
+    if(!isTradingDate(t)&&!used[isoOf(cur)])return isoOf(cur);
+    cur=new Date(t+"T00:00:00");
+    for(var i=0;i<30;i++){cur.setDate(cur.getDate()+1);var iso=isoOf(cur);if(isTradingDate(iso)&&!used[iso])return iso;}
+    return t;
+  }
   function setDayNet(d,v){
     var lg=curLog();
-    if(v===null||isNaN(v))delete lg[d];else{lg[d]=v;var jd=dayJ(d);if(!jd.date)jd.date=isoDate();}
+    if(v===null||isNaN(v))delete lg[d];else{lg[d]=v;var jd=dayJ(d);if(!jd.date||jd.date>isoDate()||!isTradingDate(jd.date))jd.date=defaultLogDate(d);}
     var fa=activeAcct();
     if(fa&&fa.follow){var rec=followRec(fa);if(v===null||isNaN(v))delete rec.own[d];else{rec.own[d]=v;var cj=curJournal()[d];if(cj&&cj.copied)delete cj.copied;}}
   }
@@ -1814,7 +1833,7 @@
   // Get (or create) the day index for this date: reuse a free unlogged slot,
   // or extend the plan by a day if every slot is already logged.
   function ensureDayForDate(iso){
-    var existing=dateToDayIndex(iso);if(existing)return existing;
+    var existing=dateToDayIndex(iso);if(existing&&(existing in curLog()))return existing;
     var c=cfg(),log=curLog(),d;
     for(d=1;d<=c.days;d++){if(!(d in log))break;}
     if(d>c.days){
@@ -1847,7 +1866,8 @@
   // holiday, skipping dates this account already has a day on. The first n, as ISO dates.
   function upcomingSessions(n){
     var c=cfg(),j=curJournal(),used={},out=[],d,cur=new Date(isoDate()+"T00:00:00");
-    for(d in j)if(j.hasOwnProperty(d)&&j[d]&&j[d].date)used[j[d].date]=1;
+    var log=curLog();
+    for(d in j)if(j.hasOwnProperty(d)&&(d in log)&&j[d]&&j[d].date)used[j[d].date]=1; // only traded days hold a date
     if(!todayTradeable()||used[isoDate()])cur.setDate(cur.getDate()+1);
     while(out.length<n){
       var iso=isoOf(cur),w=cur.getDay();
@@ -1857,7 +1877,7 @@
     return out;
   }
   // The plan days not traded yet, in order — each lands on the next session. {day: iso}
-  function openPlanDays(){var c=cfg(),log=curLog(),j=curJournal(),o=[];for(var d=1;d<=c.days;d++)if(!(d in log)&&!(j[d]&&j[d].date))o.push(d);return o;}
+  function openPlanDays(){var c=cfg(),log=curLog(),o=[];for(var d=1;d<=c.days;d++)if(!(d in log))o.push(d);return o;}
   function projectedDates(){var o=openPlanDays(),up=upcomingSessions(o.length),out={};o.forEach(function(d,i){out[d]=up[i];});return out;}
   // When you pass if you follow the plan — the day targets on the cards. The live plan spreads what's
   // left over the remaining plan days, so that's the last plan day still carrying a target; never
@@ -1909,7 +1929,7 @@
     var c=cfg(),log=curLog(),j=curJournal(),P=livePlan(),ym=calMonth().split("-").map(Number),y=ym[0],m=ym[1]-1;
     titleEl.textContent=MONTH_NAMES[m]+" "+y;
     var byDate={};
-    for(var d=1;d<=c.days;d++){if(j[d]&&j[d].date&&!byDate.hasOwnProperty(j[d].date))byDate[j[d].date]=d;}
+    for(var d=1;d<=c.days;d++){if((d in log)&&j[d]&&j[d].date&&!byDate.hasOwnProperty(j[d].date))byDate[j[d].date]=d;}
     var first=new Date(y,m,1),dow0=first.getDay(),mondayBack=(dow0+6)%7;
     var daysInMonth=new Date(y,m+1,0).getDate();
     var rows=Math.ceil((mondayBack+daysInMonth)/7);
@@ -1950,7 +1970,7 @@
             content='<span class="cn">'+cur.getDate()+'</span><span class="cadd">+ log</span>';
           }
           if(iso===rbDue){cls.push("rebill");content+='<span class="crb">↻ rebill</span>';}
-          html+='<div class="calcell '+cls.join(" ")+'" data-date="'+iso+'">'+content+'</div>';
+          html+='<div class="calcell '+cls.join(" ")+'" data-date="'+iso+'"'+(planOn[iso]?' data-plan="'+planOn[iso]+'"':'')+'>'+content+'</div>';
         }
         cur.setDate(cur.getDate()+1);
       }
@@ -1958,6 +1978,9 @@
     }
     document.getElementById("calGrid").innerHTML=html;
     var T=c.target,statusTxt=(monthTotal>=T)?"◎ month covers the target":(openCount+" weekday"+(openCount===1?"":"s")+" open to log");
+    // logged days dated on a weekend / market holiday can't show on this weekday grid — name them
+    var offDays=[];for(var od=1;od<=c.days;od++){if((od in log)&&j[od]&&j[od].date){var odt=new Date(j[od].date+"T00:00:00"),ow=odt.getDay();if(ow===0||ow===6||holidayOn(j[od].date))offDays.push("Day "+od+" ("+weekdayLbl(j[od].date)+")");}}
+    if(offDays.length)statusTxt+=' · <span class="a">'+offDays.join(", ")+' '+(offDays.length===1?"is":"are")+' dated on a non-trading day — open '+(offDays.length===1?"it":"them")+' and fix the date</span>';
     if(!pi.hit&&pi.iso)statusTxt+=" · on plan, passes ≈ <b>"+weekdayLbl(pi.iso)+"</b>"+(pi.extra&&!pi.minHeld?" ("+pl(pi.extra,"day")+" past the plan)":"")+(pi.minHeld?" (min "+pi.minD+" days)":"")+(rvp&&rvp.late?' <span class="r">— after the rebill</span>':'');
     document.getElementById("calSum").innerHTML="<span>Month total <b>"+fmt(monthTotal)+"</b> / "+fmt(T)+"</span><span>"+statusTxt+"</span>";
   }
@@ -2144,6 +2167,7 @@
       if(raw)state=Object.assign(state,(typeof raw==="string")?JSON.parse(raw):raw);
     }catch(e){if(mem.s)state=Object.assign(state,mem.s);}
     if(migrateV67()){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+    if(clearStaleDates()){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
     ensureAccounts();
   }
   // v67, once: the LUCID 014/015/016 followers opened on 2026-10-13 but carry a $0 placeholder day on
@@ -2165,6 +2189,19 @@
     });
     state.mig67=true;return true;
   }
+  // v79: a date on a day with no P&L, trades or note (from tapping a calendar cell, or opening and
+  // closing a day's date picker) used to count as a real day and scramble the projected dates. Clear it.
+  function clearStaleDates(){
+    var changed=false;
+    Object.keys(state.journal||{}).forEach(function(k){
+      var j=state.journal[k],log=(state.logs&&state.logs[k])||{};
+      Object.keys(j).forEach(function(d){
+        var e=j[d];
+        if(e&&e.date&&!(d in log)&&!(e.trades&&e.trades.length)&&!e.note&&!e.followed&&!e.copied){delete e.date;changed=true;}
+      });
+    });
+    return changed;
+  }
   var undoSnapshot=null;
   async function save(){
     try{var prev=localStorage.getItem(KEY);if(prev)undoSnapshot=prev;}catch(e){}
@@ -2177,6 +2214,40 @@
   function tagClass(p){return p==="close"?"close":(p==="push"?"push":"build");}
   function tagLabel(p){return p==="close"?"Close it":(p==="push"?"Push":"Build");}
 
+  // ---- Coach Co reviews each real trading day (CTRules.reviewDay): grade, what went wrong / right, one fix ----
+  var DAY_COACH={
+    "max-loss":{t:"Max-loss breach",what:"This day breached the account's max loss. That's the one rule that ends an account — nothing else on this list matters next to it.",fix:"Tomorrow: half size, your daily stop set in the platform before the first trade, and done the moment it's hit."},
+    "daily-stop":{t:"Over your daily stop",what:"You finished past your daily stop. The stop is the line where you stop trading — the loss after it is the expensive part.",fix:"Set the daily loss in your platform so it flattens you — then it's not a decision you make mid-tilt."},
+    "dll":{t:"Hit the daily loss limit",what:"You hit the firm's daily loss limit, which paused the account for the day.",fix:"Keep your own daily stop tighter than the firm's limit, so you never meet theirs."},
+    "over-cap":{t:"Over your trade cap",what:"{n} trade{s} past your daily cap. Past the cap you're trading the day, not your setups.",fix:"When the cap is hit, close the platform. The next setup comes tomorrow."},
+    "revenge":{t:"Revenge trading",what:"{n} revenge trade{s} — tagged, or size went up right after a loser. That's the loss placing trades.",fix:"After a loser: stand up, five minutes, same size or smaller on the next one."},
+    "moved-stop":{t:"Moved stop",what:"You moved a stop {n} time{s}. The stop you set before the trade was the honest one.",fix:"Stops only move toward profit. Set it, then take your hand off it."},
+    "oversized":{t:"Oversized",what:"You traded bigger than planned. One oversized loser can erase a week of good days.",fix:"Use the position-size calculator (Armory) before every entry tomorrow."},
+    "chase":{t:"Chased entries",what:"{n} chased or mistimed entr{ies} (chased, FOMO, early or late). The setup was right there — the timing wasn't.",fix:"Wait for your trigger candle to close. If you missed it, the trade is gone — let it go."},
+    "no-setup":{t:"No setup",what:"{n} trade{s} without a named setup. If you can't name it, it isn't one of yours.",fix:"Name the setup before you click. No name, no trade."},
+    "early-exit":{t:"Early exits",what:"{n} early exit{s}. Cutting winners short is how a good win rate still loses money.",fix:"Set the target at entry and let it work; trail the stop if you must."},
+    "cons-raise":{t:"Day too big for consistency",what:"This day was big enough to raise your consistency-adjusted target. You didn't fail — but you now need more total profit to pass.",fix:"Check tomorrow's cap on the progress card and stop once you're near it."}
+  };
+  var DAY_GOOD={plan:"Followed the plan.","in-cap":"Stayed inside the trade cap.",clean:"No mistakes tagged.",green:"Green day inside your stop."};
+  function dpl(t,n){return t.replace(/\{n\}/g,n).replace(/\{s\}/g,n===1?"":"s").replace(/\{ies\}/g,n===1?"y":"ies");}
+  function dayReview(c,val,jj){
+    var cons=c.consPct>0&&stageOf()!=="funded"&&val>0&&val/(c.consPct/100)>c.baseTarget;
+    return CTRules.reviewDay({net:val,trades:(jj&&jj.trades)||[],followed:!!(jj&&jj.followed)},{stop:c.stop,dll:c.dllAmt,maxloss:c.maxloss,cap:maxTradesOf(),consRaise:cons});
+  }
+  function dayCoachHtml(rv){
+    // a day logged as one number, with nothing broken, has nothing to grade — don't hand out a 100
+    if(!rv.itemized&&!rv.leaks.length)return'<div class="coachcard daycoach new"><div class="coachtop"><div class="coachav">CO</div><div class="coachid"><div class="coachname">Coach Co</div><div class="coachsub">Day review</div></div></div>'+
+      '<div class="coachmsg">This day is logged as one number, so there\'s nothing to grade yet — it stayed inside your stop, that\'s all I can see. Add its trades (＋ Trade) with setup names and mistake tags and I\'ll review how you traded it.</div></div>';
+    var tier=rv.score>=85?["good","Clean"]:(rv.score>=65?["okay","Workable"]:["bad","Sloppy"]),top=rv.leaks[0];
+    var msg=top?dpl(DAY_COACH[top.k].what,top.n):"Clean day. Whatever the P&L, the process held — that's the part you control.";
+    var pts=rv.good.map(function(g){return DAY_GOOD[g];}).concat(rv.leaks.slice(1).map(function(l){return"▲ "+DAY_COACH[l.k].t+(l.n>1?" ×"+l.n:"");}));
+    return'<div class="coachcard daycoach '+tier[0]+'"><div class="coachtop"><div class="coachav">CO</div><div class="coachid"><div class="coachname">Coach Co</div><div class="coachsub">Day review</div></div>'+
+      '<div class="coachring"><div class="coachringtxt"><div class="coachgrade">'+tier[1]+'</div><div class="coachscoresub">execution</div></div>'+coachDonut(rv.score)+'</div></div>'+
+      '<div class="coachmsg">'+esc(msg)+'</div>'+
+      (pts.length?'<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>':'')+
+      coachSection("Fix for tomorrow",esc(top?DAY_COACH[top.k].fix:"Same again tomorrow — same rules, same size."))+
+      (rv.itemized?'':'<div class="hint" style="margin-top:8px">Add this day\'s trades (＋ Trade) with their mistake tags for a fuller read.</div>')+'</div>';
+  }
   function renderDays(){
     var c=cfg(),P=livePlan(),t=P.live,phases=tpl(c.days).p,log=curLog(),ML=c.maxloss;
     var followL=activeFollowLeader(),copied=copiedDaySet();
@@ -2230,10 +2301,12 @@
       }
       var jj=(state.journal[modeKey()]||{})[d]||null;
       var trs=(jj&&jj.trades)||[],jnote=(jj&&jj.note)||"",jdate=(jj&&jj.date)||"",hasTr=trs.length>0;
+      if(!logged)jdate=""; // a date on a day with no P&L isn't real yet — show where the plan puts it instead
       var wkLbl=jdate?'<small style="color:var(--muted2);font-weight:500;font-size:10px">'+weekdayLbl(jdate)+'</small>':
         (proj[d]?'<small class="proj" title="Projected: the next open session if you trade each one from here">≈ '+weekdayLbl(proj[d])+(d===pdn?' · pass':'')+(rbDue&&proj[d]>=rbDue?' <span class="r">· after rebill</span>':'')+'</small>':'');
       var cap=maxTradesOf(),tradeSum=hasTr?sumTrades(trs):null,locked=(tradeSum!=null&&tradeSum<=-c.stop),overCap=trs.length>cap,followed=!!(jj&&jj.followed);
-      var jbadge=(hasTr||jnote||followed||overCap)?'<div class="jbadge">'+(hasTr?'<span>≡ '+trs.length+' trade'+(trs.length>1?"s":"")+'</span>':'')+(overCap?'<span style="background:var(--red-soft);color:var(--red)">▲ over cap</span>':'')+(followed?'<span style="background:var(--green-soft);color:var(--green)">✓ plan</span>':'')+(jnote?'<span>✎ note</span>':'')+'</div>':'';
+      var drv=logged?dayReview(c,val,jj):null,dgraded=drv&&(drv.itemized||drv.leaks.length),dtier=dgraded?(drv.score>=85?"g":(drv.score>=65?"a":"r")):"m";
+      var jbadge=(hasTr||jnote||followed||overCap||drv)?'<div class="jbadge">'+(drv?'<span class="cochip '+dtier+'" title="Coach Co\'s execution grade for this day — open the day for the review">CO '+(dgraded?drv.score:"–")+'</span>':'')+(hasTr?'<span>≡ '+trs.length+' trade'+(trs.length>1?"s":"")+'</span>':'')+(overCap?'<span style="background:var(--red-soft);color:var(--red)">▲ over cap</span>':'')+(followed?'<span style="background:var(--green-soft);color:var(--green)">✓ plan</span>':'')+(jnote?'<span>✎ note</span>':'')+'</div>':'';
       var trowsHtml=trs.map(function(t,ti){
         var dk=d+":"+ti,open=!!openTradeDetail[dk];
         var sumTags=(t.mistakes&&t.mistakes.length)?(' <span class="tsum">'+t.mistakes.length+' tag'+(t.mistakes.length>1?"s":"")+'</span>'):"";
@@ -2280,6 +2353,7 @@
         '<div class="jtrades">'+trowsHtml+(locked?'':'<button type="button" class="addtrade">＋ Trade</button>')+'</div>'+
         (locked?'<div class="lockmsg">⊘ Daily stop hit ('+fmt(tradeSum)+'). Lock it in — no more trades today.</div>':'')+
         (overCap?'<div class="lockmsg amber">▲ '+trs.length+' trades — over your '+cap+'/day cap.</div>':'')+
+        (drv?dayCoachHtml(drv):'')+
         (guardReasons.length&&!locked?'<div class="lockmsg amber">⊘ Entry Guard: '+esc(guardReasons.join(" · "))+'</div>':'')+
         '<div class="jdrow"><span class="hint">Date</span><input class="jdate" type="date" value="'+esc(jdate)+'"></div>'+
         '<label class="fchk"><input type="checkbox" class="jfollowed"'+(followed?" checked":"")+'> Followed my plan today</label>'+
@@ -3943,6 +4017,7 @@
     if(e.target.closest("#calNext")){shiftCalMonth(1);save().then(renderCalendar);return;}
     if(e.target.closest("#calToday")){if(!state.calMonth)state.calMonth={};state.calMonth[modeKey()]=monthKeyNow();save().then(renderCalendar);return;}
     var cell=e.target.closest(".calcell");if(!cell||cell.classList.contains("blank")||cell.classList.contains("hol"))return;
+    if(cell.dataset.plan){focusDay(+cell.dataset.plan);return;} // a planned day: just open it
     var iso=cell.dataset.date;if(!iso)return;
     var d=ensureDayForDate(iso);
     save().then(function(){focusDay(d);});
@@ -6070,7 +6145,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v77";
+var APP_BUILD="v79";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

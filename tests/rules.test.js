@@ -70,4 +70,29 @@ t('a losing day never pulls the floor down', () => {
   const f = R.eodFloor({ size: 25000, maxloss: 1000, locks: false, days: [{ date: '2026-10-12', net: 500 }, { date: '2026-10-13', net: -800 }], today: '2026-10-14', closed: false });
   assert.strictEqual(f.floor, 24500);
 });
+// 3. Coach Co's review of a real trading day
+const RULES = { stop: 400, dll: 1000, maxloss: 2000, cap: 4, consRaise: false };
+const T = (p, o) => Object.assign({ p, qty: 1, s: 'ORB', mistakes: [] }, o);
+t('a clean green day inside the rules scores 100', () => {
+  const r = R.reviewDay({ net: 350, trades: [T(250), T(100)], followed: true }, RULES);
+  assert.strictEqual(r.score, 100);
+  assert.deepStrictEqual(r.leaks, []);
+  assert.deepStrictEqual(r.good, ['plan', 'in-cap', 'clean', 'green']);
+});
+t('over the daily stop, revenge (tag + size-up after a loser), moved stop, over the cap', () => {
+  const r = R.reviewDay({ net: -520, trades: [T(-200), T(-150, { qty: 2 }), T(-100, { mistakes: ['Revenge', 'Moved stop'] }), T(-40), T(-30, { s: '' })] }, RULES);
+  assert.deepStrictEqual(r.leaks.map(l => [l.k, l.n]), [['daily-stop', 1], ['over-cap', 1], ['revenge', 2], ['moved-stop', 1], ['no-setup', 1]]);
+  assert.strictEqual(r.score, 100 - 25 - 10 - 20 - 10 - 5);
+});
+t('a max-loss breach replaces the daily-stop and DLL flags; a bare net still gets a read', () => {
+  const r = R.reviewDay({ net: -2100, trades: [] }, RULES);
+  assert.deepStrictEqual(r.leaks.map(l => l.k), ['max-loss']);
+  assert.strictEqual(r.itemized, false);
+});
+t('a big day that raises the consistency target is flagged, and not called green', () => {
+  const r = R.reviewDay({ net: 2400, trades: [T(2400)], followed: true }, Object.assign({}, RULES, { consRaise: true }));
+  assert.deepStrictEqual(r.leaks.map(l => l.k), ['cons-raise']);
+  assert.ok(r.good.indexOf('green') < 0);
+});
+
 console.log('\n' + n + ' passed');
