@@ -317,12 +317,13 @@
   .copy select{background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:6px 8px;font-size:12px}
   .copy .fol{display:flex;flex-direction:column;gap:6px;margin-top:11px}
   .copy .frow{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:2px;padding:8px 11px}
+  .copy .frow{flex-wrap:wrap;row-gap:6px}
   .copy .frow .fn{flex:1;min-width:0}
   .copy .frow .fn b{color:var(--text)}
   .copy .frow .sc{font-size:10.5px;color:var(--muted2)}
   .copy .frow input[type=checkbox]{width:18px;height:18px;flex-shrink:0;cursor:pointer}
   .copy .frow .cx{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--muted2);flex-shrink:0}
-  .copy .frow .cx input{background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:3px 4px;font-size:11px;max-width:128px}
+  .copy .frow .cx input{background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:3px 4px;font-size:11px;max-width:150px}
   .copy .note{font-size:10.5px;color:var(--muted2);margin-top:9px;line-height:1.55}
   .bill{margin:0 0 8px;padding:14px 16px}
   .bill .bh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -504,6 +505,14 @@
   .calcell.partial .cv{color:var(--amber)}
   .calcell.loss{border-color:var(--red);background:linear-gradient(180deg,var(--red-soft),var(--card))}
   .calcell.loss .cv{color:var(--red)}
+  .calcell .cplan{display:block;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+  .calcell .cpt{display:block;font-size:10.5px;font-weight:700;color:var(--muted2)}
+  .calcell.plan{border-style:dashed}
+  .calcell.passday{border-color:var(--accent);border-style:solid;background:linear-gradient(180deg,var(--accent-soft),var(--card))}
+  .calcell.passday .cplan{color:var(--accent)}
+  .calcell.hol{cursor:default;opacity:.55}
+  .calcell .chol{display:block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);margin-top:14px}
+  .day .proj{color:var(--muted2);font-weight:500;font-size:10px;font-style:italic}
   .calcell.istoday{box-shadow:inset 0 0 0 1px var(--accent),0 0 14px rgba(var(--accent-rgb),.25)}
   .calcell.istoday .cn{color:var(--accent)}
   .calcell.istoday .cn::after{content:" ◂ today";font-size:8.5px;letter-spacing:.1em;text-transform:uppercase}
@@ -935,6 +944,8 @@
     .calcell{min-height:54px;padding:5px 6px}
     .calcell .cv{font-size:10.5px;margin-top:10px}
     .calcell .cadd{margin-top:10px}
+    .calcell .cplan{margin-top:6px;font-size:8.5px}.calcell .cpt{font-size:9.5px}
+    .calcell .chol{margin-top:10px;font-size:8.5px}
     .calcell.istoday .cn::after{content:""}
     .calnav .caltitle{font-size:12px;min-width:auto;letter-spacing:.1em}
     .tlog-controls{flex-direction:column}.tlog-select,.tlog-input{flex:none}
@@ -1802,6 +1813,27 @@
       if(ed){ed.classList.add("open");var inp=ed.querySelector(".netin");if(inp&&!inp.readOnly){inp.focus();inp.select();}}
     });
   }
+  // Where each unlogged plan day lands if you trade every open session from here: today while the
+  // session is still open, then each weekday that isn't a market holiday or already dated. {day: iso}
+  function projectedDates(){
+    var c=cfg(),log=curLog(),j=curJournal(),out={},used={},d,cur=new Date(isoDate()+"T00:00:00");
+    for(d=1;d<=c.days;d++)if(j[d]&&j[d].date)used[j[d].date]=1;
+    if(!todayTradeable()||used[isoDate()])cur.setDate(cur.getDate()+1);
+    for(d=1;d<=c.days;d++){
+      if((d in log)||(j[d]&&j[d].date))continue;
+      for(;;){var iso=isoOf(cur),w=cur.getDay();if(w!==0&&w!==6&&!holidayOn(iso)&&!used[iso])break;cur.setDate(cur.getDate()+1);}
+      out[d]=isoOf(cur);cur.setDate(cur.getDate()+1);
+    }
+    return out;
+  }
+  // The plan day that reaches the target (the "days to target" count, in order), or null.
+  function passDay(){
+    var c=cfg(),P=livePlan(),log=curLog(),total=0,acc=0,k;
+    for(k=1;k<=c.days;k++)if(k in log)total+=log[k];
+    var left=c.target-total;if(left<=0)return null;
+    for(k=1;k<=c.days;k++){if(k in log)continue;acc+=P.base[k-1];if(acc>=left)return k;}
+    return null;
+  }
   function renderCalendar(){
     var titleEl=document.getElementById("calTitle");if(!titleEl)return;
     var c=cfg(),log=curLog(),j=curJournal(),P=livePlan(),ym=calMonth().split("-").map(Number),y=ym[0],m=ym[1]-1;
@@ -1812,7 +1844,8 @@
     var daysInMonth=new Date(y,m+1,0).getDate();
     var rows=Math.ceil((mondayBack+daysInMonth)/7);
     var cur=new Date(y,m,1-mondayBack);
-    var todayIso=isoDate(),html="",monthTotal=0,openCount=0;
+    var todayIso=isoDate(),html="",monthTotal=0,openCount=0,proj=projectedDates(),pd=passDay(),planOn={};
+    for(var pk in proj)if(proj.hasOwnProperty(pk))planOn[proj[pk]]=+pk;
     for(var rw=0;rw<rows;rw++){
       for(var wd=0;wd<5;wd++){
         var inMonth=cur.getMonth()===m;
@@ -1827,6 +1860,13 @@
             if(val>=tgt)cls.push("win");else if(val>0)cls.push("partial");else cls.push("loss");
             monthTotal+=val;
             content='<span class="cn">'+cur.getDate()+'</span><span class="cv">'+fmt(val)+'</span>';
+          }else if(planOn[iso]){
+            // a plan day not traded yet: when it falls if you trade every open session from here
+            var pdn=planOn[iso];cls.push("open","plan");if(pdn===pd)cls.push("passday");openCount++;
+            content='<span class="cn">'+cur.getDate()+'</span><span class="cplan">Day '+pdn+(pdn===pd?' · pass':'')+'</span><span class="cpt">+'+fmt(P.live[pdn-1])+'</span>';
+          }else if(holidayOn(iso)){
+            cls.push("hol");
+            content='<span class="cn">'+cur.getDate()+'</span><span class="chol">closed</span>';
           }else{
             cls.push("open");openCount++;
             content='<span class="cn">'+cur.getDate()+'</span><span class="cadd">+ log</span>';
@@ -1839,6 +1879,7 @@
     }
     document.getElementById("calGrid").innerHTML=html;
     var T=c.target,statusTxt=(monthTotal>=T)?"◎ month covers the target":(openCount+" weekday"+(openCount===1?"":"s")+" open to log");
+    if(pd&&proj[pd])statusTxt+=" · on plan, passes ≈ <b>"+weekdayLbl(proj[pd])+"</b>";
     document.getElementById("calSum").innerHTML="<span>Month total <b>"+fmt(monthTotal)+"</b> / "+fmt(T)+"</span><span>"+statusTxt+"</span>";
   }
 
@@ -1863,7 +1904,8 @@
     if(!state.follow)state.follow={};
     var k="acct:"+id;
     if(on){
-      if(!a.follow)state.follow[k]={own:Object.assign({},state.logs[k]||{})};
+      // a new follower copies the leader from today on — not the leader's whole history
+      if(!a.follow)state.follow[k]={own:Object.assign({},state.logs[k]||{}),from:isoDate()};
       a.follow=true;
     }else{
       var rec=state.follow[k];
@@ -1872,6 +1914,14 @@
       delete state.follow[k];
       a.follow=false;
     }
+  }
+  // Keep everything a follower has now — its own days and the days it copied — as its own, and stop
+  // it following. Used when the leader changes: those copies were real trades on that account.
+  function bakeFollower(a){
+    var k="acct:"+a.id,fj=state.journal&&state.journal[k];
+    if(fj)for(var d in fj){if(fj.hasOwnProperty(d)&&fj[d]&&fj[d].copied)delete fj[d].copied;}
+    if(state.follow)delete state.follow[k];
+    a.follow=false;
   }
   // Which day numbers on the active follower are copied from the leader (not your own).
   function copiedDaySet(){
@@ -1901,6 +1951,7 @@
       ldays.forEach(function(x){
         if(x.date&&ownDates[x.date])return; // you logged that date yourself: yours wins
         if(a.start&&x.date&&x.date<a.start)return; // the account didn't exist yet
+        if(rec.from&&(!x.date||x.date<rec.from))return; // before this account started copying the leader
         while(out.hasOwnProperty(slot)||(fj[slot]&&fj[slot].date))slot++;
         out[slot]=lead[x.d]; // 1:1 — a copier places the same trade on every account
         if(x.date)fj[slot]={note:"",trades:[],date:x.date,copied:true};
@@ -2057,6 +2108,8 @@
     if(left<=0)needTxt="target hit";
     else if(need===0)needTxt="all days logged — still "+fmt(left)+" short";
     else needTxt=need+(need===1?" day":" days")+" to target";
+    var proj=projectedDates(),pdn=passDay();
+    if(pdn&&proj[pdn])needTxt+=" · passes ≈ "+weekdayLbl(proj[pdn]);
     var hd1=document.getElementById("h1"),hd2=document.getElementById("h2");
     if(buildCount>0){
       hd1.style.display="";w1.style.display=hd1.classList.contains("collapsed")?"none":"";
@@ -2089,7 +2142,8 @@
       }
       var jj=(state.journal[modeKey()]||{})[d]||null;
       var trs=(jj&&jj.trades)||[],jnote=(jj&&jj.note)||"",jdate=(jj&&jj.date)||"",hasTr=trs.length>0;
-      var wkLbl=jdate?'<small style="color:var(--muted2);font-weight:500;font-size:10px">'+weekdayLbl(jdate)+'</small>':'';
+      var wkLbl=jdate?'<small style="color:var(--muted2);font-weight:500;font-size:10px">'+weekdayLbl(jdate)+'</small>':
+        (proj[d]?'<small class="proj" title="Projected: the next open session if you trade each one from here">≈ '+weekdayLbl(proj[d])+(d===pdn?' · pass':'')+'</small>':'');
       var cap=maxTradesOf(),tradeSum=hasTr?sumTrades(trs):null,locked=(tradeSum!=null&&tradeSum<=-c.stop),overCap=trs.length>cap,followed=!!(jj&&jj.followed);
       var jbadge=(hasTr||jnote||followed||overCap)?'<div class="jbadge">'+(hasTr?'<span>≡ '+trs.length+' trade'+(trs.length>1?"s":"")+'</span>':'')+(overCap?'<span style="background:var(--red-soft);color:var(--red)">▲ over cap</span>':'')+(followed?'<span style="background:var(--green-soft);color:var(--green)">✓ plan</span>':'')+(jnote?'<span>✎ note</span>':'')+'</div>':'';
       var trowsHtml=trs.map(function(t,ti){
@@ -3645,10 +3699,11 @@
       state.accounts.forEach(function(a){
         if(a.id===L.id)return;
         html+='<div class="frow"><div class="fn"><b>'+esc(a.name)+'</b> <span class="sc">· copies 1:1</span></div>'+
-          '<label class="cx" title="Account start date — earlier days are never copied or counted">from<input type="date" data-start="'+a.id+'" value="'+(a.start||"")+'"></label>'+
+          '<label class="cx" title="Account start date — earlier days are never copied or counted">opened<input type="date" data-start="'+a.id+'" value="'+(a.start||"")+'"></label>'+
+          (a.follow?'<label class="cx" title="Leader days before this date aren\'t copied">copying since<input type="date" data-ffrom="'+a.id+'" value="'+esc(((state.follow||{})["acct:"+a.id]||{}).from||"")+'"></label>':'')+
           '<input type="checkbox" data-fol="'+a.id+'"'+(a.follow?" checked":"")+'></div>';
       });
-      html+='</div><div class="note">Followers keep their own logged days. Every other day mirrors '+esc(L.name)+' 1:1 — same P&amp;L, the way a trade copier places the same trade — and <b>updates whenever '+esc(L.name)+' changes</b> — tagged ⇄ copied. Log or edit any day to override a copy; unfollow to drop the copies and keep just your own.</div>';
+      html+='</div><div class="note">Followers keep their own logged days. Every other day mirrors '+esc(L.name)+' 1:1 — same P&amp;L, the way a trade copier places the same trade — and <b>updates whenever '+esc(L.name)+' changes</b> — tagged ⇄ copied. Log or edit any day to override a copy; unfollow to drop the copies and keep just your own. A new follower copies from today on (<b>copying since</b>). Switching the leader starts a fresh group: current followers keep what they copied and stop following.</div>';
     }else{
       html+='<div class="note">Pick a leader account above. Your other accounts can then follow it — each logged day copies over 1:1.</div>';
     }
@@ -3792,7 +3847,7 @@
     if(e.target.closest("#calPrev")){shiftCalMonth(-1);save().then(renderCalendar);return;}
     if(e.target.closest("#calNext")){shiftCalMonth(1);save().then(renderCalendar);return;}
     if(e.target.closest("#calToday")){if(!state.calMonth)state.calMonth={};state.calMonth[modeKey()]=monthKeyNow();save().then(renderCalendar);return;}
-    var cell=e.target.closest(".calcell");if(!cell||cell.classList.contains("blank"))return;
+    var cell=e.target.closest(".calcell");if(!cell||cell.classList.contains("blank")||cell.classList.contains("hol"))return;
     var iso=cell.dataset.date;if(!iso)return;
     var d=ensureDayForDate(iso);
     save().then(function(){focusDay(d);});
@@ -3849,10 +3904,16 @@
   // copy-trading panel: choose leader + toggle followers
   document.getElementById("copyPanel").addEventListener("change",function(e){
     if(e.target.id==="leadSel"){
-      state.leaderId=e.target.value||null;
-      var L=leaderAcct();if(L&&L.follow)setFollow(L.id,false);
+      var sel=e.target,next=sel.value||null,old=leaderAcct(),fols=state.accounts.filter(function(a){return a.follow;});
+      if(old&&old.id!==next&&fols.length){
+        changeLeader(sel,old,next,fols);return;
+      }
+      state.leaderId=next;
+      var L=leaderAcct();if(L&&L.follow)bakeFollower(L);
       syncFollowers();save().then(renderAll);return;
     }
+    var ff=e.target.getAttribute("data-ffrom");
+    if(ff){var fa=acctById(ff),fr=fa&&state.follow&&state.follow["acct:"+ff];if(fr){if(e.target.value)fr.from=e.target.value;else delete fr.from;syncFollowers();save().then(renderAll);}return;}
     var sd=e.target.getAttribute("data-start");
     if(sd){var sa=acctById(sd);if(sa){if(e.target.value)sa.start=e.target.value;else delete sa.start;syncFollowers();save().then(renderAll);}return;}
     var fol=e.target.getAttribute("data-fol");
@@ -3862,6 +3923,18 @@
     }
   });
 
+  // A new leader starts a fresh group: everyone following keeps what they copied so far as their own
+  // days and stops following; you then tick who follows the new leader, from today on.
+  async function changeLeader(sel,old,next,fols){
+    var N=next?acctById(next):null;
+    var ok=await mxConfirm((N?"Make "+N.name+" the leader?":"Stop copy trading?")+"\n\n"+fols.map(function(a){return a.name;}).join(", ")+
+      (fols.length===1?" keeps every day it has":" keep every day they have")+" — including the ones copied from "+old.name+" — and "+(fols.length===1?"stops":"stop")+" following."+
+      (N?" Then tick which accounts follow "+N.name+"; they copy its days from today on.":""),{title:"⇄ Change leader",okText:N?"Change leader":"Stop copying"});
+    if(!ok){sel.value=old.id;return;}
+    fols.forEach(bakeFollower);
+    state.leaderId=next;
+    syncFollowers();save().then(renderAll);
+  }
   editKpi("kTarget",function(){return cfg().baseTarget;},function(v){state.targets[modeKey()]=v;});
   editKpi("kMaxloss",function(){return cfg().maxloss;},function(v){state.maxloss[modeKey()]=v;});
   editKpi("kStop",function(){return cfg().stop;},function(v){state.stops[modeKey()]=v;});
@@ -5320,6 +5393,7 @@
       return'<div class="atrow" data-rplog="'+esc(s.id)+'"><span class="ar '+tag[0]+'">'+tag[1]+'</span><span class="am"><b>'+esc(rpDayLbl(s.day))+'</b> · '+meta+'</span><span class="net '+tag[0]+'">'+rpUsd(s.net)+'</span><button type="button" class="x" data-rplogdel="'+esc(s.id)+'" aria-label="Remove from log">✕</button>'+
         (open?'<div class="rpdet">'+rpTradesHtml(s.trades||[],rpInstr(s.instr))+'<textarea class="rpnote" data-rpnote="'+esc(s.id)+'" rows="2" placeholder="Notes on this session…">'+esc(s.note||"")+'</textarea></div>':'')+'</div>';
     }).join("")+'</div>';
+    html+='<div class="edbar"><button type="button" class="primary" data-rp="share">↗ Share</button><button type="button" data-rp="csv">↓ CSV</button><span class="hint">Share sends a card of your stats and Coach Co\'s read — your notes stay private. CSV is every trade, notes included, for you.</span></div>';
     el.innerHTML=html;
   }
   function rpLogById(id){return rpLogList().filter(function(x){return x.id===id;})[0]||null;}
@@ -5400,7 +5474,97 @@
     if(t.hasAttribute("data-rpnote"))s.note=t.value;else s.followed=t.checked;
     save().then(rpRenderLog);
   });
+  // ---- sharing the Sparring Log: a picture card + text through the phone's share sheet, or a CSV ----
+  function rpShareData(){
+    var L=rpLogList(),all=[],net=0,green=0;
+    L.forEach(function(s){all=all.concat(s.trades||[]);net+=s.net;if(s.net>0)green++;});
+    var sm=RPX.summarize(all),rv=L.length?RPX.reviewLog(L):null,top=rv&&rv.leaks[0];
+    var best=rv&&rv.setups.length&&rv.setups[0].per>0?rv.setups[0]:null;
+    return{n:L.length,green:green,net:Math.round(net*100)/100,trades:sm.n,winRate:sm.winRate,pf:sm.pf,score:rv?rv.score:null,
+      leak:top?{t:RP_COACH[top.k].t,sessions:top.sessions,fix:RP_COACH[top.k].fix}:null,best:best,
+      recent:L.slice(0,6).map(function(s){return{day:s.day,instr:rpSetLbl({instr:s.instr}),net:s.net,n:s.n,score:RPX.reviewSession(s).score};})};
+  }
+  function rpPF(pf){return pf===Infinity?"∞":(pf?pf.toFixed(2):"—");}
+  function rpShareText(d){
+    var t=["Sparring Log — Trading Tracker",
+      d.n+" sessions · "+d.green+" green · net "+rpUsd(d.net)+" · "+d.trades+" trades, "+Math.round(d.winRate*100)+"% won · profit factor "+rpPF(d.pf),
+      "Coach Co execution score: "+(d.score==null?"—":d.score+"/100")];
+    if(d.leak)t.push("Most repeated leak: "+d.leak.t+" ("+d.leak.sessions+" of "+d.n+" sessions)","Next focus: "+d.leak.fix);
+    if(d.best)t.push("Best setup: "+d.best.k+" ("+d.best.n+" trades, "+rpUsd(d.best.per)+" a trade)");
+    if(d.recent.length){t.push("","Recent:");d.recent.forEach(function(r){t.push(rpDayLbl(r.day)+"  "+r.instr+"  "+rpUsd(r.net)+"  "+r.n+" trade"+(r.n===1?"":"s")+"  execution "+r.score);});}
+    return t.join("\n");
+  }
+  // A 1080×1350 card (the shape phones and chats show best), always in the Matrix look.
+  function rpShareImage(d){
+    var W=1080,H=1350,cv=document.createElement("canvas"),g=cv.getContext("2d"),F='"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace';
+    cv.width=W;cv.height=H;
+    var C={bg:"#010502",card:"#03120a",line:"rgba(0,255,65,.22)",text:"#d6ffdf",muted:"#7cc790",dim:"#4d8c5f",green:"#00ff41",red:"#ff3b5c",amber:"#ffb000"};
+    g.fillStyle=C.bg;g.fillRect(0,0,W,H);
+    g.strokeStyle=C.line;g.lineWidth=2;g.strokeRect(40,40,W-80,H-80);
+    function txt(s,x,y,size,color,weight,align){g.font=(weight||"700")+" "+size+"px "+F;g.fillStyle=color;g.textAlign=align||"left";g.textBaseline="alphabetic";g.fillText(s,x,y);}
+    function wrap(s,x,y,size,color,maxW,lh){
+      g.font="500 "+size+"px "+F;var line="",yy=y;
+      String(s).split(" ").forEach(function(w){var t2=line?line+" "+w:w;if(g.measureText(t2).width>maxW&&line){txt(line,x,yy,size,color,"500");line=w;yy+=lh;}else line=t2;});
+      if(line)txt(line,x,yy,size,color,"500");
+      return yy+lh;
+    }
+    function money(v){return v>0?C.green:(v<0?C.red:C.text);}
+    function scoreCol(v){return v>=85?C.green:(v>=65?C.amber:C.red);}
+    txt("06 // REPLAY",90,130,26,C.dim,"600");
+    txt("SPARRING LOG",90,200,64,C.green,"800");
+    txt(d.n+" sessions · "+d.trades+" trades",90,250,28,C.muted,"600");
+    var tiles=[["NET",rpUsd(d.net),money(d.net)],["WIN RATE",d.trades?Math.round(d.winRate*100)+"%":"—",C.text],["PROFIT FACTOR",rpPF(d.pf),C.text],["EXECUTION",d.score==null?"—":String(d.score),d.score==null?C.text:scoreCol(d.score)]];
+    tiles.forEach(function(t,i){
+      var x=90+(i%2)*460,y=300+Math.floor(i/2)*190;
+      g.fillStyle=C.card;g.fillRect(x,y,440,170);g.strokeStyle=C.line;g.strokeRect(x,y,440,170);
+      txt(t[0],x+220,y+52,24,C.dim,"700","center");txt(t[1],x+220,y+128,58,t[2],"800","center");
+    });
+    var y=730;
+    txt("COACH CO",90,y,26,C.green,"800");y+=48;
+    if(d.leak){y=wrap("Most repeated leak: "+d.leak.t+" ("+d.leak.sessions+" of "+d.n+" sessions).",90,y,28,C.text,W-180,40);y=wrap("Next focus: "+d.leak.fix,90,y+4,28,C.muted,W-180,40);}
+    else y=wrap(d.n<3?"Building the sample — Coach Co reads patterns from 3 sessions.":"No repeated leak. Keep the routine exactly as it is.",90,y,28,C.text,W-180,40);
+    if(d.best)y=wrap("Best setup: "+d.best.k+" — "+rpUsd(d.best.per)+" a trade over "+d.best.n+".",90,y+4,28,C.muted,W-180,40);
+    y+=30;
+    if(d.recent.length&&y<H-220){
+      txt("RECENT",90,y,26,C.green,"800");txt("EXEC",W-330,y,22,C.dim,"700","right");txt("NET",W-90,y,22,C.dim,"700","right");y+=50;
+      d.recent.forEach(function(r){
+        if(y>H-110)return;
+        txt(rpDayLbl(r.day)+"  "+r.instr,90,y,28,C.text,"600");
+        txt(String(r.score),W-330,y,28,scoreCol(r.score),"700","right");
+        txt(rpUsd(r.net),W-90,y,28,money(r.net),"700","right");y+=44;
+      });
+    }
+    txt("Trading Tracker · real days, replayed under my own rules",W/2,H-70,22,C.dim,"600","center");
+    return new Promise(function(res){cv.toBlob(function(b){res(b);},"image/png");});
+  }
+  function rpSaveBlob(blob,name){var url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},1500);}
+  async function rpShare(btn){
+    if(!rpLogList().length)return;
+    btn.disabled=true;
+    try{
+      var d=rpShareData(),text=rpShareText(d),png=await rpShareImage(d),name="sparring-log-"+isoDate()+".png",file=null;
+      try{file=new File([png],name,{type:"image/png"});}catch(e){}
+      if(file&&navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:"Sparring Log",text:text});return;}
+      if(navigator.share){await navigator.share({title:"Sparring Log",text:text});return;}
+      // no share sheet (most desktops): save the card and copy the text
+      rpSaveBlob(png,name);
+      var copied=false;try{await navigator.clipboard.writeText(text);copied=true;}catch(e){}
+      mxAlert("Saved the card as "+name+(copied?" and copied the summary text — paste it anywhere.":"."),{title:"↗ Share"});
+    }catch(e){if(!e||e.name!=="AbortError")mxAlert("Couldn't share: "+(e&&e.message||e),{title:"✕ Share",tone:"danger"});}
+    finally{btn.disabled=false;}
+  }
+  function rpExportCSV(){
+    var rows=[["Date","Instrument","Blind","Session net","Execution","Trade","Side","Qty","Setup","In (CT)","Out (CT)","Entry","Exit","Exit by","R","MFE pts","MAE pts","Net","Note"]];
+    rpLogList().slice().reverse().forEach(function(s){
+      var base=[s.day,rpSetLbl({instr:s.instr}),s.blind?"yes":"",s.net,RPX.reviewSession(s).score],T=s.trades||[];
+      if(!T.length)rows.push(base.concat(["","","","","","","","","","","","","",s.note||""]));
+      T.forEach(function(t,i){rows.push(base.concat([i+1,t.side,t.qty,t.setup||"",rpHM(t.tIn),rpHM(t.tOut),t.entry,t.exit,RP_WHY[t.why]||t.why,t.r!=null?t.r:"",t.mfe,t.mae,t.net,i?"":(s.note||"")]));});
+    });
+    rpSaveBlob(new Blob([rows.map(function(r){return r.map(csvEscape).join(",");}).join("\r\n")],{type:"text/csv"}),"sparring-log-"+isoDate()+".csv");
+  }
   document.getElementById("rpLog").addEventListener("click",async function(e){
+    var act=e.target.closest("[data-rp]");
+    if(act){var a=act.getAttribute("data-rp");if(a==="share")rpShare(act);else if(a==="csv")rpExportCSV();return;}
     var del=e.target.closest("[data-rplogdel]");
     if(del){
       var s=rpLogById(del.getAttribute("data-rplogdel"));if(!s)return;
@@ -5801,7 +5965,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v73";
+var APP_BUILD="v74";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
