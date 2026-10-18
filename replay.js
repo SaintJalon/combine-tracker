@@ -210,6 +210,80 @@
     return { S: S, step: detectStep(S), skipped: skipped, symbols: nsym, rolled: rolled };
   }
 
+  // ---- Excel (.xlsx) → CSV text, so a spreadsheet export reads exactly like a CSV ----
+  // An .xlsx file is a zip of XML. This reads the first worksheet with the platform's own
+  // DecompressionStream (browsers and Node 18+), no library. Excel stores date-times as day counts
+  // since 1899-12-30 with no time zone; those cells in the time column become "YYYY-MM-DD HH:MM:SS"
+  // text, which parseCSV then reads in the file's chosen zone like any other zoneless time.
+  function isXlsx(buf) { var b = new Uint8Array(buf, 0, 4); return b[0] === 0x50 && b[1] === 0x4b && b[2] === 3 && b[3] === 4; }
+  async function unzipEntry(buf, want) {
+    var dv = new DataView(buf), u8 = new Uint8Array(buf), eocd = -1;
+    for (var i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 66000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error('This .xlsx file looks damaged (no zip directory).');
+    var count = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true), names = [];
+    for (var k = 0; k < count; k++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      var method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nlen = dv.getUint16(p + 28, true),
+        xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+      names.push({ name: new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nlen)), method: method, csize: csize, off: off });
+      p += 46 + nlen + xlen + clen;
+    }
+    var e = typeof want === 'function' ? want(names) : names.filter(function (x) { return x.name === want; })[0];
+    if (!e) return null;
+    var start = e.off + 30 + dv.getUint16(e.off + 26, true) + dv.getUint16(e.off + 28, true), data = u8.subarray(start, start + e.csize);
+    if (e.method === 0) return new TextDecoder().decode(data);
+    if (e.method !== 8) throw new Error('This .xlsx uses a compression this app can\'t read — save it as CSV instead.');
+    var stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(stream).text();
+  }
+  function xmlText(s) { return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, function (m, n) { return String.fromCharCode(+n); }).replace(/&amp;/g, '&'); }
+  function colIndex(ref) { var m = /^[A-Z]+/.exec(ref || ''), n = 0; if (!m) return -1; for (var i = 0; i < m[0].length; i++) n = n * 26 + m[0].charCodeAt(i) - 64; return n - 1; }
+  function excelDate(v) { // day serial → "YYYY-MM-DD HH:MM:SS" (wall clock, no zone)
+    var d = new Date(Math.round((v - 25569) * 86400) * 1000), p2 = function (x) { return (x < 10 ? '0' : '') + x; };
+    return d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()) + ' ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()) + ':' + p2(d.getUTCSeconds());
+  }
+  async function xlsxToCSV(buf) {
+    var shared = [], ss = await unzipEntry(buf, 'xl/sharedStrings.xml');
+    if (ss) (ss.match(/<si[\s>][\s\S]*?<\/si>/g) || []).forEach(function (si) {
+      shared.push(xmlText((si.match(/<t(?:\s[^>]*)?>[\s\S]*?<\/t>/g) || []).map(function (t) { return t.replace(/^<t[^>]*>|<\/t>$/g, ''); }).join('')));
+    });
+    var sheet = await unzipEntry(buf, function (names) {
+      return names.filter(function (x) { return /^xl\/worksheets\/sheet\d+\.xml$/.test(x.name); })
+        .sort(function (a, b) { return parseInt(a.name.replace(/\D/g, ''), 10) - parseInt(b.name.replace(/\D/g, ''), 10); })[0];
+    });
+    if (!sheet) throw new Error('No worksheet found in this .xlsx file.');
+    var rows = [];
+    (sheet.match(/<row[\s>][\s\S]*?<\/row>/g) || []).forEach(function (row) {
+      var out = [];
+      (row.match(/<c\s[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) || []).forEach(function (c) {
+        var ref = (/\sr="([A-Z]+)\d*"/.exec(c) || [])[1], t = (/\st="(\w+)"/.exec(c) || [])[1], v = (/<v>([\s\S]*?)<\/v>/.exec(c) || [])[1], val = '';
+        if (t === 's') val = shared[+v] || '';
+        else if (t === 'inlineStr') val = xmlText(((/<t[^>]*>([\s\S]*?)<\/t>/.exec(c) || [])[1]) || '');
+        else if (v != null) val = t === 'n' || t == null ? +v : xmlText(v);
+        var ci = ref ? colIndex(ref) : out.length;
+        while (out.length < ci) out.push('');
+        out[ci] = val;
+      });
+      rows.push(out);
+    });
+    if (!rows.length) throw new Error('The worksheet in this .xlsx file is empty.');
+    // the time column: one named time / date, else the first. Date-time serials there become text.
+    var head = rows[0].map(function (x) { return typeof x === 'string' ? x.toLowerCase() : ''; }), timeCols = [];
+    head.forEach(function (h, i) { if (/time|date|timestamp/.test(h)) timeCols.push(i); });
+    if (!timeCols.length) timeCols = [0];
+    rows.forEach(function (r) {
+      timeCols.forEach(function (i) {
+        var v = r[i];
+        if (typeof v !== 'number') return;
+        if (v > 20000 && v < 80000) r[i] = excelDate(v);
+        else if (v >= 0 && v < 1 && /time|hour/.test(head[i])) r[i] = excelDate(25569 + v).slice(11); // a time-of-day fraction
+      });
+    });
+    return rows.map(function (r) {
+      return r.map(function (x) { x = String(x); return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }).join(',');
+    }).join('\n');
+  }
+
   // The bar size in seconds: the most common gap between consecutive bars.
   function detectStep(S) {
     var count = {}, best = 60, bestN = 0;
@@ -362,8 +436,74 @@
     return String(sym || '').trim().toUpperCase().replace(/\.(C|V|N)\.\d+$|\.FUT$/, '').replace(/[FGHJKMNQUVXZ]\d{1,2}$/, '');
   }
 
-  var api = { CT: CT, databentoQuery: databentoQuery, massiveToSeries: massiveToSeries, symbolRoot: symbolRoot, tzOffset: tzOffset, zonedToUtc: zonedToUtc, ctWall: ctWall, sessionDay: sessionDay,
-    parseStamp: parseStamp, parseClock: parseClock, parseCSV: parseCSV, detectStep: detectStep, merge: merge,
+  // ---- Coach Co's read of sparring sessions ----
+  // One logged session ({ trades, rules, locked, followed }) → { score 0–100, leaks, good }. Leaks are
+  // listed worst first; each costs points. A trade is { side, qty, entry, exit, tIn, tOut, why, net, r,
+  // mfe, mae, stop0 } as Replay records it.
+  var REVENGE_SEC = 180; // back in within 3 minutes of a losing exit
+  function reviewSession(s) {
+    var T = s.trades || [], leaks = [], good = [], score = 100, naked = 0, revenge = 0, sizeUp = 0, deep = 0, cut = 0, runners = 0;
+    T.forEach(function (t, i) {
+      var p = T[i - 1], got = (t.exit - t.entry) * (t.side === 'long' ? 1 : -1);
+      if (t.stop0 == null) naked++;
+      if (p && p.net < 0) { if (t.tIn - p.tOut <= REVENGE_SEC) revenge++; if (t.qty > p.qty) sizeUp++; }
+      if (t.r != null && t.r < -1.2) deep++;
+      if (t.r != null && t.r >= 2) runners++;
+      if (t.why === 'market' && got > 0 && t.mfe >= got * 2) cut++;
+    });
+    function leak(k, n, pen) { if (n > 0) { leaks.push({ k: k, n: n }); score -= pen; } }
+    leak('daily-stop', s.locked ? 1 : 0, 25);
+    leak('no-stop', naked, Math.min(30, naked * 10));
+    leak('revenge', revenge, Math.min(30, revenge * 10));
+    leak('size-up', sizeUp, 15);
+    leak('deep-loss', deep, Math.min(20, deep * 10));
+    leak('over-cap', s.rules && s.rules.cap > 0 ? Math.max(0, T.length - s.rules.cap) : 0, 10);
+    leak('cut-winner', cut, Math.min(15, cut * 5));
+    leak('off-plan', s.followed === false ? 1 : 0, 10);
+    if (!T.length) good.push({ k: 'sat-out', n: 1 });
+    else {
+      if (!naked) good.push({ k: 'all-stops', n: T.length });
+      if (!revenge && !sizeUp) good.push({ k: 'calm', n: T.length });
+      if (runners) good.push({ k: 'runner', n: runners });
+    }
+    return { score: Math.max(0, score), leaks: leaks, good: good };
+  }
+  // Every logged session (newest first) → patterns across them: the trend, the most repeated leak,
+  // setups, time of day, sides and the R math. Groups smaller than 3 trades are left out as noise.
+  function reviewLog(L) {
+    var out = { n: L.length, leaks: [], setups: [], hours: [], sides: [] }, all = [], tally = {}, scores = [];
+    L.forEach(function (s) {
+      var rv = reviewSession(s);
+      scores.push(rv.score);
+      rv.leaks.forEach(function (x) { tally[x.k] = (tally[x.k] || 0) + 1; });
+      all = all.concat(s.trades || []);
+    });
+    function mean(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null; }
+    out.score = Math.round(mean(scores) || 0);
+    if (scores.length >= 6) { var k = Math.min(5, Math.floor(scores.length / 2)); out.recent = Math.round(mean(scores.slice(0, k))); out.prior = Math.round(mean(scores.slice(k, 2 * k))); }
+    out.leaks = Object.keys(tally).map(function (k) { return { k: k, sessions: tally[k] }; }).sort(function (a, b) { return b.sessions - a.sessions; });
+    function groups(keyOf) {
+      var g = {};
+      all.forEach(function (t) { var k = keyOf(t); if (k == null || k === '') return; var x = g[k] || (g[k] = { k: k, n: 0, wins: 0, net: 0 }); x.n++; x.net += t.net; if (t.net > 0) x.wins++; });
+      return Object.keys(g).map(function (k) { var x = g[k]; x.net = Math.round(x.net * 100) / 100; x.per = x.net / x.n; x.winRate = x.wins / x.n; return x; })
+        .filter(function (x) { return x.n >= 3; }).sort(function (a, b) { return b.per - a.per; });
+    }
+    out.setups = groups(function (t) { return (t.setup || '').trim(); });
+    out.hours = groups(function (t) { return new Date(ctWall(t.tIn) * 1000).getUTCHours(); });
+    out.sides = groups(function (t) { return t.side; });
+    var wins = all.filter(function (t) { return t.r != null && t.r > 0; }).map(function (t) { return t.r; });
+    var losses = all.filter(function (t) { return t.r != null && t.r < 0; }).map(function (t) { return -t.r; });
+    out.trades = all.length;
+    out.winRate = all.length ? all.filter(function (t) { return t.net > 0; }).length / all.length : 0;
+    if (wins.length >= 3 && losses.length >= 3) {
+      out.avgWinR = mean(wins); out.avgLossR = mean(losses);
+      out.breakEven = out.avgLossR / (out.avgWinR + out.avgLossR); // win rate that makes those R sizes break even
+    }
+    return out;
+  }
+
+  var api = { CT: CT, reviewSession: reviewSession, reviewLog: reviewLog, databentoQuery: databentoQuery, massiveToSeries: massiveToSeries, symbolRoot: symbolRoot, tzOffset: tzOffset, zonedToUtc: zonedToUtc, ctWall: ctWall, sessionDay: sessionDay,
+    isXlsx: isXlsx, xlsxToCSV: xlsxToCSV, parseStamp: parseStamp, parseClock: parseClock, parseCSV: parseCSV, detectStep: detectStep, merge: merge,
     bar: bar, sessions: sessions, pushBar: pushBar, aggregate: aggregate, barExit: barExit, limitFill: limitFill,
     lossLimitPrice: lossLimitPrice, tradeNet: tradeNet, summarize: summarize };
   if (typeof module === 'object' && module.exports) module.exports = api;

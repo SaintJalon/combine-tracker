@@ -116,9 +116,9 @@ the countdown stops but the spend stays in your totals (**Resume** undoes it, **
    browser. If a provider doesn't allow that, set up the free **relay** once (a Cloudflare Worker, about 5 minutes,
    no terminal — steps in [`relay/README.md`](relay/README.md)), paste its address in **Relay** and tap **Check**;
    downloads then go through it. It forwards only Replay's market-data calls, only for your site, and holds no key.
-2. **…or import a CSV.** Export 1-minute bars — TradingView's *Export chart data…*, Databento, NinjaTrader, or any file
-   with time / open / high / low / close columns — pick the instrument (it sets $ per point) and the zone the file's
-   times are in if they have none, and tap **Import CSV**. More files for the same instrument merge into one set.
+2. **…or import a file — CSV or Excel (.xlsx).** Export 1-minute bars — TradingView's *Export chart data…* (its .xlsx
+   works as is), Databento, NinjaTrader, or any file with time / open / high / low / close columns — pick the instrument (it sets $ per point) and the zone the file's
+   times are in if they have none, and tap **Import CSV / Excel**. More files for the same instrument merge into one set.
 3. **Set up the session.** Pick a day — or **Random day** with **Hide the date** on, so hindsight can't help you —
    the start time (default 08:30 CT), when you must be flat (default 2:00 PM CT), and how many prior days to show.
 4. **Trade it.** **Play** / **Step** (or Space and →). Buy / Sell fill at the last price; stop and target (in points)
@@ -127,7 +127,11 @@ the countdown stops but the spend stays in your totals (**Resume** undoes it, **
    **Drag** the stop, target or limit line to move it; a level on the wrong side of the market (where it would fill at
    once) snaps back. With **Trade under my rules** on, your account's daily stop auto-flattens you (and locks the session),
    and your trade cap and cooldown block new entries — the same rules as Core and Protocol.
-5. **Review.** At the end the date is revealed and the session goes to the **Sparring Log**: net, win rate, profit
+5. **Review.** At the end the date is revealed and **Coach Co** grades your execution (0–100): entries without a
+   stop, revenge entries, sizing up after a loss, losers past 1.2R, winners cut early, the daily stop — with the one
+   fix for next session. Once you have 3+ sessions, Coach Co also reads the whole **Sparring Log**: whether you're
+   improving, your most repeated leak, which setups pay, your weak hour and side, and the win rate your R sizes need.
+   The session goes to the **Sparring Log**: net, win rate, profit
    factor, a by-setup table, each trade's R and how far it went for / against you (MFE / MAE), and your notes.
 
 Fills are bar-based: when one bar touches both your stop and your target, the stop counts, and a bar that opens past a

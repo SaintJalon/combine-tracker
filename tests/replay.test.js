@@ -170,4 +170,58 @@ t('symbol roots', () => {
   assert.deepStrictEqual(['NQ.c.0', 'MNQH4', 'mnqh24', 'ES.FUT', 'NQ', 'QQQ'].map(R.symbolRoot), ['NQ', 'MNQ', 'MNQ', 'ES', 'NQ', 'QQQ']);
 });
 
-console.log('\n' + n + ' passed');
+// 6. Coach Co's sparring review
+const TR = (o) => Object.assign({ side: 'long', qty: 1, entry: 100, exit: 101, tIn: 0, tOut: 60, why: 'target', net: 20, r: 1, mfe: 1, mae: 0, stop0: 99 }, o);
+t('a clean session scores 100 with its strengths named', () => {
+  const r = R.reviewSession({ trades: [TR({ r: 2.5, exit: 102.5, net: 50 }), TR({ tIn: 600, tOut: 700, net: -20, r: -1, exit: 99, why: 'stop' })], rules: { cap: 4 }, followed: true });
+  assert.strictEqual(r.score, 100);
+  assert.deepStrictEqual(r.leaks, []);
+  assert.deepStrictEqual(r.good.map(g => g.k), ['all-stops', 'calm', 'runner']);
+});
+t('leaks: no stop, revenge re-entry, size-up after a loss, loser past 1.2R, winner cut early, daily stop', () => {
+  const r = R.reviewSession({ locked: true, rules: { cap: 4 }, trades: [
+    TR({ net: -20, r: -1, exit: 99, why: 'stop', tOut: 60 }),
+    TR({ tIn: 120, tOut: 300, qty: 2, stop0: null, r: null, net: -100, exit: 97.5, why: 'market' }),     // revenge + size-up + no stop
+    TR({ tIn: 1000, tOut: 1100, r: -1.5, net: -30, exit: 98.5, why: 'stop' }),                            // deep
+    TR({ tIn: 2000, tOut: 2100, why: 'market', exit: 100.5, net: 10, r: 0.5, mfe: 2 })                    // cut winner
+  ] });
+  assert.deepStrictEqual(r.leaks.map(l => l.k), ['daily-stop', 'no-stop', 'revenge', 'size-up', 'deep-loss', 'cut-winner']);
+  assert.strictEqual(r.score, 100 - 25 - 10 - 10 - 15 - 10 - 5);
+});
+t('no trades reads as sitting out, not as a fault', () => {
+  assert.deepStrictEqual(R.reviewSession({ trades: [] }), { score: 100, leaks: [], good: [{ k: 'sat-out', n: 1 }] });
+});
+t('log review: trend, most repeated leak, setups and hours with 3+ trades, break-even win rate', () => {
+  const at = (h) => Date.UTC(2024, 0, 10, h + 6, 5) / 1000; // h:05 CT in January
+  const good = { trades: [TR({ setup: 'ORB', tIn: at(8), r: 2, net: 40 }), TR({ setup: 'ORB', tIn: at(8), r: 2, net: 40 }), TR({ setup: 'ORB', tIn: at(8), r: -1, net: -20, why: 'stop' })] };
+  const bad = { trades: [TR({ setup: 'Fade', tIn: at(10), stop0: null, r: null, net: -50 }), TR({ setup: 'Fade', tIn: at(10), r: -1, net: -20 }), TR({ setup: 'Fade', tIn: at(10), r: -1, net: -20 })] };
+  const L = [good, good, good, bad, bad, bad]; // newest first: recent sessions are the good ones
+  const r = R.reviewLog(L);
+  assert.strictEqual(r.n, 6);
+  assert.ok(r.recent > r.prior);
+  assert.deepStrictEqual(r.leaks[0], { k: 'no-stop', sessions: 3 });
+  assert.deepStrictEqual(r.setups.map(x => [x.k, x.n]), [['ORB', 9], ['Fade', 9]]);
+  assert.deepStrictEqual(r.hours.map(x => x.k), [8, 10]);
+  assert.ok(Math.abs(r.breakEven - 1 / 3) < 1e-9); // avg win 2R, avg loss 1R
+});
+
+// 7. Excel (.xlsx) exports read like CSVs (async: unzipping uses DecompressionStream)
+(async () => {
+  const fs = require('fs'), path = require('path');
+  const read = (f) => { const b = fs.readFileSync(path.join(__dirname, 'fixtures', f)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length); };
+  async function ta(name, fn) { await fn(); n++; console.log('ok  ' + name); }
+  const first = Z(2024, 1, 2, 14, 30); // 08:30 CT
+  for (const [f, tz] of [['tv-datetime.xlsx', R.CT], ['tv-unix.xlsx', R.CT], ['iso-text.xlsx', 'UTC'], ['date-time-cols.xlsx', R.CT]]) {
+    await ta('xlsx: ' + f, async () => {
+      const buf = read(f);
+      assert.ok(R.isXlsx(buf));
+      const r = R.parseCSV(await R.xlsxToCSV(buf), { tz });
+      assert.deepStrictEqual(r.S.t, [first, first + 60, first + 120]);
+      assert.deepStrictEqual([r.S.o[0], r.S.h[0], r.S.l[0], r.S.c[0]], [16800, 16810, 16795, 16805.25]);
+    });
+  }
+  await ta('a CSV is not mistaken for xlsx', async () => {
+    assert.ok(!R.isXlsx(new TextEncoder().encode('time,open\n').buffer));
+  });
+  console.log('\n' + n + ' passed');
+})().catch((e) => { console.error(e); process.exit(1); });
