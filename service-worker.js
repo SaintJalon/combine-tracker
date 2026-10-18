@@ -1,7 +1,7 @@
 // Bump CACHE on every deploy. Changing this file is what makes the browser
 // re-install the worker at all — if it stays byte-identical, `install` never
 // re-runs and old caches are never purged.
-const CACHE = 'combine-tracker-v67';
+const CACHE = 'combine-tracker-v68';
 const ASSETS = [
   './',
   './index.html',
@@ -9,7 +9,9 @@ const ASSETS = [
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',
-  './rules.js'
+  './rules.js',
+  './replay.js',
+  './lightweight-charts.js'
 ];
 
 // Fetch with the HTTP cache bypassed. GitHub Pages serves `cache-control:
