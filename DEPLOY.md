@@ -7,6 +7,8 @@ Your logged P&L is saved on the device (localStorage).
 ## Files
 - `index.html` — the app
 - `rules.js` — the prop-firm math (consistency-adjusted target, tomorrow's cap, end-of-day floor); `node tests/rules.test.js` checks it
+- `replay.js` — the Replay math (CSV import, CT sessions, candles, stop / target fills); `node tests/replay.test.js` checks it
+- `lightweight-charts.js` — TradingView's open-source chart library (Apache 2.0, v5.2.1), used by Replay
 - `manifest.json` — makes it installable
 - `service-worker.js` — offline support + faster loads
 - `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` — home-screen icons
@@ -52,7 +54,7 @@ git add . && git commit -m "update" && git push
 ---
 
 ## Finding your way around
-The app is split into five programs (bottom bar on a phone, top bar on desktop — or keys `1`–`5`):
+The app is split into six programs (bottom bar on a phone, top bar on desktop — or keys `1`–`6`):
 
 | Program | What's in it |
 |---|---|
@@ -61,6 +63,7 @@ The app is split into five programs (bottom bar on a phone, top bar on desktop �
 | **03 Protocol** | Pre-trade checklist, daily schedule, discipline score + trade cap + cooldown, your rules |
 | **04 Armory** | Position size, money management, risk lab |
 | **05 Path** | Attempts, funded / payout, planning & goals |
+| **06 Replay** | Sparring Program: replay real market days bar by bar and trade them under your own rules, plus the Sparring Log of every session |
 
 The `>_` button (or key `0`) opens **System**: Matrix / Construct theme, accent, digital rain,
 CRT scanlines, animations, boot sequence, and Backup & Export. Those effect settings are per
@@ -97,3 +100,25 @@ the card. Today counts until your schedule's last block
 (the 2:00 PM hard stop). The chip turns amber 5 calendar days out and red the day before, and the card shows **Total spent** — plus an all-accounts total once two or more accounts
 have a price. Tap **Rebills every** if your firm uses a different cycle. Once you pass or cancel, tap **Mark ended**:
 the countdown stops but the spend stays in your totals (**Resume** undoes it, **Remove** deletes the record).
+
+## Replay — practice on real days
+**Replay** plays back a real trading day one bar at a time, so you can trade it without knowing what comes next.
+
+1. **Get bars.** Export 1-minute bars as a CSV — TradingView's *Export chart data…*, Databento (`GLBX.MDP3`, `OHLCV-1m`,
+   e.g. `NQ.FUT`), NinjaTrader, or any file with time / open / high / low / close columns. The card's
+   *Where do I get real bars?* has the steps.
+2. **Import.** Replay → Market Data: pick the instrument (it sets $ per point), say what zone the file's times are in if
+   they have none, and tap **Import CSV**. More files for the same instrument merge into one set.
+3. **Set up the session.** Pick a day — or **Random day** with **Hide the date** on, so hindsight can't help you —
+   the start time (default 08:30 CT), when you must be flat (default 2:00 PM CT), and how many prior days to show.
+4. **Trade it.** **Play** / **Step** (or Space and →). Buy / Sell fill at the last price; stop and target (in points)
+   rest as orders. With **Trade under my rules** on, your account's daily stop auto-flattens you (and locks the session),
+   and your trade cap and cooldown block new entries — the same rules as Core and Protocol.
+5. **Review.** At the end the date is revealed and the session goes to the **Sparring Log**: net, win rate, profit
+   factor, a by-setup table, each trade's R and how far it went for / against you (MFE / MAE), and your notes.
+
+Fills are bar-based: when one bar touches both your stop and your target, the stop counts, and a bar that opens past a
+level fills at the open. Add slippage (ticks) and fees (per contract, round trip) in the setup to keep results honest.
+
+Bars stay in this browser (IndexedDB) and are **not** part of Backup & Export — keep the CSVs. The Sparring Log is
+backed up. A session in progress is saved as you go; reopen Replay and tap **Resume**.
