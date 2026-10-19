@@ -59,7 +59,7 @@ The app is split into six programs (bottom bar on a phone, top bar on desktop �
 
 | Program | What's in it |
 |---|---|
-| **01 Core** | Firm · plan · size picker, rebill tracker and copy trading at the top, the Copy Group's combined P&L (today / month / all time) when a leader has followers, then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
+| **01 Core** | Firm · plan · size picker, rebill tracker and copy trading at the top, the Accounts & Copy Groups card (log a day for every account at once; each group's combined P&L today / month / all time; move accounts between groups), then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
 | **02 Intel** | Weekly Review (week net, best/worst day and setup, rule breaks, Coach Co's one fix for next week), stats, equity curve, by-setup table, searchable trade log, R-distribution, weekday / week / month breakdowns |
 | **03 Protocol** | Pre-trade checklist, daily schedule, discipline score + trade cap + cooldown, your rules |
 | **04 Armory** | Position size, money management, risk lab |
@@ -103,6 +103,13 @@ groups; pick a free account under *Start a new group led by* to make it a leader
 aren't already in a group (the rest are listed as taken). A new follower copies its leader from today on (**copying
 since**, editable); its own days are never touched. **Stop leading** ends a group: its followers keep every day they
 have — own and copied — and become free. The **Copy Group** card totals each group separately.
+
+**Accounts & Copy Groups card:** totals each group separately, and is where you manage them. **✎ Log a day for all
+accounts** opens one sheet with a box per leader and per stand-alone account — type each one's P&L for the day (today,
+or the last session on a weekend; the date is editable) and **Save all**. Followers copy their leader by themselves;
+type a number on a follower only when it made something different. Tap an account's name to open it, and use its **⋯**
+menu to move it to another group, leave a group (it keeps every day it has), follow a leader, lead a new group or stop
+leading.
 
 **Pass date:** following the plan's day targets (the cards — the live plan spreads what's left over your remaining plan
 days), you pass on the last plan day that still has a target. Every day you haven't traded yet shows the date it lands on

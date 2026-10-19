@@ -563,6 +563,19 @@
   .grp .grow.gout{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2)}
   .grp .grow.gx .gn{color:var(--muted);font-weight:600}
   .grp .grow.gx .secbtn{flex-shrink:0}
+  .grp .gtool{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+  .grp .grow .gn .ggo{all:unset;cursor:pointer;color:inherit;font:inherit}
+  .grp .grow .gn .ggo:hover,.grp .grow .gn .ggo:focus-visible{color:var(--accent);text-decoration:underline}
+  .grp .grow.cur .gn .ggo{color:var(--accent)}
+  .grp .gact{flex-shrink:0;width:30px;padding:2px 0;font-size:13px;text-align:center;background:transparent;color:var(--muted);border:1px solid var(--line2);border-radius:6px;-webkit-appearance:none;appearance:none;cursor:pointer}
+  .grp .ql{border:1px solid var(--line2);border-radius:10px;padding:12px;margin:0 0 14px}
+  .grp .ql .qlh{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px;font-size:12px}
+  .grp .ql .qlh b{font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .grp .ql .qlh input{font:inherit}
+  .grp .ql .grow input[type=number]{width:96px;flex-shrink:0;text-align:right;font:inherit;font-weight:700}
+  .grp .ql .grow .qs{flex-shrink:0;font-size:10.5px;color:var(--muted2);min-width:58px;text-align:right}
+  .grp .ql .grow.qf .gn{padding-left:14px;font-weight:600;color:var(--muted)}
+  .grp .ql .qlbar{display:flex;gap:8px;margin-top:10px}
   .grp .note{font-size:10.5px;color:var(--muted2);margin-top:8px;line-height:1.55}
   .wk .g{color:var(--green)}.wk .r{color:var(--red)}
   .wk .atrow .an{min-width:104px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
@@ -938,6 +951,10 @@
     .statgrid{grid-template-columns:repeat(2,1fr)}
     .grp .statgrid{grid-template-columns:repeat(3,1fr)}
     .grp .grow .gv{width:62px}
+    /* phone: rows with the ⋯ menu put the name on its own line and the numbers under it */
+    .grp .grow.ga{flex-wrap:wrap;row-gap:2px}
+    .grp .grow.ga .gn{flex:1 0 100%}
+    .grp .grow.ga .gv{flex:1;width:auto}
   }
   @media(max-width:760px){
     body{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
@@ -1174,7 +1191,7 @@
 
     <!-- shown only while a leader has followers; own wrapper so folding it folds just the group -->
     <div class="grpwrap">
-      <h2 class="section" id="grpHead">Copy Group — Combined P&amp;L</h2>
+      <h2 class="section" id="grpHead">Accounts &amp; Copy Groups</h2>
       <div class="eqcard grp" id="grpCard"></div>
     </div>
 
@@ -2107,13 +2124,86 @@
     if(j[d]&&j[d].date)return j[d].date;
     return null;
   }
+  // Run fn as if account a were the open one (cfg, logs and journal all key off the active account).
+  function asAcct(a,fn){
+    var keep={id:state.activeId,firm:state.firm,plan:state.plan,size:state.size};
+    state.activeId=a.id;state.firm=a.firm;state.plan=a.plan;state.size=a.size;
+    try{return fn();}finally{state.activeId=keep.id;state.firm=keep.firm;state.plan=keep.plan;state.size=keep.size;}
+  }
+  // An account's logged net on a date: {v, copied} or null.
+  function acctNetOn(a,iso){
+    var k="acct:"+a.id,j=(state.journal&&state.journal[k])||{},log=state.logs[k]||{};
+    for(var d in j){if(j.hasOwnProperty(d)&&j[d]&&j[d].date===iso&&log.hasOwnProperty(d))return{v:+log[d]||0,copied:!!j[d].copied};}
+    return null;
+  }
+  // ---- Log a day: every account's P&L on one screen. Leaders and stand-alone accounts get a box;
+  // followers copy their leader unless you type what they actually made. ----
+  var qlOpen=false,qlDate=null;
+  function lastSession(){var t=isoDate();if(isTradingDate(t))return t;var c=new Date(t+"T00:00:00");do{c.setDate(c.getDate()-1);}while(!isTradingDate(isoOf(c)));return isoOf(c);}
+  function quickLogHTML(){
+    var iso=qlDate||(qlDate=lastSession()),rows="";
+    function stageOfA(a){return (state.stage&&state.stage[a.id])||"eval";}
+    function box(a,ph,val){return '<input type="number" inputmode="decimal" step="any" data-ql="'+a.id+'" placeholder="'+ph+'" value="'+(val==null?"":val)+'" aria-label="'+esc(a.name)+' P&amp;L">';}
+    function shown(r){return r?'<span class="qs">now '+fmt(r.v)+(r.copied?" ⇄":"")+'</span>':'<span class="qs">—</span>';}
+    leaders().forEach(function(L){
+      var r=acctNetOn(L,iso);
+      rows+='<div class="grow"><span class="gn">★ '+esc(L.name)+'<small>'+stageOfA(L)+'</small></span>'+shown(r)+box(L,"P&L",r?r.v:null)+'</div>';
+      followersOf(L).forEach(function(a){
+        var fr=acctNetOn(a,iso),own=fr&&!fr.copied;
+        rows+='<div class="grow qf"><span class="gn">⇄ '+esc(a.name)+'<small>copies</small></span>'+shown(fr)+box(a,"same",own?fr.v:null)+'</div>';
+      });
+    });
+    var free=state.accounts.filter(isFreeAcct);
+    if(free.length&&leaders().length)rows+='<div class="grow gh gout"><span class="gn">Not in a group</span></div>';
+    free.forEach(function(a){var r=acctNetOn(a,iso);rows+='<div class="grow"><span class="gn">'+esc(a.name)+'<small>'+stageOfA(a)+'</small></span>'+shown(r)+box(a,"P&L",r?r.v:null)+'</div>';});
+    return '<div class="ql" id="qlPanel"><div class="qlh"><b>Log a day</b><input type="date" id="qlDate" value="'+iso+'" max="'+isoDate()+'"><span>'+weekdayLbl(iso)+'</span></div>'+rows+
+      '<div class="qlbar"><button type="button" class="secbtn" id="qlSave">Save all</button><button type="button" class="secbtn" id="qlCancel">Cancel</button></div>'+
+      '<div class="note">Leave a box empty to skip that account. Followers copy their leader 1:1 on their own — type a number for one only if it made something different (a different size, or it got stopped out). Emptying a box doesn\'t delete a logged day; do that from the account\'s own day card.</div></div>';
+  }
+  async function quickLogSave(){
+    var iso=qlDate||lastSession(),done=[],hit=[];
+    document.querySelectorAll("#qlPanel [data-ql]").forEach(function(inp){
+      var raw=inp.value.trim(),a=acctById(inp.getAttribute("data-ql"));if(!a||raw==="")return;
+      var v=parseFloat(raw);if(isNaN(v))return;
+      var r=acctNetOn(a,iso);if(r&&!r.copied&&r.v===v)return;   // unchanged
+      asAcct(a,function(){var d=ensureDayForDate(iso);setDayNet(d,v);dayJ(d).date=iso;});
+      done.push(a);
+    });
+    syncFollowers();
+    // who reached the target with this day (the open account converts on its own if auto-convert is on)
+    if(done.length)state.accounts.forEach(function(a){
+      if((state.stage&&state.stage[a.id])==="funded"||!acctNetOn(a,iso))return;
+      asAcct(a,function(){var c=cfg(),cs=countedStats(c);if(cs.days&&cs.total>=c.target)hit.push(a.name);});
+    });
+    qlOpen=false;autoFundArmed=true;
+    await save();renderAll();
+    if(!done.length){mxAlert("Nothing to save — every box was empty or unchanged.",{title:"✎ Log a day"});return;}
+    mxAlert("Logged "+weekdayLbl(iso)+" on "+done.map(function(a){return a.name;}).join(", ")+
+      (done.some(function(a){return a.lead&&followersOf(a).length;})?" — followers copied their leaders.":".")+
+      (hit.length?"\n\n★ Target reached: "+hit.join(", ")+". Open "+(hit.length===1?"it":"each one")+" to convert to Funded.":""),{title:"✎ Log a day"});
+  }
+  // Per-row actions in the group card: what this account can do from here.
+  function grpActSel(a){
+    var o=[],L=leaderOf(a),ls=leaders();
+    if(a.lead){o.push(['stoplead','Stop leading (followers keep their days)']);}
+    else if(L){
+      ls.forEach(function(x){if(x.id!==L.id)o.push(['move:'+x.id,'Move to ★ '+x.name+'\'s group']);});
+      o.push(['leave','Leave group (keeps its days)']);
+    }else{
+      ls.forEach(function(x){o.push(['follow:'+x.id,'Follow ★ '+x.name]);});
+      o.push(['lead','Lead a new group']);
+    }
+    return '<select class="gact" data-gact="'+a.id+'" title="Group actions" aria-label="Group actions for '+esc(a.name)+'"><option value="">⋯</option>'+
+      o.map(function(x){return '<option value="'+esc(x[0])+'">'+esc(x[1])+'</option>';}).join("")+'</select>';
+  }
   function renderGroup(){
     var host=document.getElementById("grpCard"),act=activeAcct(),mine=act&&(act.lead?act:leaderOf(act));
-    var groups=leaders().filter(function(L){return followersOf(L).length;});
+    var groups=leaders();
+    var tool='<div class="gtool"><button type="button" class="secbtn" id="qlOpen" aria-expanded="'+qlOpen+'">✎ Log a day for all accounts</button></div>'+(qlOpen?quickLogHTML():'');
     if(mine)groups.sort(function(x,y){return(x.id===mine.id?-1:0)-(y.id===mine.id?-1:0);});
     // always on screen, so it's findable: until a leader has followers it explains how to set one up
     if(!groups.length){
-      host.innerHTML='<div class="note" style="margin-top:0">Your combined P&amp;L shows here once accounts follow each other. '+
+      host.innerHTML=tool+'<div class="note" style="margin-top:0">Your combined P&amp;L shows here once accounts follow each other. '+
         (state.accounts.length<2?'Add your other accounts with <b>＋ Add account</b> at the top, then pick':'Pick')+
         ' a <b>Leader</b> under <b>Copy trading</b> and tick the accounts that follow it — today, this month and all time then total across all of them. You can run several groups, each with its own leader.</div>'+
         (state.accounts.length>=2?'<button type="button" class="secbtn" id="grpSetup" style="margin-top:10px">Set up copy trading ›</button>':'');
@@ -2134,29 +2224,54 @@
         }
         tot.day+=r.day;tot.month+=r.month;tot.all+=r.all;
         var stage=(state.stage&&state.stage[a.id])||"eval";
-        rows+='<div class="grow"><span class="gn">'+(a.id===L.id?"★ ":"⇄ ")+esc(a.name)+'<small>'+stage+'</small></span>'+cell(r.day)+cell(r.month)+cell(r.all)+'</div>';
+        rows+='<div class="grow ga'+(a.id===state.activeId?" cur":"")+'"><span class="gn">'+(a.id===L.id?"★ ":"⇄ ")+'<button type="button" class="ggo" data-goto="'+a.id+'" title="Open this account">'+esc(a.name)+'</button><small>'+stage+'</small></span>'+cell(r.day)+cell(r.month)+cell(r.all)+grpActSel(a)+'</div>';
       });
       if(groups.length>1)html+='<div class="ggroup'+(gi?' next':'')+'">★ '+esc(L.name)+'\'s group</div>';
       html+='<div class="statgrid">'+stat("Today",tot.day,weekdayLbl(t))+stat("This month",tot.month,mon)+stat("All time",tot.all,members.length+" accounts")+'</div>'+
-        '<div class="grow gh"><span class="gn">Account</span><span class="gv">Today</span><span class="gv">Month</span><span class="gv">All</span></div>'+rows;
+        '<div class="grow gh ga"><span class="gn">Account</span><span class="gv">Today</span><span class="gv">Month</span><span class="gv">All</span><span class="gact" style="visibility:hidden"></span></div>'+rows;
     });
     // accounts in no group, listed so one can be added right here — to the first group shown
-    var free=state.accounts.filter(isFreeAcct),G=groups[0];
+    var free=state.accounts.filter(isFreeAcct);
     if(free.length){
       html+='<div class="grow gh gout"><span class="gn">Not in a group</span></div>'+free.map(function(a){
-        return '<div class="grow gx"><span class="gn">'+esc(a.name)+'<small>'+((state.stage&&state.stage[a.id])||"eval")+'</small></span><button type="button" class="secbtn" data-gadd="'+a.id+'" data-glead="'+G.id+'" title="Follow '+esc(G.name)+'">＋ Follow '+esc(G.name.length>12?G.name.slice(0,11)+"…":G.name)+'</button></div>';
+        return '<div class="grow gx ga'+(a.id===state.activeId?" cur":"")+'"><span class="gn"><button type="button" class="ggo" data-goto="'+a.id+'" title="Open this account">'+esc(a.name)+'</button><small>'+((state.stage&&state.stage[a.id])||"eval")+'</small></span>'+grpActSel(a)+'</div>';
       }).join("");
     }
-    host.innerHTML=html+'<div class="note">Each leader\'s followers count their own days plus 1:1 copies. All time covers each account\'s current run'+(undated?' · '+undated+' logged day'+(undated===1?"":"s")+' without a date count in All time only':'')+'.</div>';
+    host.innerHTML=tool+html+'<div class="note">Tap a name to open that account; ⋯ moves it between groups. Each leader\'s followers count their own days plus 1:1 copies. All time covers each account\'s current run'+(undated?' · '+undated+' logged day'+(undated===1?"":"s")+' without a date count in All time only':'')+'.</div>';
   }
 
   document.getElementById("grpCard").addEventListener("click",function(e){
-    var add=e.target.closest("[data-gadd]");
-    if(add){setFollow(add.getAttribute("data-gadd"),true,add.getAttribute("data-glead"));syncFollowers();save().then(renderAll);return;}
+    if(e.target.closest("#qlOpen")){qlOpen=!qlOpen;if(qlOpen)qlDate=lastSession();renderGroup();if(qlOpen){var f=document.querySelector("#qlPanel [data-ql]");if(f)f.focus();}return;}
+    if(e.target.closest("#qlCancel")){qlOpen=false;renderGroup();return;}
+    if(e.target.closest("#qlSave")){quickLogSave();return;}
+    var go=e.target.closest("[data-goto]");
+    if(go){var ga=acctById(go.getAttribute("data-goto"));if(ga&&ga.id!==state.activeId){state.activeId=ga.id;ensureAccounts();save().then(renderAll);}return;}
     if(!e.target.closest("#grpSetup"))return;
     var h=document.querySelector(".acctprog>h2.section");if(h&&h.classList.contains("collapsed"))h.click();
     var cp=document.getElementById("copyPanel");cp.scrollIntoView({behavior:"smooth",block:"center"});
     cp.classList.remove("flash");void cp.offsetWidth;cp.classList.add("flash");
+  });
+  document.getElementById("grpCard").addEventListener("keydown",function(e){
+    if(e.key==="Enter"&&e.target.matches("#qlPanel [data-ql]")){e.preventDefault();quickLogSave();}
+  });
+  document.getElementById("grpCard").addEventListener("change",async function(e){
+    if(e.target.id==="qlDate"){var v=e.target.value;if(v&&v<=isoDate()){qlDate=v;renderGroup();}else e.target.value=qlDate;return;}
+    var sel=e.target.closest("[data-gact]");if(!sel)return;
+    var a=acctById(sel.getAttribute("data-gact")),act=sel.value;sel.value="";if(!a||!act)return;
+    if(act==="stoplead"){
+      var fols=followersOf(a);
+      if(fols.length&&!(await mxConfirm("Stop "+a.name+" leading?\n\n"+fols.map(function(x){return x.name;}).join(", ")+(fols.length===1?" keeps every day it has":" keep every day they have")+" — including the ones copied from "+a.name+" — and "+(fols.length===1?"is":"are")+" free to join another group.",{title:"⇄ Stop leading",okText:"Stop leading"})))return;
+      fols.forEach(bakeFollower);a.lead=false;if(state.copyView===a.id)state.copyView=null;
+    }else if(act==="leave"){
+      if(!(await mxConfirm(a.name+" leaves "+leaderOf(a).name+"'s group and keeps every day it has, copied ones included.",{title:"⇄ Leave group",okText:"Leave"})))return;
+      bakeFollower(a);
+    }else if(/^move:/.test(act)){
+      var to=acctById(act.slice(5));if(!to)return;
+      // the days it copied so far were real trades on this account: keep them, then copy the new leader from today
+      bakeFollower(a);setFollow(a.id,true,to.id);
+    }else if(/^follow:/.test(act)){setFollow(a.id,true,act.slice(7));}
+    else if(act==="lead"){a.lead=true;state.copyView=a.id;}
+    syncFollowers();await save();renderAll();
   });
   function dayTargets(){
     var c=cfg(),w=tpl(c.days).w,ws=w.reduce(function(a,b){return a+b;},0),T=c.target,out=[],acc=0;
@@ -6173,7 +6288,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v80";
+var APP_BUILD="v81";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
