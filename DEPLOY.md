@@ -106,6 +106,13 @@ or a day big enough to raise your consistency target — what went right, and th
 with your own numbers (how far past the stop you went, what the trades after your cap made, next session's size and loss limit). It reads your
 trades and their mistake tags, so log trades (＋ Trade) for a real grade; a day logged as one number shows **CO –**.
 
+**Coach Co's mindset:** Coach Co thinks the way Dr. Brett Steenbarger's *Positive Trading Psychology* (Harriman House,
+2026) teaches — in Coach Co's own words, not quoted: build on strengths, not only against weaknesses (**At your best · do
+more of this** reads what your green days have in common: plan followed, fewer trades, mistake-free, the setup that did
+the work, sleep, warm-up); coach while it's fresh; when a leak shows up, point to the recent days it didn't happen; a clean
+day is something to repeat ("Do more of this"); split the day into two sessions with a reset break; warm up your mind and
+take your emotional temperature (Journal). Its daily principles include the book's ideas, credited on the card.
+
 **Daily average that adapts:** **Daily target avg** is what each day left needs from where you actually are, not the
 plan's starting average. Fall behind and it rises — but never past a safe day (1.5× the plan's average, and never more
 than consistency allows): past that the plan **adds trading days** (up to 40) instead of asking for bigger days, and the
