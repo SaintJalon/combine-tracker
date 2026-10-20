@@ -387,6 +387,10 @@
   .bar .fill{background:var(--green);box-shadow:0 0 12px var(--green)}
   .progress .meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:11.5px;color:var(--muted)}
   .progress .meta b{color:var(--text)}
+  .paceadj{font-size:11.5px;margin-top:10px;padding:8px 11px;border-radius:2px;border:1px solid var(--line);line-height:1.45}
+  .paceadj.ok{background:var(--green-soft);border-color:rgba(var(--green-rgb),.3);color:var(--msg-ok)}
+  .paceadj.warn{background:var(--amber-soft);border-color:var(--amber-soft);color:var(--msg-warn)}
+  .paceadj.note{color:var(--muted)}
   .consistency{margin-top:12px;font-size:12px;padding:9px 12px;border-radius:2px;border:1px solid var(--line);display:none;line-height:1.55}
   .consistency.ok{display:block;background:var(--green-soft);border-color:rgba(var(--green-rgb),.3);color:var(--msg-ok)}
   .consistency.warn{display:block;background:var(--amber-soft);border-color:var(--amber-soft);color:var(--msg-warn)}
@@ -1265,6 +1269,7 @@
           <div><b id="pRemain">$6,000</b> remaining</div>
           <div>~<b id="pPace">$600</b>/day over <b id="pDaysLeft">10</b> days left</div>
         </div>
+        <div class="paceadj" id="pAdj" hidden></div>
         <div class="consistency" id="pConsist"></div>
         <div class="convertbar" id="pConvert"></div>
       </div>
@@ -1278,7 +1283,7 @@
     <div class="kpis">
       <div class="kpi green"><div class="label">Target profit</div><div class="val edit" id="kTarget">$6,000</div><div class="sub">tap to edit</div></div>
       <div class="kpi"><div class="label">Trading days</div><div class="val edit" id="kDays">10</div><div class="sub" id="kMinDays">auto &middot; 2 wks &middot; tap to edit</div></div>
-      <div class="kpi amber"><div class="label">Daily target avg</div><div class="val" id="kAvg">$600</div></div>
+      <div class="kpi amber"><div class="label">Daily target avg</div><div class="val" id="kAvg">$600</div><div class="sub" id="kAvgSub">what each day left needs</div></div>
       <div class="kpi red"><div class="label">Hard daily stop</div><div class="val edit" id="kStop">-$400</div><div class="sub">your rule &middot; tap to edit</div></div>
       <div class="kpi hardrule red"><div class="label" id="kMaxLabel">Trailing Max Loss</div><div class="val edit" id="kMaxloss">-$3,000</div><div class="sub" id="kMaxsub">the only hard rule &middot; tap to edit</div></div>
     </div>
@@ -1830,6 +1835,19 @@
     c.baseTarget=c.target;c.bestDay=0;
     if(c.consPct>0&&stageOf()!=="funded"){var cs=countedStats(c);c.bestDay=cs.best>0?cs.best:0;c.target=CTRules.effectiveTarget(c.baseTarget,c.bestDay,c.consPct/100);}
     c.targetRaised=c.target>c.baseTarget;
+    // Fell behind? Each remaining day may make at most 1.5× the plan's average (and never more than consistency allows);
+    // past that the plan adds days instead of asking for bigger days. Logged days anywhere in the log count.
+    c.baseDays=c.days;c.addedDays=0;c.paceCap=null;c.pace=null;
+    if(stageOf()!=="funded"){
+      var pcs=countedStats({days:40}),avg=c.target/c.baseDays,cap=avg*1.5;
+      if(c.consPct>0)cap=Math.min(cap,c.consPct/100*c.target);
+      // a day already logged past the plan stays in it, even once you've caught up
+      var mx=0,lg=curLog();for(var kk in lg){if(lg.hasOwnProperty(kk)&&+kk>mx&&+kk<=40)mx=+kk;}
+      var span=Math.max(c.days,mx);
+      var A=CTRules.paceAdjust({remaining:c.target-pcs.total,daysLeft:Math.max(0,span-pcs.days),base:avg,cap:cap});
+      c.days=Math.min(40,span+Math.max(0,A.extra));c.addedDays=c.days-c.baseDays;
+      c.paceCap=cap;c.pace=A;c.planAvg=avg;
+    }
     return c;
   }
   // Fix 4: an account can have a start date (set for followers that opened after the leader).
@@ -2698,6 +2716,14 @@
     document.getElementById("pRemain").textContent=fmt(remaining);
     document.getElementById("pDaysLeft").textContent=daysLeft;
     document.getElementById("pPace").textContent=daysLeft>0?fmt(Math.max(0,pace)):"—";
+    var pa=document.getElementById("pAdj"),PA=c.pace,capTxt=c.paceCap!=null?fmt(c.paceCap):"";
+    if(!PA||PA.status==="done"||(PA.status==="on"&&!c.addedDays)||!daysLogged){pa.hidden=true;pa.innerHTML="";}
+    else{
+      pa.hidden=false;pa.className="paceadj "+(PA.status==="ahead"?"ok":(PA.status==="stretched"||c.addedDays?"warn":"note"));
+      if(PA.status==="ahead")pa.innerHTML="▲ <b>Ahead of plan.</b> "+fmt(remaining)+" left needs "+fmt(PA.perDay)+"/day over "+pl(daysLeft,"day")+" — less than the plan's "+fmt(c.planAvg)+". Protect it: same size, no pressing.";
+      else if(c.addedDays)pa.innerHTML="▼ <b>Behind plan, so "+pl(c.addedDays,"day")+(c.addedDays===1?" was":" were")+" added.</b> "+fmt(remaining)+" left over "+pl(daysLeft,"day")+" is "+fmt(PA.perDay)+"/day — no day has to make more than "+capTxt+" (1.5× the plan average"+(c.consPct>0?", inside consistency":"")+"). More days beats bigger size."+(c.days>=40?" The plan is at its 40-day limit.":"");
+      else pa.innerHTML="▼ <b>Behind plan.</b> "+fmt(remaining)+" left now needs "+fmt(PA.perDay)+"/day over "+pl(daysLeft,"day")+" (plan average "+fmt(c.planAvg)+"). Still under the "+capTxt+" safe day — same size; if it climbs past that, the plan adds days for you.";
+    }
     var el=document.getElementById("pConsist"),consPct=c.consPct;el.className="consistency";
     var cv=document.getElementById("pConvert");
     if(daysLogged===0||total<=0){el.style.display="none";cv.className="convertbar";cv.innerHTML="";return;}
@@ -4197,12 +4223,14 @@
     document.getElementById("kMaxloss").textContent="-"+fmt(ML);
     document.getElementById("kMaxLabel").textContent=c.maxlossLabel;
     document.getElementById("kDays").textContent=c.days;
-    document.getElementById("kAvg").textContent=fmt(Math.round(T/c.days));
+    var PA=c.pace,need=PA&&PA.status!=="done"?PA.perDay:Math.round(T/c.days);
+    document.getElementById("kAvg").textContent=PA&&PA.status==="done"?"done":fmt(need);
+    document.getElementById("kAvgSub").textContent=!PA?"plan average":(PA.status==="done"?"target banked":"plan avg "+fmt(c.planAvg)+(PA.status==="ahead"?" · ahead":(PA.status==="on"?" · on pace":(c.addedDays?" · +"+c.addedDays+" day"+(c.addedDays===1?"":"s")+" added":" · behind"))));
     document.getElementById("kStop").textContent="-"+fmt(c.stop);
     var wk=c.days/5,wkTxt;
     if(c.days<5)wkTxt=c.days+(c.days===1?" day":" days");
     else wkTxt=(Math.abs(wk-Math.round(wk))<0.05?Math.round(wk):Math.round(wk*10)/10)+(Math.abs(wk-1)<0.05?" wk":" wks");
-    document.getElementById("kMinDays").textContent=(c.daysManual?"manual":"auto")+" · "+wkTxt+" · tap to edit";
+    document.getElementById("kMinDays").textContent=(c.daysManual?"manual":"auto")+(c.addedDays?" + "+c.addedDays+" to catch up":"")+" · "+wkTxt+" · tap to edit";
     var ddl=c.dd.toLowerCase();
     document.getElementById("kMaxsub").textContent=(ddl.indexOf("intraday")>=0?"intraday — watch live":(ddl.indexOf("static")>=0?"static — never moves":"end-of-day"))+" · tap to edit";
     document.getElementById("planTitle").textContent=c.title;
@@ -6549,7 +6577,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v86";
+var APP_BUILD="v87";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
