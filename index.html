@@ -278,6 +278,7 @@
   .coachmore{margin-top:12px;width:100%;background:transparent;color:var(--muted);border:1px dashed var(--line2);border-radius:2px;padding:8px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.1em;text-transform:uppercase}
   @media(hover:hover){.coachmore:hover{color:var(--accent);border-color:var(--accent)}}
   .coachextra .coachsec:first-child{border-top:1px dashed var(--line2)}
+  .coachprin .coachcred{display:block;margin-top:4px;font-size:10px;color:var(--muted2);letter-spacing:.02em}
   .coachprin{margin-top:12px;padding:9px 12px;border-radius:2px;background:var(--surface);border-left:2px solid var(--accent);
     font-size:11.5px;line-height:1.5;color:var(--muted);font-style:italic}
   .coachprin b{color:var(--text);font-style:normal}
@@ -499,6 +500,32 @@
   .lockmsg.amber{background:var(--amber-soft);color:var(--amber);border-color:var(--amber-soft)}
   .fchk{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
   .fchk input{width:16px;height:16px;cursor:pointer;flex-shrink:0}
+  .jnnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 0}
+  .jnnav input[type=date]{background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:7px 9px;font-weight:700}
+  .jnsaved{font-size:10.5px;color:var(--muted2);margin-left:auto}
+  .jnday .jdh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .jnday .jdh b{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .jnday .jdn{font-size:22px;font-weight:800}.jnday .jdn.g{color:var(--green)}.jnday .jdn.r{color:var(--red)}
+  .jnday .jdr{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 0;border-top:1px solid var(--line)}
+  .jnday .jdr span:first-child{color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .jnday .jdr .g{color:var(--green)}.jnday .jdr .r{color:var(--red)}.jnday .jdr small{color:var(--muted2);margin-left:6px}
+  .jnday .jdnote{font-size:11.5px;color:var(--muted);margin-top:4px;white-space:pre-wrap}
+  .jnform{display:grid;gap:10px}
+  .jnrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .jnk{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;min-width:78px}
+  .jnrow input[type=number]{width:90px;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:6px 8px;font-weight:700}
+  .jnscale,.jnchips{display:flex;flex-wrap:wrap;gap:6px}
+  .jnscale button,.jnchips button{background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:2px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;min-width:36px}
+  .jnscale button.on,.jnchips button.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .jnhint{font-size:10.5px;color:var(--muted2)}
+  .jnl{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+  .jnl textarea{display:block;width:100%;margin-top:5px;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:8px 10px;font-size:12.5px;resize:vertical;text-transform:none;letter-spacing:0}
+  .jnsearch{width:100%;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:8px 10px;margin-bottom:8px}
+  .jnent{border-top:1px solid var(--line);padding:9px 0;cursor:pointer}
+  .jnent .jeh{display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:800}
+  .jnent .jeh .g{color:var(--green)}.jnent .jeh .r{color:var(--red)}
+  .jnent .jet{font-size:11.5px;color:var(--muted);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .jncoach li{margin:0 0 8px;font-size:12px;line-height:1.5}
   .jnote{width:100%;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:8px 10px;font-size:12px;resize:vertical;margin-top:6px}
 
   /* ---------- month calendar ---------- */
@@ -998,7 +1025,7 @@
   @media(max-width:760px){
     body{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
     html{scroll-padding-top:16px}
-    .tabs{position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;z-index:80;display:grid;grid-template-columns:repeat(6,1fr);gap:0;
+    .tabs{position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;z-index:80;display:grid;grid-template-columns:repeat(7,1fr);gap:0;
       padding:4px calc(2px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(2px + env(safe-area-inset-left));
       border-top:1px solid var(--line2);border-bottom:none;overflow:visible;box-shadow:0 -10px 30px rgba(0,0,0,.35)}
     .tabs button{flex-direction:column;gap:3px;padding:7px 0 5px;font-size:8.5px;letter-spacing:.08em;min-width:0}
@@ -1201,6 +1228,7 @@
     <button type="button" role="tab" id="tabbtn-armory" data-tab="armory" aria-controls="tab-armory" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="tn">04</span><span>Armory</span></button>
     <button type="button" role="tab" id="tabbtn-path" data-tab="path" aria-controls="tab-path" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4.5L17 13H5"/></svg><span class="tn">05</span><span>Path</span></button>
     <button type="button" role="tab" id="tabbtn-replay" data-tab="replay" aria-controls="tab-replay" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.4-5.9"/><path d="M3.2 3.5v4.4h4.4"/><path d="M10 8.6v6.8l5.4-3.4z"/></svg><span class="tn">06</span><span>Replay</span></button>
+    <button type="button" role="tab" id="tabbtn-journal" data-tab="journal" aria-controls="tab-journal" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M6 3h11a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6z"/><path d="M6 3v18M9.5 8h5M9.5 12h5"/></svg><span class="tn">07</span><span>Journal</span></button>
   </nav>
 
   <!-- ===================== 01 // CORE ===================== -->
@@ -1514,6 +1542,46 @@
   </section>
 
   <!-- ===================== SYSTEM ===================== -->
+  <!-- ===================== 07 // JOURNAL ===================== -->
+  <section class="panel" id="tab-journal" data-tab="journal" role="tabpanel" aria-labelledby="tabbtn-journal">
+    <header class="phead"><div class="pcode">07 // journal</div><div class="ptitle">The Oracle</div><p class="pquote">Know thyself.</p></header>
+
+    <div class="jnnav">
+      <button type="button" class="calbtn" id="jnPrev" aria-label="Previous trading day">‹</button>
+      <input type="date" id="jnDate" aria-label="Journal date">
+      <button type="button" class="calbtn" id="jnNext" aria-label="Next trading day">›</button>
+      <button type="button" class="caltoday" id="jnToday">Today</button>
+      <span class="jnsaved" id="jnSaved" aria-live="polite"></span>
+    </div>
+    <div class="eqcard jnday" id="jnDay"></div>
+
+    <h2 class="section">Before the session</h2>
+    <div class="eqcard jnform" id="jnPre">
+      <div class="jnrow"><span class="jnk">Mood</span><span class="jnscale" data-jn="mood"></span></div>
+      <div class="jnrow"><span class="jnk">Sleep</span><input type="number" inputmode="decimal" step="0.5" min="0" max="14" data-jn="sleep" placeholder="hours"></div>
+      <div class="jnrow"><span class="jnk">Warm-up</span><span class="jnchips"><button type="button" id="jnWarm" aria-pressed="false">Mind warm-up done</button></span><span class="jnhint">breathing or a focus routine before the charts</span></div>
+      <label class="jnl">Plan &amp; bias<textarea data-jn="plan" rows="2" placeholder="Levels, bias, the one setup you're waiting for…"></textarea></label>
+      <label class="jnl">I only trade if…<textarea data-jn="rules" rows="2" placeholder="e.g. I'm calm, I've seen my setup, my max loss is set in the platform"></textarea></label>
+    </div>
+
+    <h2 class="section">After the session</h2>
+    <div class="eqcard jnform" id="jnPost">
+      <div class="jnrow"><span class="jnk">Discipline</span><span class="jnscale" data-jn="disc"></span></div>
+      <div class="jnrow"><span class="jnk">Temperature</span><span class="jnscale" data-jn="temp"></span><span class="jnhint">1 cool &amp; focused · 5 running hot</span></div>
+      <div class="jnrow jnemo"><span class="jnk">I felt</span><span class="jnchips" data-jn="emo"></span></div>
+      <label class="jnl">What went well<textarea data-jn="well" rows="2" placeholder="What did you do right — even on a red day? What was there before your best trade?"></textarea></label>
+      <label class="jnl">What went wrong<textarea data-jn="wrong" rows="2" placeholder="Where did you leave the plan? What did it cost?"></textarea></label>
+      <label class="jnl">Lesson<textarea data-jn="lesson" rows="2" placeholder="The one thing today taught you"></textarea></label>
+      <label class="jnl">One thing for tomorrow<textarea data-jn="tomorrow" rows="2" placeholder="Shows on Today's plan next session"></textarea></label>
+    </div>
+
+    <h2 class="section">Coach Co · from your journal</h2>
+    <div class="eqcard" id="jnCoach"></div>
+
+    <h2 class="section">Past entries</h2>
+    <div class="eqcard" id="jnListCard"><input type="search" id="jnSearch" class="jnsearch" placeholder="Search your journal…"><div id="jnList"></div></div>
+  </section>
+
   <section class="panel" id="tab-system" data-tab="system" role="tabpanel" aria-label="System">
     <header class="phead"><div class="pcode">00 // system</div><div class="ptitle">System</div><p class="pquote">Choice. The problem is choice.</p></header>
 
@@ -1542,7 +1610,7 @@
 
   <footer class="footer">
     Trading Tracker // Matrix build <span class="appbuild"></span><br>
-    all data stays on this device · keys <span class="kbd">1</span>–<span class="kbd">6</span> switch programs · <span class="kbd">0</span> system<br>
+    all data stays on this device · keys <span class="kbd">1</span>–<span class="kbd">7</span> switch programs · <span class="kbd">0</span> system<br>
     <span class="q">“There is no spoon.”</span>
   </footer>
 
@@ -2485,6 +2553,17 @@
     var X=todayCtx(),p=X.plan,c=ctx.c,T=ctx.trades||[],net=ctx.net,size=sizeTxt(X);
     function tagSum(names){var sm=0,n=0;T.forEach(function(t){if((t.mistakes||[]).some(function(m){return names.indexOf(m)>=0;})){var v=parseFloat(t.p);if(!isNaN(v)){sm+=v;n++;}}});return{s:sm,n:n};}
     if(p.breached)return DAY_COACH[top.k].fix;
+    var fix=dayFixCore(top,ctx,X,p,c,T,net,size,tagSum),exc=leakExceptions(top.k);
+    return fix+(exc?" "+exc:"");
+  }
+  // Solution-focused: recent days where this leak didn't happen — the answer is usually already in your log.
+  function leakExceptions(k){
+    if(["daily-stop","dll","revenge","over-cap","chase","moved-stop","no-setup","early-exit","oversized"].indexOf(k)<0)return"";
+    var c=cfg(),E=orderedLoggedDays().slice(-10),n=0,green=0;
+    E.forEach(function(e){if(!e.trades.length&&k!=="daily-stop"&&k!=="dll")return;var jj=(curJournal()[e.d])||{};var rv=dayReview(c,e.net,jj);if(!rv.leaks.some(function(l){return l.k===k;})){n++;if(e.net>0)green++;}});
+    return n>=2?"You had "+pl(n,"day")+" without it in your last "+pl(E.length,"session")+(green?" ("+green+" of them green)":"")+" — what was different on those? Do that again.":"";
+  }
+  function dayFixCore(top,ctx,X,p,c,T,net,size,tagSum){
     switch(top.k){
       case"max-loss":return"You lost "+fmt(-net)+" against a "+fmt(c.maxloss)+" max loss. Next session: "+fmt(p.riskPerTrade)+" a trade ("+size+") and you're done at -"+fmt(p.lossLimit)+" — set that as the daily loss in your platform before the first trade.";
       case"daily-stop":return(-net>c.stop?"You finished "+fmt(-net-c.stop)+" past your "+fmt(c.stop)+" stop":"You hit your "+fmt(c.stop)+" stop — good that you stopped there")+". Next session ends at -"+fmt(p.lossLimit)+" — "+pl(p.losses,"loser")+" at "+fmt(p.riskPerTrade)+". Put it in the platform so it flattens you.";
@@ -2512,7 +2591,8 @@
       '<div class="coachring"><div class="coachringtxt"><div class="coachgrade">'+tier[1]+'</div><div class="coachscoresub">execution</div></div>'+coachDonut(rv.score)+'</div></div>'+
       '<div class="coachmsg">'+esc(msg)+'</div>'+
       (pts.length?'<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>':'')+
-      coachSection("Fix for next session",esc(ctx?dayFix(top,ctx):(top?DAY_COACH[top.k].fix:"Same again tomorrow — same rules, same size.")))+
+      (top||!rv.itemized?coachSection("Fix for next session",esc(ctx?dayFix(top,ctx):(top?DAY_COACH[top.k].fix:"Same again tomorrow — same rules, same size."))):
+        coachSection("Do more of this","This is your best trading. While it's fresh, write in the Journal what you saw right before your best entry — that's a trigger worth setting up on purpose next session."))+
       (rv.itemized?'':'<div class="hint" style="margin-top:8px">Add this day\'s trades (＋ Trade) with their mistake tags for a fuller read.</div>')+'</div>';
   }
   function renderDays(){
@@ -2888,6 +2968,12 @@
     last5.forEach(function(x){x.trades.forEach(function(tr){(tr.mistakes||[]).forEach(function(m){tags[m]=(tags[m]||0)+1;});});});
     Object.keys(tags).forEach(function(m){if(!top||tags[m]>tags[top])top=m;});
     if(top&&tags[top]>=3)notes.push({t:"warn",h:"<b>"+esc(top)+"</b> showed up "+tags[top]+" times in your last "+pl(last5.length,"session")+". Today: "+esc(MISTAKE_FIX[top]||"name it before every entry and skip the trade if it applies")+"."});
+    if(!p0.breached&&p0.riskPerTrade>0&&p0.lossLimit>=2*p0.riskPerTrade&&p0.lossLimit>=100){
+      var half=Math.floor(p0.lossLimit/2/5)*5;
+      notes.push({t:"ok",h:"Two sessions: stop the morning at <b>-"+fmt(half)+"</b>, take a reset break, and the afternoon gets the rest. A fresh start mid-day keeps one bad hour from becoming a bad day."});
+    }
+    var jt=iso&&jnTomorrow(iso);
+    if(jt)notes.unshift({t:"ok",h:"From your journal ("+weekdayLbl(jt.date)+"): <b>“"+esc(jt.text)+"”</b>"});
     var rw=rebillRunway();
     if(rw&&rw.today)notes.push({t:"warn",h:"<b>Today is the rebill day</b> — you can't trade this account today. Next session: "+(iso?weekdayLbl(iso):"after it")+"."});
     else if(rw&&rw.td<=3)notes.push({t:"warn",h:"Rebills <b>"+weekdayLbl(rw.due)+"</b>"+(rw.price!=null?" ("+fmtc(rw.price)+")":"")+" and you can't trade that day — "+
@@ -2902,7 +2988,7 @@
     var k=modeKey(),id=state.activeId;
     var key=[k,isoDate(),nowCSTMinutes()>=960?1:0,state.firm,state.plan,state.size,JSON.stringify(curLog()),JSON.stringify(curJournal()),JSON.stringify(state.calc||{}),
       (state.stops||{})[k],(state.maxloss||{})[k],(state.targets||{})[k],(state.balance||{})[k],(state.dllAmt||{})[k],(state.consPct||{})[k],(state.days||{})[k],
-      (state.maxTrades||{})[id],(state.stage||{})[id],JSON.stringify(billingOf(id)||null)].join("|");
+      (state.maxTrades||{})[id],(state.stage||{})[id],JSON.stringify(billingOf(id)||null),JSON.stringify(state.dj||null)].join("|");
     if(tpMemo.k===key)return tpMemo.v;
     var c=cfg(),B=bufferInfo(),pi=passInfo(),P=livePlan(),open=openPlanDays(),cs=countedStats(c),funded=stageOf()==="funded";
     var iso=upcomingSessions(1)[0],nextD=open[0]||null,target=0;
@@ -2949,6 +3035,117 @@
     host.className="bufcard todaycard";
     host.innerHTML=head+'<div class="tpgrid">'+cells+'</div><div class="bmsg '+(X.sz.factor<1?"warn":"ok")+'">'+msg+'</div>'+(notes?'<ul class="tpnotes">'+notes+'</ul>':'');
   }
+  // ---- 07 Journal: one entry per date across every account — before the session, after it, and what it taught you ----
+  var JN_EMO=["Calm","Confident","Focused","Patient","FOMO","Anxious","Frustrated","Revenge","Bored","Tired","Greedy","Hesitant"];
+  var jnDate=null,jnTimer=null;
+  function jnStore(){if(!state.dj)state.dj={};return state.dj;}
+  function jnEntry(iso){return jnStore()[iso]||{};}
+  function jnEmpty(e){return !e||!(e.mood||e.sleep||e.disc||e.temp||e.warm||(e.emo&&e.emo.length)||["plan","rules","well","wrong","lesson","tomorrow"].some(function(k){return (e[k]||"").trim();}));}
+  // Every account's result on a date (followers' copies count — those were real trades on those accounts).
+  function jnDayAccts(iso){
+    var rows=[],tot=0,any=false;
+    state.accounts.forEach(function(a){
+      var r=acctNetOn(a,iso);if(!r)return;any=true;tot+=r.v;
+      var k="acct:"+a.id,j=(state.journal&&state.journal[k])||{},d=null;
+      for(var x in j){if(j.hasOwnProperty(x)&&j[x]&&j[x].date===iso){d=x;break;}}
+      var jj=d?j[d]:{},rv=null;
+      if(d&&!r.copied)asAcct(a,function(){var rr=dayReview(cfg(),r.v,jj);if(rr.itemized||rr.leaks.length)rv=rr.score;});
+      rows.push({a:a,v:r.v,copied:r.copied,n:(jj.trades||[]).length,co:rv,followed:!!jj.followed,note:(jj.note||"").trim()});
+    });
+    return{rows:rows,total:tot,any:any};
+  }
+  function jnDefaultDate(){return lastSession();}
+  function jnShift(dir){var d=new Date((jnDate||jnDefaultDate())+"T00:00:00");do{d.setDate(d.getDate()+dir);}while(!isTradingDate(isoOf(d)));var iso=isoOf(d);if(iso>isoDate())return;jnDate=iso;renderJournal();}
+  function renderJournal(){
+    if(!jnDate)jnDate=jnDefaultDate();
+    var iso=jnDate,e=jnEntry(iso),D=jnDayAccts(iso);
+    var di=document.getElementById("jnDate");di.value=iso;di.max=isoDate();
+    document.getElementById("jnNext").disabled=iso>=lastSession();
+    var h='<div class="jdh"><b>'+weekdayLbl(iso)+(iso===isoDate()?" · today":"")+'</b>'+(D.any?'<span class="jdn '+(D.total>0?"g":(D.total<0?"r":""))+'">'+fmt(D.total)+'</span>':'<span class="jdn">—</span>')+'</div>';
+    if(!D.any)h+='<div class="jdnote">No P&amp;L logged on any account for this date'+(isTradingDate(iso)?"":" (not a trading day)")+'. You can still journal it.</div>';
+    D.rows.forEach(function(r){h+='<div class="jdr"><span>'+(r.copied?"⇄ ":"")+esc(r.a.name)+(r.n?'<small>'+pl(r.n,"trade")+'</small>':'')+(r.co!=null?'<small>CO '+r.co+'</small>':'')+(r.followed?'<small>✓ plan</small>':'')+'</span><span class="'+(r.v>0?"g":(r.v<0?"r":""))+'">'+fmt(r.v)+'</span></div>'+(r.note?'<div class="jdnote">'+esc(r.note)+'</div>':'');});
+    document.getElementById("jnDay").innerHTML=h;
+    function scale(k,lbls){return [1,2,3,4,5].map(function(n){return '<button type="button" data-jv="'+n+'" title="'+lbls[n-1]+'" aria-pressed="'+(e[k]===n)+'"'+(e[k]===n?' class="on"':'')+'>'+n+'</button>';}).join("");}
+    document.querySelector('.jnscale[data-jn="mood"]').innerHTML=scale("mood",["Awful","Low","OK","Good","Great"]);
+    document.querySelector('.jnscale[data-jn="disc"]').innerHTML=scale("disc",["Broke my rules","Mostly off plan","Some slips","Mostly clean","By the book"]);
+    document.querySelector('.jnscale[data-jn="temp"]').innerHTML=scale("temp",["Cool & focused","Calm","Warm","Hot","Running hot"]);
+    var wb=document.getElementById("jnWarm");wb.classList.toggle("on",!!e.warm);wb.setAttribute("aria-pressed",e.warm?"true":"false");
+    var emo=e.emo||[];
+    document.querySelector('.jnchips[data-jn="emo"]').innerHTML=JN_EMO.map(function(t){var on=emo.indexOf(t)>=0;return '<button type="button" data-je="'+esc(t)+'" aria-pressed="'+on+'"'+(on?' class="on"':'')+'>'+esc(t)+'</button>';}).join("");
+    document.querySelectorAll('#tab-journal textarea[data-jn], #tab-journal input[data-jn]').forEach(function(el){var k=el.getAttribute("data-jn");if(document.activeElement!==el)el.value=e[k]!=null?e[k]:"";});
+    document.getElementById("jnSaved").textContent=e.t?"saved":"";
+    renderJnCoach();renderJnList();
+  }
+  function jnSet(k,v){
+    var S=jnStore(),e=S[jnDate]||(S[jnDate]={});
+    if(v===""||v==null||(Array.isArray(v)&&!v.length))delete e[k];else e[k]=v;
+    if(jnEmpty(e))delete S[jnDate];else e.t=Date.now();
+  }
+  function jnQueueSave(){
+    var el=document.getElementById("jnSaved");el.textContent="saving…";
+    clearTimeout(jnTimer);jnTimer=setTimeout(function(){save().then(function(){el.textContent=jnStore()[jnDate]?"saved":"";renderJnCoach();renderJnList();tpMemo.k=null;renderToday();});},500);
+  }
+  // journal days with the P&L of every account that date
+  function jnRows(){
+    var S=jnStore();return Object.keys(S).sort().map(function(iso){var D=jnDayAccts(iso),e=S[iso];return{date:iso,e:e,net:D.any?D.total:null,mood:e.mood,sleep:e.sleep,disc:e.disc,emo:e.emo||[]};});
+  }
+  function renderJnCoach(){
+    var host=document.getElementById("jnCoach"),R=jnRows(),days=R.filter(function(r){return r.net!=null;});
+    // streak: trading days in a row, up to the last session, with an entry
+    var streak=0,d=new Date(lastSession()+"T00:00:00");
+    for(var i=0;i<60;i++){var iso=isoOf(d);if(!isTradingDate(iso)){d.setDate(d.getDate()-1);continue;}if(jnStore()[iso])streak++;else if(iso!==isoDate())break;d.setDate(d.getDate()-1);}
+    var reads=CTRules.journalReads(days.map(function(r){var e=r.e,emo=(r.emo||[]).slice();if(e.warm)emo.push("warmed up");if(e.temp>=4)emo.push("running hot");return{net:r.net,mood:r.mood,sleep:r.sleep,disc:r.disc,emo:emo};}));
+    function line(x){
+      var a=x.a,b=x.b,A=cnum(Math.round(a.avg)),B=cnum(Math.round(b.avg));
+      if(x.k==="sleep")return "On <b>under 6½ hours</b> of sleep you average "+A+" ("+pl(a.n,"day")+"); rested, "+B+" ("+pl(b.n,"day")+")."+(x.delta<0?" Short sleep is a reason for half size — or a day off.":"");
+      if(x.k==="mood")return "Days you start in a <b>low mood (1–2)</b> average "+A+"; good-mood days (4–5) "+B+"."+(x.delta<0?" Check in before the open — a low day is a small day.":"");
+      if(x.k==="disc")return "Days you rated your <b>discipline 3 or under</b> average "+A+"; 4–5 days "+B+". The rating is honest — the money agrees.";
+      var tag=x.k.slice(4);return "Days you felt <b>"+esc(tag)+"</b> average "+A+" ("+pl(a.n,"day")+") against "+B+" on your other journaled days."+(x.delta<0?" When you notice it, size down or step away.":" Whatever gets you there, do more of it.");
+    }
+    var h='<div class="note" style="margin:0 0 8px">Coach Co reads your journal the way <i>Positive Trading Psychology</i> suggests: find what\'s there on your best days, and catch your triggers before they run the session.</div><div class="coachpoints" style="margin-top:0"><span>'+pl(Object.keys(jnStore()).length,"entry","entries")+'</span><span>'+streak+'-day journal streak</span></div>';
+    if(reads.length)h+='<ul class="jncoach" style="list-style:none;padding:0;margin:10px 0 0">'+reads.slice(0,4).map(function(x){return '<li>'+(x.delta<0?"▲ ":"✓ ")+line(x)+'</li>';}).join("")+'</ul>';
+    else h+='<div class="note">Journal '+(days.length<6?(6-days.length)+" more trading day"+(6-days.length===1?"":"s")+" (with P&amp;L logged)":"a few more days, filling in mood, sleep and how you felt")+' and Coach Co will start showing how sleep, mood and emotions line up with your results.</div>';
+    host.innerHTML=h;
+  }
+  function renderJnList(){
+    var q=(document.getElementById("jnSearch").value||"").toLowerCase(),R=jnRows().reverse(),host=document.getElementById("jnList");
+    var F=R.filter(function(r){if(!q)return true;var e=r.e;return [e.plan,e.rules,e.well,e.wrong,e.lesson,e.tomorrow,(e.emo||[]).join(" ")].join(" ").toLowerCase().indexOf(q)>=0;});
+    if(!R.length){host.innerHTML='<div class="empty">Your entries show here. Start with today — even two lines count.</div>';return;}
+    if(!F.length){host.innerHTML='<div class="empty">No entries match.</div>';return;}
+    host.innerHTML=F.slice(0,60).map(function(r){var e=r.e,txt=e.lesson||e.wrong||e.well||e.plan||e.tomorrow||"";
+      return '<div class="jnent" data-jd="'+r.date+'" role="button" tabindex="0"><div class="jeh"><span>'+weekdayLbl(r.date)+(e.mood?" · mood "+e.mood:"")+(e.disc?" · discipline "+e.disc:"")+'</span><span class="'+(r.net>0?"g":(r.net<0?"r":""))+'">'+(r.net!=null?fmt(r.net):"—")+'</span></div>'+
+        ((e.emo||[]).length?'<div class="jet">'+esc(e.emo.join(" · "))+'</div>':'')+(txt?'<div class="jet">'+esc(txt)+'</div>':'')+'</div>';}).join("");
+  }
+  // the latest "one thing for tomorrow" written before the next session
+  function jnTomorrow(iso){
+    var S=jnStore(),best=null;
+    Object.keys(S).forEach(function(k){if(k<iso&&S[k].tomorrow&&S[k].tomorrow.trim()&&(!best||k>best))best=k;});
+    return best?{date:best,text:S[best].tomorrow.trim()}:null;
+  }
+  (function(){
+    var P=document.getElementById("tab-journal");
+    P.addEventListener("click",function(ev){
+      if(ev.target.closest("#jnPrev")){jnShift(-1);return;}
+      if(ev.target.closest("#jnNext")){jnShift(1);return;}
+      if(ev.target.closest("#jnToday")){jnDate=jnDefaultDate();renderJournal();return;}
+      if(ev.target.closest("#jnWarm")){jnSet("warm",jnEntry(jnDate).warm?"":true);renderJournal();jnQueueSave();return;}
+      var sb=ev.target.closest(".jnscale [data-jv]");
+      if(sb){var k=sb.parentNode.getAttribute("data-jn"),v=+sb.getAttribute("data-jv");jnSet(k,jnEntry(jnDate)[k]===v?"":v);renderJournal();jnQueueSave();return;}
+      var eb=ev.target.closest(".jnchips [data-je]");
+      if(eb){var t=eb.getAttribute("data-je"),cur=(jnEntry(jnDate).emo||[]).slice(),i=cur.indexOf(t);if(i>=0)cur.splice(i,1);else cur.push(t);jnSet("emo",cur);renderJournal();jnQueueSave();return;}
+      var ent=ev.target.closest("[data-jd]");
+      if(ent){jnDate=ent.getAttribute("data-jd");renderJournal();document.getElementById("jnDate").scrollIntoView({block:"center"});}
+    });
+    P.addEventListener("keydown",function(ev){var ent=ev.target.closest&&ev.target.closest("[data-jd]");if(ent&&(ev.key==="Enter"||ev.key===" ")){ev.preventDefault();ent.click();}});
+    P.addEventListener("input",function(ev){
+      if(ev.target.id==="jnSearch"){renderJnList();return;}
+      var k=ev.target.getAttribute&&ev.target.getAttribute("data-jn");if(!k)return;
+      var v=ev.target.value;if(k==="sleep"){v=v===""?"":Math.max(0,Math.min(14,parseFloat(v)));if(v!==""&&isNaN(v))v="";}
+      jnSet(k,v);jnQueueSave();
+    });
+    P.addEventListener("change",function(ev){if(ev.target.id==="jnDate"){var v=ev.target.value;if(v&&v<=isoDate()){jnDate=v;renderJournal();}else ev.target.value=jnDate;}});
+  })();
+
   // ---- futures position-size calculator ----
   function psState(){if(!state.calc)state.calc={instr:"NQ",stop:10,risk:null,unit:"pts",tgt:null,riskUnit:"$",side:"long",entry:null};
     var p=state.calc;if(!p.unit)p.unit="pts";if(!p.riskUnit)p.riskUnit="$";if(!p.side)p.side="long";return p;}
@@ -3540,7 +3737,27 @@
     }
   };
   // rotating operating principles — the frame, not the instruction
-  var COACH_PRINCIPLES=[
+  // Coach Co's mindset: the ideas of Dr. Brett Steenbarger's Positive Trading Psychology (Harriman House, 2026),
+  // in Coach Co's own words — build on strengths, coach while it's fresh, rehearse the mindset, catch your triggers.
+  var COACH_MIND=[
+    "<b>Your best trading is your best teacher.</b> Study the days you got it right as closely as the days you didn't.",
+    "<b>Do more of what works.</b> When the problem isn't happening, you're already doing something right — find it and repeat it.",
+    "<b>At times you're already the trader you want to be.</b> The job isn't to become someone else; it's to be that trader more often.",
+    "<b>Confidence is earned in practice.</b> It comes from reps that worked, not from talking yourself into it.",
+    "<b>Trading is a performance field.</b> Talent needs deliberate practice and time — give the learning curve the days it needs.",
+    "<b>Coach yourself while it's fresh.</b> The review that changes you happens right after the session, not a week later.",
+    "<b>Feelings carry information.</b> Don't bury them and don't wallow in them — read what they're telling you, then act.",
+    "<b>Warm up your mind, not just your charts.</b> Prepare yourself to trade, not only your levels.",
+    "<b>What you repeat, you become.</b> A calm, focused routine every day builds calm, focused sessions.",
+    "<b>Autopilot is the real enemy.</b> Tilt starts when your triggers fire and nobody's watching — take your temperature.",
+    "<b>Know your good triggers too.</b> Notice what's there when you trade at your best, and set it up on purpose.",
+    "<b>Two sessions, two chances.</b> Split the day with a break and a fresh limit — you reset, and you get twice the practice.",
+    "<b>What you measure, you can improve.</b> The log and the journal are how you see yourself clearly.",
+    "<b>Setbacks are the weights.</b> A hard day is resistance training for your process, not a verdict on you.",
+    "<b>Build on strengths, not only against weaknesses.</b> Only fixing flaws teaches you that you're flawed.",
+    "<b>Your life feeds your trading.</b> Sleep, health and the people around you are part of your edge."
+  ];
+  var COACH_PRINCIPLES=COACH_MIND.concat([
     "<b>Process over outcome.</b> A good trade can lose and a bad trade can win. Grade the decision, not the result.",
     "<b>Expectancy is the only score.</b> Win rate without payoff ratio is a vanity metric.",
     "<b>Risk is chosen, return is not.</b> The only variable you fully control is how much you can lose.",
@@ -3562,8 +3779,8 @@
     "<b>Loss is inventory.</b> Budget for it in advance and it stops being an emotional event.",
     "<b>You are paid for what you don't take.</b> Filtering is the job; entering is the easy part.",
     "<b>Don't confuse activity with progress.</b> More screens, more trades, more indicators — none of it is edge.",
-    "<b>Review cold.</b> Decisions made while money is moving are worth less than decisions made the next morning."
-  ];
+    "<b>Decide the plan before money moves.</b> Rules set ahead of the open beat rules invented mid-trade."
+  ]);
   var FOCUS_MSG={
     new:[
       "Log every trade honestly, win or lose — that's the whole job today.",
@@ -3832,6 +4049,26 @@
     if(t.n<12)gaps.push("<b>"+(12-t.n)+" more logged trades</b> unlocks the expectancy-vs-target read.");
     return gaps.slice(0,2);
   }
+  // Solution-focused: what's there on your green days that isn't on your red ones. Do more of that trader.
+  function bestTraderRead(){
+    var E=orderedLoggedDays();if(E.length<6)return null;
+    var G=E.filter(function(e){return e.net>0;}),R=E.filter(function(e){return e.net<0;});if(G.length<2||R.length<2)return null;
+    var cap=maxTradesOf(),S=state.dj||{},parts=[];
+    function st(L){var o={n:L.length,f:0,tr:0,itm:0,clean:0};L.forEach(function(e){if(e.followed)o.f++;var n=e.trades.length;if(n){o.itm++;o.tr+=n;if(!e.trades.some(function(t){return(t.mistakes||[]).length;}))o.clean++;}});o.avg=o.itm?o.tr/o.itm:null;return o;}
+    function mean(a){return a.reduce(function(x,y){return x+y;},0)/a.length;}
+    var g=st(G),r=st(R);
+    if(g.f+r.f>0&&g.f/g.n>r.f/r.n)parts.push("you followed the plan on "+g.f+" of "+g.n+" (red days: "+r.f+" of "+r.n+")");
+    if(g.itm>=2&&r.itm>=2&&r.avg-g.avg>=0.5)parts.push("took "+g.avg.toFixed(1)+" trades a day (red days: "+r.avg.toFixed(1)+(cap>0?", cap "+cap:"")+")");
+    if(g.itm>=2&&r.itm>=2&&g.clean/g.itm>r.clean/r.itm+0.2)parts.push("traded mistake-free on "+g.clean+" of "+g.itm+" (red days: "+r.clean+" of "+r.itm+")");
+    var su={};G.forEach(function(e){e.trades.forEach(function(t){var p=parseFloat(t.p),k=(t.s||"").trim();if(k&&!isNaN(p))su[k]=(su[k]||0)+p;});});
+    var top=Object.keys(su).sort(function(a,b){return su[b]-su[a];})[0];if(top&&su[top]>0)parts.push("<b>"+esc(top)+"</b> did most of the work");
+    var gs=[],rs=[];G.forEach(function(e){var x=e.date&&S[e.date];if(x&&x.sleep)gs.push(x.sleep);});R.forEach(function(e){var x=e.date&&S[e.date];if(x&&x.sleep)rs.push(x.sleep);});
+    if(gs.length>=2&&rs.length>=2&&mean(gs)-mean(rs)>=0.5)parts.push("slept "+mean(gs).toFixed(1)+" hours (red days: "+mean(rs).toFixed(1)+")");
+    var gw=0,gwn=0;G.forEach(function(e){var x=e.date&&S[e.date];if(x){gwn++;if(x.warm)gw++;}});
+    if(gwn>=2&&gw/gwn>=0.6)parts.push("did your mind warm-up "+gw+" of "+gwn+" times");
+    if(!parts.length)return null;
+    return "On your "+pl(g.n,"green day")+" "+parts.join(", ")+". That's you at your best — next session, be more of that trader, not a different one.";
+  }
   function coachAssessment(){
     var s=disciplineStats();
     if(!s.tradingDays)return{tier:"new",score:null};
@@ -3894,7 +4131,8 @@
   function renderCoach(){
     var host=document.getElementById("coachCard");if(!host)return;
     var a=coachAssessment(),seed=today()+":"+state.activeId+":";
-    var principle='<div class="coachprin">'+coachPick(COACH_PRINCIPLES,seed+"prin")+'</div>';
+    var prinTxt=coachPick(COACH_PRINCIPLES,seed+"prin");
+    var principle='<div class="coachprin">'+prinTxt+(COACH_MIND.indexOf(prinTxt)>=0?'<span class="coachcred">— Coach Co\'s mindset, after Dr. Brett Steenbarger\'s <i>Positive Trading Psychology</i></span>':'')+'</div>';
     function head(sub,label){
       return '<div class="coachtop">'+
         '<div class="coachav">CO</div>'+
@@ -3945,6 +4183,8 @@
     html+=head(pl(s.tradingDays,"session")+" reviewed",tierLabel);
     html+='<div class="coachmsg">'+esc(msg)+'</div>';
     if(pts.length)html+='<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>';
+    var best=bestTraderRead();
+    if(best)html+=coachSection("At your best · do more of this",best);
     if(ins.length)html+=coachSection("The edge · from your own log",ins[0].body);
     html+=coachSection("Today's focus",esc(coachFocus(a)));
     var gaps=coachDataGaps(a);
@@ -4409,7 +4649,7 @@
     });
   });
 
-  function renderAll(){syncFollowers();renderCopyPanel();renderGroup();renderAcctBar();renderPlan();renderBilling();renderDays();refreshProgress();renderStats();renderMM();renderPS();renderRules();renderCalendar();if(rpInit)rpRenderSetup();rpRenderLog();}
+  function renderAll(){syncFollowers();renderCopyPanel();renderGroup();renderAcctBar();renderPlan();renderBilling();renderDays();refreshProgress();renderStats();renderMM();renderPS();renderRules();renderCalendar();if(rpInit)rpRenderSetup();rpRenderLog();if(curTab==="journal")renderJournal();}
 
   function editKpi(elId,getCur,setVal){
     var el=document.getElementById(elId);
@@ -6356,7 +6596,7 @@
   var rain=makeRain(document.getElementById("mxRain"));
 
   // ---- programs (tabs) ----
-  var TABS=["core","intel","protocol","armory","path","replay","system"],curTab=null,lastProgram="core",tabScroll={};
+  var TABS=["core","intel","protocol","armory","path","replay","journal","system"],curTab=null,lastProgram="core",tabScroll={};
   function showTab(t,o){
     o=o||{};
     if(TABS.indexOf(t)<0)t="core";
@@ -6369,6 +6609,7 @@
     try{localStorage.setItem(UI_KEY,JSON.stringify({tab:t}));}catch(e){}
     if(t==="intel")renderStats(); // fit the equity curve to the now-visible card
     if(t==="replay")rpEnter();else if(prev==="replay")rpPlay(false);
+    if(t==="journal")renderJournal();
     if(prev&&!o.keepScroll)window.scrollTo(0,tabScroll[t]||0);
     if(prev){var pn=document.getElementById("tab-"+t);if(pn)decodeText(pn.querySelector(".ptitle"),520);}
   }
@@ -6385,7 +6626,7 @@
     e.preventDefault();var n=btns[(i+(e.key==="ArrowRight"?1:btns.length-1))%btns.length];n.focus();showTab(n.getAttribute("data-tab"));
   });
   document.getElementById("btnSystem").addEventListener("click",function(){showTab(curTab==="system"?lastProgram:"system");});
-  var KEYTAB={"1":"core","2":"intel","3":"protocol","4":"armory","5":"path","6":"replay","0":"system"};
+  var KEYTAB={"1":"core","2":"intel","3":"protocol","4":"armory","5":"path","6":"replay","7":"journal","0":"system"};
   document.addEventListener("keydown",function(e){
     if(mxDlgOpen||booting||e.metaKey||e.ctrlKey||e.altKey)return;
     var t=e.target,tag=t&&t.tagName;
@@ -6577,7 +6818,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v87";
+var APP_BUILD="v89";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

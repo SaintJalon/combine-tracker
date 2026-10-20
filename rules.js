@@ -161,7 +161,29 @@
     return { perDay: Math.ceil(rem / days), days: days, extra: days - left, status: 'stretched' };
   }
 
-  var api = { paceAdjust: paceAdjust, effectiveTarget: effectiveTarget, tomorrowCap: tomorrowCap, eodFloor: eodFloor, reviewDay: reviewDay,
+  // What the journal says about your P&L. entries = [{ date, net, mood (1–5), sleep (hours), disc (1–5), emo: [tags] }]
+  // (only days with a net count). → [{ k: 'sleep'|'mood'|'disc'|'emo:<tag>', a: {n, avg}, b: {n, avg}, delta }], biggest
+  // gap first; each needs 3+ days on both sides. a = the side worth naming (short sleep, low mood, low discipline, the feeling).
+  function journalReads(entries) {
+    var E = (entries || []).filter(function (e) { return e && typeof e.net === 'number' && isFinite(e.net); }), out = [];
+    function split(k, inA, inB) {
+      var a = { n: 0, sum: 0 }, b = { n: 0, sum: 0 };
+      E.forEach(function (e) { if (inA(e)) { a.n++; a.sum += e.net; } else if (inB(e)) { b.n++; b.sum += e.net; } });
+      if (a.n >= 3 && b.n >= 3) { a.avg = a.sum / a.n; b.avg = b.sum / b.n; out.push({ k: k, a: a, b: b, delta: a.avg - b.avg }); }
+    }
+    split('sleep', function (e) { return e.sleep > 0 && e.sleep < 6.5; }, function (e) { return e.sleep >= 6.5; });
+    split('mood', function (e) { return e.mood > 0 && e.mood <= 2; }, function (e) { return e.mood >= 4; });
+    split('disc', function (e) { return e.disc > 0 && e.disc <= 3; }, function (e) { return e.disc >= 4; });
+    var tags = {};
+    E.forEach(function (e) { (e.emo || []).forEach(function (t) { tags[t] = 1; }); });
+    Object.keys(tags).forEach(function (t) {
+      split('emo:' + t, function (e) { return (e.emo || []).indexOf(t) >= 0; }, function (e) { return (e.emo || []).length > 0 && (e.emo || []).indexOf(t) < 0; });
+    });
+    out.sort(function (x, y) { return Math.abs(y.delta) - Math.abs(x.delta); });
+    return out;
+  }
+
+  var api = { journalReads: journalReads, paceAdjust: paceAdjust, effectiveTarget: effectiveTarget, tomorrowCap: tomorrowCap, eodFloor: eodFloor, reviewDay: reviewDay,
     todayPlan: todayPlan, passOdds: passOdds, byWeekday: byWeekday, fastestPath: fastestPath };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.CTRules = api;
