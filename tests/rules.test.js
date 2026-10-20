@@ -160,4 +160,15 @@ t('pace: nothing left → done', () => {
   assert.strictEqual(R.paceAdjust({ remaining: -50, daysLeft: 3, base: 300, cap: 450 }).status, 'done');
 });
 
+// Journal reads
+t('journal: short-sleep days and FOMO days stand out; small samples stay quiet', () => {
+  const E = [
+    { net: -300, sleep: 5, mood: 2, disc: 2, emo: ['FOMO'] }, { net: -150, sleep: 6, mood: 3, disc: 3, emo: ['FOMO'] }, { net: -200, sleep: 5.5, mood: 2, disc: 2, emo: ['FOMO', 'Tired'] },
+    { net: 400, sleep: 8, mood: 4, disc: 5, emo: ['Calm'] }, { net: 250, sleep: 7, mood: 5, disc: 4, emo: ['Calm'] }, { net: 300, sleep: 7.5, mood: 4, disc: 4, emo: ['Calm'] }];
+  const r = R.journalReads(E), sl = r.find(x => x.k === 'sleep'), fo = r.find(x => x.k === 'emo:FOMO');
+  assert.strictEqual(sl.a.n, 3); assert.strictEqual(Math.round(sl.a.avg), -217); assert.strictEqual(Math.round(sl.b.avg), 317);
+  assert.ok(fo.delta < 0); assert.ok(!r.find(x => x.k === 'emo:Tired')); assert.ok(!r.find(x => x.k === 'mood'));
+  assert.deepStrictEqual(R.journalReads(E.slice(0, 4)), []);
+});
+
 console.log('\n' + n + ' passed');
