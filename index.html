@@ -409,6 +409,14 @@
   .bufcard .bmsg.ok{background:var(--green-soft);border-color:rgba(var(--green-rgb),.3);color:var(--msg-ok)}
   .bufcard .bmsg.warn{background:var(--amber-soft);border-color:var(--amber-soft);color:var(--msg-warn)}
   .bufcard .bmsg.bad{background:var(--red-soft);border-color:var(--red-soft);color:var(--msg-bad)}
+  .todaycard .tpwhen{font-size:11.5px;color:var(--muted)}.todaycard .tpwhen .a{color:var(--amber)}
+  .todaycard .tpgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:12px}
+  .todaycard .bcell .v.r{color:var(--red)}.todaycard .bcell .v.g{color:var(--green)}
+  .todaycard .tpsub{font-size:10.5px;color:var(--muted2);margin-top:3px;line-height:1.35}
+  .todaycard .tpnotes{list-style:none;margin:10px 0 0;padding:0;font-size:11.5px;line-height:1.5}
+  .todaycard .tpnotes li{padding:5px 0;border-top:1px solid var(--line)}
+  .todaycard .tpnotes li.warn{color:var(--msg-warn)}.todaycard .tpnotes li.ok{color:var(--msg-ok)}
+  @media(max-width:760px){.todaycard .tpgrid{grid-template-columns:repeat(2,1fr)}}
 
   /* ---------- day cards ---------- */
   .days{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
@@ -532,6 +540,27 @@
   .calcell.istoday .cn{color:var(--accent)}
   .calcell.istoday .cn::after{content:" ◂ today";font-size:8.5px;letter-spacing:.1em;text-transform:uppercase}
   .calsum{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-top:12px;font-size:11.5px;color:var(--muted)}
+  .calsum .calpath{flex-basis:100%;color:var(--text)}
+  .calcell .cok{color:var(--green);font-weight:800}
+  .calcell .cco{display:block;font-size:9px;font-weight:800;letter-spacing:.06em;margin-top:3px}
+  .calcell .cco.g{color:var(--green)}.calcell .cco.a{color:var(--amber)}.calcell .cco.r{color:var(--red)}
+  .calcell .crisk{display:block;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--amber);margin-top:3px}
+  .calcell.plan.risk{border-color:var(--amber)}
+  .calcell.calpick{outline:2px solid var(--accent);outline-offset:1px}
+  .caldet{margin-top:10px;border:1px solid var(--accent-border);border-radius:3px;padding:10px 12px;font-size:12px;background:var(--card)}
+  .caldet .cdh{display:flex;align-items:center;gap:6px}.caldet .cdh .secbtn{margin-left:auto;padding:2px 9px}
+  .caldet .acc{color:var(--accent);font-weight:800}
+  .caldet ul{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 14px}
+  .caldet li{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:5px}
+  .caldet li span{color:var(--muted)}.caldet li b.g{color:var(--green)}.caldet li b.r{color:var(--red)}.caldet li b.a{color:var(--amber)}
+  .caldet .cdw{margin-top:8px;color:var(--msg-warn)}.caldet .cdb{margin-top:8px}
+  .calleg{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:10.5px;color:var(--muted2)}
+  .calleg span{display:inline-flex;align-items:center;gap:5px}.calleg b{color:var(--green);font-size:9.5px}
+  .calleg .sw{display:inline-block;width:12px;height:12px;border:1px solid var(--line);border-radius:2px;background:var(--card)}
+  .calleg .sw.win{border-color:var(--green);background:var(--green-soft)}.calleg .sw.partial{border-color:var(--amber);background:var(--amber-soft)}
+  .calleg .sw.loss{border-color:var(--red);background:var(--red-soft)}.calleg .sw.plan{border-style:dashed;border-color:var(--muted2)}
+  .calleg .sw.passday{border-color:var(--accent);background:var(--accent-soft)}.calleg .sw.risk{border-style:dashed;border-color:var(--amber)}
+  .calleg .sw.rebill{border-color:var(--red)}
   .calsum b{color:var(--text)}
 
   /* ---------- stats + analytics ---------- */
@@ -1208,7 +1237,9 @@
         </div>
         <div class="calwk"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div>
         <div class="calgrid" id="calGrid"></div>
+        <div class="caldet" id="calDet" hidden></div>
         <div class="calsum" id="calSum"></div>
+        <div class="calleg" id="calLeg"><span><i class="sw win"></i>hit target</span><span><i class="sw partial"></i>green, under target</span><span><i class="sw loss"></i>red</span><span><i class="sw plan"></i>plan day</span><span><i class="sw passday"></i>pass day</span><span><i class="sw risk"></i>at risk</span><span><i class="sw rebill"></i>rebill</span><span><b>CO 85</b> Coach Co grade · ✓ followed plan</span></div>
       </div>
 
       <h2 class="section" id="h1">Week 1 — Build the Buffer</h2>
@@ -1233,6 +1264,8 @@
       </div>
       <div class="bufcard" id="bufCard"></div>
     </div>
+
+    <div class="bufcard todaycard" id="todayCard"></div>
 
     <div class="coachcard" id="coachCard"></div>
 
@@ -1980,6 +2013,7 @@
     var rows=Math.ceil((mondayBack+daysInMonth)/7);
     var cur=new Date(y,m,1-mondayBack);
     var todayIso=isoDate(),html="",monthTotal=0,openCount=0,pi=passInfo(),planOn={},extraOn={},rvp=rebillVsPass(),rbDue=rebillDue();
+    var X=todayCtx(),consDay=X.pct?X.pct*c.target:Infinity,riskN=0,firstOpen=null;
     if(!pi.hit){
       var up=upcomingSessions(Math.max(pi.sessions,pi.open.length));
       pi.open.forEach(function(d,i){planOn[up[i]]=d;});
@@ -1998,11 +2032,16 @@
             var tgt=(dIdx>=1&&dIdx<=c.days)?P.live[dIdx-1]:0;
             if(val>=tgt)cls.push("win");else if(val>0)cls.push("partial");else cls.push("loss");
             monthTotal+=val;
-            content='<span class="cn">'+cur.getDate()+'</span><span class="cv">'+fmt(val)+'</span>';
+            var jl=j[dIdx]||{},rv=dayReview(c,val,jl),graded=rv.itemized||rv.leaks.length;
+            content='<span class="cn">'+cur.getDate()+(jl.followed?' <span class="cok" title="Followed the plan">✓</span>':'')+'</span><span class="cv">'+fmt(val)+'</span>'+
+              (graded?'<span class="cco '+(rv.score>=85?"g":(rv.score>=65?"a":"r"))+'" title="Coach Co execution grade">CO '+rv.score+'</span>':'');
           }else if(planOn[iso]){
             // a plan day not traded yet: when it falls if you trade every open session from here
             var pdn=planOn[iso],isPass=iso===pi.iso;cls.push("open","plan");if(isPass)cls.push("passday");if(rbDue&&iso>=rbDue)cls.push("late");openCount++;
-            content='<span class="cn">'+cur.getDate()+'</span><span class="cplan">Day '+pdn+(isPass?' · pass':'')+'</span><span class="cpt">'+(P.live[pdn-1]>0?'+'+fmt(P.live[pdn-1]):'just trade')+'</span>';
+            // what makes this day risky for the pass: too big for consistency, a thin buffer next session, past the rebill
+            var why=P.live[pdn-1]>consDay?"too big":(iso===X.iso&&X.plan.limitBy==="buffer"?"thin buffer":(rbDue&&iso>=rbDue?"after rebill":""));
+            if(why){cls.push("risk");riskN++;}
+            content='<span class="cn">'+cur.getDate()+'</span><span class="cplan">Day '+pdn+(isPass?' · pass':'')+'</span><span class="cpt">'+(P.live[pdn-1]>0?'+'+fmt(P.live[pdn-1]):'just trade')+'</span>'+(why?'<span class="crisk">▲ '+why+'</span>':'');
           }else if(extraOn[iso]){
             // past the plan's days: what it takes at the plan's pace, or to reach the minimum days
             var isPass2=iso===pi.iso;cls.push("open","plan","extra");if(isPass2)cls.push("passday");if(rbDue&&iso>=rbDue)cls.push("late");openCount++;
@@ -2015,7 +2054,7 @@
             content='<span class="cn">'+cur.getDate()+'</span><span class="cadd">+ log</span>';
           }
           if(iso===rbDue){cls.push("rebill");content+='<span class="crb">↻ rebill</span>';}
-          html+='<div class="calcell '+cls.join(" ")+'" data-date="'+iso+'"'+(planOn[iso]?' data-plan="'+planOn[iso]+'"':'')+'>'+content+'</div>';
+          html+='<div class="calcell '+cls.join(" ")+(iso===calSel?" calpick":"")+'" data-date="'+iso+'"'+(planOn[iso]?' data-plan="'+planOn[iso]+'"':'')+(extraOn[iso]?' data-extra="1"':'')+'>'+content+'</div>';
         }
         cur.setDate(cur.getDate()+1);
       }
@@ -2027,7 +2066,40 @@
     var offDays=[];for(var od=1;od<=c.days;od++){if((od in log)&&j[od]&&j[od].date){var odt=new Date(j[od].date+"T00:00:00"),ow=odt.getDay();if(ow===0||ow===6||holidayOn(j[od].date))offDays.push("Day "+od+" ("+weekdayLbl(j[od].date)+")");}}
     if(offDays.length)statusTxt+=' · <span class="a">'+offDays.join(", ")+' '+(offDays.length===1?"is":"are")+' dated on a non-trading day — open '+(offDays.length===1?"it":"them")+' and fix the date</span>';
     if(!pi.hit&&pi.iso)statusTxt+=" · on plan, passes ≈ <b>"+weekdayLbl(pi.iso)+"</b>"+(pi.extra&&!pi.minHeld?" ("+pl(pi.extra,"day")+" past the plan)":"")+(pi.minHeld?" (min "+pi.minD+" days)":"")+(rvp&&rvp.late?' <span class="r">— after the rebill</span>':'');
-    document.getElementById("calSum").innerHTML="<span>Month total <b>"+fmt(monthTotal)+"</b> / "+fmt(T)+"</span><span>"+statusTxt+"</span>";
+    // the fastest path that keeps consistency clean, at a day size you've actually shown you can make
+    var path="";
+    if(!pi.hit&&pi.left>0){
+      var greens=datedDays().days.filter(function(x){return x.net>0;}),avgG=greens.length>=3?greens.reduce(function(a,x){return a+x.net;},0)/greens.length:0;
+      var fp=CTRules.fastestPath({remaining:pi.left,target:c.target,pct:X.pct,minLeft:X.minLeft,perDayMax:avgG>0?Math.round(avgG):Math.round(c.target/c.days*1.5)});
+      var fpIso=upcomingSessions(fp.days)[fp.days-1];
+      var consBound=X.pct&&fp.perDay>=Math.floor(X.pct*c.target)-1;
+      if(consBound||avgG>0)path='<span class="calpath">'+(consBound?'Fastest clean path':'At '+(avgG>0?'your average green day':'1.5× the plan\'s average day'))+': <b>'+pl(fp.days,"day")+' of +'+fmt(fp.perDay)+'</b>'+(consBound?' (consistency caps a day at '+fmt(X.pct*c.target)+')':'')+' → passes ≈ <b>'+weekdayLbl(fpIso)+'</b>'+(pi.iso&&fpIso>pi.iso?' — later than the plan, which asks more per day':'')+
+        (rbDue?(fpIso<rbDue?', before the rebill on '+weekdayLbl(rbDue):' <span class="r">— still after the rebill on '+weekdayLbl(rbDue)+'</span>'):'')+'. Tap a plan day for its numbers.</span>';
+    }
+    if(riskN)statusTxt+=' · <span class="a">▲ '+pl(riskN,"plan day")+' at risk</span>';
+    document.getElementById("calSum").innerHTML="<span>Month total <b>"+fmt(monthTotal)+"</b> / "+fmt(T)+"</span><span>"+statusTxt+"</span>"+path;
+    renderCalDet();
+  }
+  // The numbers for one future day of the plan, opened by tapping it on the calendar.
+  var calSel=null;
+  function renderCalDet(){
+    var el=document.getElementById("calDet");if(!el)return;
+    var cell=calSel&&document.querySelector('#calGrid .calcell[data-date="'+calSel+'"]');
+    if(!cell||!(cell.dataset.plan||cell.dataset.extra)){el.hidden=true;el.innerHTML="";return;}
+    var c=cfg(),P=livePlan(),X=todayCtx(),p=X.plan,rbDue=rebillDue(),d=cell.dataset.plan?+cell.dataset.plan:null,need=d?P.live[d-1]:Math.ceil(Math.max(0,X.pi.left)/Math.max(1,X.pi.extra||1));
+    var isNext=calSel===X.iso,lines=[];
+    lines.push('<li><span>Need</span><b class="g">'+(need>0?"+"+fmt(need):"just trade the day")+'</b></li>');
+    lines.push('<li><span>'+(isNext?"Max loss":"Max loss (at today's buffer)")+'</span><b class="r">-'+fmt(p.lossLimit)+'</b></li>');
+    lines.push('<li><span>Risk a trade</span><b>'+fmt(p.riskPerTrade)+' · '+esc(sizeTxt(X))+'</b></li>');
+    if(X.pct)lines.push('<li><span>Biggest clean day</span><b'+(need>X.pct*c.target?' class="a"':'')+'>'+fmt(X.pct*c.target)+'</b></li>');
+    var warn=[];
+    if(X.pct&&need>X.pct*c.target)warn.push("This day's share of the plan is bigger than consistency allows — spread it: make the earlier days count, or add a day.");
+    if(rbDue&&calSel>=rbDue)warn.push("It falls on or after the rebill ("+weekdayLbl(rbDue)+").");
+    if(isNext&&p.limitBy==="buffer")warn.push("Your buffer is thin — today's loss limit is half of it.");
+    el.hidden=false;
+    el.innerHTML='<div class="cdh"><b>'+weekdayLbl(calSel)+'</b> · '+(d?"plan day "+d:"past the plan")+(calSel===X.pi.iso?' · <span class="acc">pass day</span>':'')+'<button type="button" class="secbtn" id="calDetX" aria-label="Close">×</button></div>'+
+      '<ul>'+lines.join("")+'</ul>'+(warn.length?'<div class="cdw">▲ '+warn.join(" ")+'</div>':'')+
+      '<div class="cdb"><button type="button" class="secbtn" id="calDetOpen">'+(d?"Open day "+d:"Log this day")+' ›</button></div>';
   }
 
   // ---- copy trading: mirror one of my accounts into the others ----
@@ -2377,7 +2449,29 @@
     var cons=c.consPct>0&&stageOf()!=="funded"&&val>0&&val/(c.consPct/100)>c.baseTarget;
     return CTRules.reviewDay({net:val,trades:(jj&&jj.trades)||[],followed:!!(jj&&jj.followed)},{stop:c.stop,dll:c.dllAmt,maxloss:c.maxloss,cap:maxTradesOf(),consRaise:cons});
   }
-  function dayCoachHtml(rv){
+  // The fix for tomorrow, written with this account's own numbers. ctx = {net, trades, c}
+  function dayFix(top,ctx){
+    if(!top)return"Same again next session — same rules, same size.";
+    var X=todayCtx(),p=X.plan,c=ctx.c,T=ctx.trades||[],net=ctx.net,size=sizeTxt(X);
+    function tagSum(names){var sm=0,n=0;T.forEach(function(t){if((t.mistakes||[]).some(function(m){return names.indexOf(m)>=0;})){var v=parseFloat(t.p);if(!isNaN(v)){sm+=v;n++;}}});return{s:sm,n:n};}
+    if(p.breached)return DAY_COACH[top.k].fix;
+    switch(top.k){
+      case"max-loss":return"You lost "+fmt(-net)+" against a "+fmt(c.maxloss)+" max loss. Next session: "+fmt(p.riskPerTrade)+" a trade ("+size+") and you're done at -"+fmt(p.lossLimit)+" — set that as the daily loss in your platform before the first trade.";
+      case"daily-stop":return(-net>c.stop?"You finished "+fmt(-net-c.stop)+" past your "+fmt(c.stop)+" stop":"You hit your "+fmt(c.stop)+" stop — good that you stopped there")+". Next session ends at -"+fmt(p.lossLimit)+" — "+pl(p.losses,"loser")+" at "+fmt(p.riskPerTrade)+". Put it in the platform so it flattens you.";
+      case"dll":return"The firm paused you at -"+fmt(c.dllAmt)+". Next session your own line is -"+fmt(Math.min(p.lossLimit,Math.round(c.dllAmt*0.8)))+", so you stop before the firm does.";
+      case"over-cap":{var cap=maxTradesOf(),a=0,b=0;T.forEach(function(t,i){var v=parseFloat(t.p);if(isNaN(v))return;if(i<cap)a+=v;else b+=v;});
+        return"Your first "+cap+" trades made "+fmt(a)+"; the "+pl(T.length-cap,"trade")+" after made "+fmt(b)+". Next session trade "+cap+" is the last one, whatever price does after.";}
+      case"revenge":return"After a loser you forced the next trade or added size "+pl(top.n,"time")+". Next session: "+size+" on every trade, no adds after a loss, and five minutes off the screen after each loser.";
+      case"moved-stop":{var ms=tagSum(["Moved stop"]);return"Trades with a moved stop made "+fmt(ms.s)+". Next session the stop goes in with the order"+(X.stopPts>0?" at "+X.stopPts+" pts":"")+" and only moves toward profit.";}
+      case"oversized":return"Next session's size is "+size+(X.stopPts>0?" at your "+X.stopPts+"-pt stop":"")+" — "+fmt(p.riskPerTrade)+" of risk. Not one contract more.";
+      case"chase":{var ch=tagSum(["Chased","FOMO","Late entry","Early entry"]);return pl(ch.n||top.n,"mistimed entry","mistimed entries")+" made "+fmt(ch.s)+". Next session: your trigger candle closes first, or there's no trade.";}
+      case"no-setup":{var ns=0;T.forEach(function(t){if(!String(t.s||"").trim()||(t.mistakes||[]).indexOf("No setup")>=0){var v=parseFloat(t.p);if(!isNaN(v))ns+=v;}});return"Trades without a named setup made "+fmt(ns)+". Next session: name the setup before you click — no name, no trade.";}
+      case"early-exit":{var ee=tagSum(["Early exit"]);return"Early exits made "+fmt(ee.s)+". Next session set the target at entry and let it reach the target or the stop.";}
+      case"cons-raise":return"This "+fmt(net)+" day raised the target to "+fmt(c.target)+". Next session keep the day under "+(p.ceiling?fmt(p.ceiling):"your cap")+" — once you're near it, you're done.";
+    }
+    return DAY_COACH[top.k].fix;
+  }
+  function dayCoachHtml(rv,ctx){
     // a day logged as one number, with nothing broken, has nothing to grade — don't hand out a 100
     if(!rv.itemized&&!rv.leaks.length)return'<div class="coachcard daycoach new"><div class="coachtop"><div class="coachav">CO</div><div class="coachid"><div class="coachname">Coach Co</div><div class="coachsub">Day review</div></div></div>'+
       '<div class="coachmsg">This day is logged as one number, so there\'s nothing to grade yet — it stayed inside your stop, that\'s all I can see. Add its trades (＋ Trade) with setup names and mistake tags and I\'ll review how you traded it.</div></div>';
@@ -2388,7 +2482,7 @@
       '<div class="coachring"><div class="coachringtxt"><div class="coachgrade">'+tier[1]+'</div><div class="coachscoresub">execution</div></div>'+coachDonut(rv.score)+'</div></div>'+
       '<div class="coachmsg">'+esc(msg)+'</div>'+
       (pts.length?'<div class="coachpoints">'+pts.map(function(p){return'<span>'+esc(p)+'</span>';}).join("")+'</div>':'')+
-      coachSection("Fix for tomorrow",esc(top?DAY_COACH[top.k].fix:"Same again tomorrow — same rules, same size."))+
+      coachSection("Fix for next session",esc(ctx?dayFix(top,ctx):(top?DAY_COACH[top.k].fix:"Same again tomorrow — same rules, same size.")))+
       (rv.itemized?'':'<div class="hint" style="margin-top:8px">Add this day\'s trades (＋ Trade) with their mistake tags for a fuller read.</div>')+'</div>';
   }
   function renderDays(){
@@ -2496,7 +2590,7 @@
         '<div class="jtrades">'+trowsHtml+(locked?'':'<button type="button" class="addtrade">＋ Trade</button>')+'</div>'+
         (locked?'<div class="lockmsg">⊘ Daily stop hit ('+fmt(tradeSum)+'). Lock it in — no more trades today.</div>':'')+
         (overCap?'<div class="lockmsg amber">▲ '+trs.length+' trades — over your '+cap+'/day cap.</div>':'')+
-        (drv?dayCoachHtml(drv):'')+
+        (drv?dayCoachHtml(drv,{net:val,trades:trs,c:c}):'')+
         (guardReasons.length&&!locked?'<div class="lockmsg amber">⊘ Entry Guard: '+esc(guardReasons.join(" · "))+'</div>':'')+
         '<div class="jdrow"><span class="hint">Date</span><input class="jdate" type="date" value="'+esc(jdate)+'"></div>'+
         '<label class="fchk"><input type="checkbox" class="jfollowed"'+(followed?" checked":"")+'> Followed my plan today</label>'+
@@ -2646,7 +2740,7 @@
     return '<div class="eqh"><span class="eqt">Equity curve</span><span class="eqleg"><b class="la">actual</b> · <b class="lp">plan</b> · target '+fmt(c.target)+'</span></div>'+s;
   }
   function renderStats(){
-    renderWeekly();renderBuffer();renderSetups();renderTradeLog();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();renderDiscipline();renderPlanning();renderCoach();
+    renderWeekly();renderBuffer();renderSetups();renderTradeLog();renderRiskLab();renderAnalytics();renderAttempt();renderPayout();renderDiscipline();renderPlanning();renderToday();renderCoach();
     var c=cfg(),log=curLog(),base=dayTargets(),n=c.days,d,v;
     var greens=0,reds=0,best=-Infinity,worst=Infinity,total=0,cnt=0,seq=[];
     for(d=1;d<=n;d++){if(d in log){v=log[d];cnt++;total+=v;if(v>0)greens++;else if(v<0)reds++;if(v>best)best=v;if(v<worst)worst=v;seq.push(v);}}
@@ -2673,8 +2767,9 @@
     eq.innerHTML=equitySVG(c,log,base);
   }
   // Live buffer vs the trailing/static drawdown floor.
-  function renderBuffer(){
-    var c=cfg(),log=curLog(),j=curJournal(),host=document.getElementById("bufCard"),k=modeKey();
+  // Balance, floor and the room between them — the buffer card, Today's plan and Coach Co all read this.
+  function bufferInfo(){
+    var c=cfg(),log=curLog(),j=curJournal(),k=modeKey();
     var days=[],total=0,d;
     for(d=1;d<=c.days;d++){if(!(d in log)||beforeStart(d))continue;total+=log[d];days.push({d:d,date:(j[d]&&j[d].date)||null,net:log[d]});}
     days.sort(function(x,y){var a=x.date||"",b=y.date||"";return a<b?-1:(a>b?1:x.d-y.d);});
@@ -2692,6 +2787,10 @@
       floor=F.floor;if(!closed&&Math.round(F.prospective)!==Math.round(floor))prospective=F.prospective;
     }
     var buffer=bal-floor;
+    return{c:c,bal:bal,autoBal:autoBal,floor:floor,prospective:prospective,isStatic:isStatic,buffer:buffer};
+  }
+  function renderBuffer(){
+    var B=bufferInfo(),c=B.c,host=document.getElementById("bufCard"),k=modeKey(),bal=B.bal,autoBal=B.autoBal,floor=B.floor,prospective=B.prospective,isStatic=B.isStatic,buffer=B.buffer;
     var cls=buffer<=0?"r":(buffer<500?"a":"g");
     var pct=Math.max(0,Math.min(100,(buffer/c.maxloss)*100));
     var barColor=buffer<=0?"var(--red)":(buffer<500?"var(--amber)":"var(--green)");
@@ -2718,11 +2817,94 @@
         var inp=el.querySelector("input");inp.focus();inp.select();
         function commit(){var val=parseFloat(inp.value);if(!state.balance)state.balance={};
           if(isNaN(val)||val<=0||val===autoBal)delete state.balance[k];else state.balance[k]=Math.round(val);
-          save().then(renderBuffer);}
+          save().then(function(){renderBuffer();renderToday();renderCalendar();});}
         inp.addEventListener("blur",commit);
         inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
       });
     })();
+  }
+  // ---- Today's plan: the next session's numbers, from this account's rules and Coach Co's read ----
+  var WKDL=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  var MICRO_OF={NQ:"MNQ",ES:"MES",YM:"MYM",RTY:"M2K",GC:"MGC",CL:"MCL"};
+  function instrK(k){return INSTR.filter(function(x){return x.k===k;})[0];}
+  function hashStr(t){var h=2166136261;for(var i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+  // Coach Co's size call for the next session, and why: {factor (1 or 0.5), notes:[{t:"warn"|"ok", h}], odds}
+  function coachSize(c,B,p0,pi,iso){
+    var notes=[],factor=1,dd=datedDays().days,odds=null;
+    var tail=dd.slice(-2);
+    if(tail.length===2&&tail[0].net<0&&tail[1].net<0){factor=0.5;notes.push({t:"warn",h:"Two red days in a row — <b>half size</b> until you print a green day."});}
+    if(iso){
+      var W=CTRules.byWeekday(dd),wd=new Date(iso+"T00:00:00").getDay(),g=W[wd];
+      if(g&&g.n>=3&&g.net<0){factor=0.5;notes.push({t:"warn",h:WKDL[wd]+"s have cost you <b>"+fmt(-g.net)+"</b> over "+pl(g.n,"session")+" — <b>half size</b>, or sit it out."});}
+      else if(g&&g.n>=3&&g.net>0&&g.wins/g.n>=0.6)notes.push({t:"ok",h:WKDL[wd]+"s are one of your better days ("+Math.round(g.wins/g.n*100)+"% green over "+g.n+") — same plan, no extra size."});
+    }
+    if(!p0.breached&&(p0.limitBy==="buffer"||B.buffer<=2*(c.stop||p0.lossLimit)))notes.push({t:"warn",h:"Only <b>"+fmt(B.buffer)+"</b> above the floor"+(p0.limitBy==="buffer"?", so today's loss limit is half of it — one bad day can't end the account.":" — two days at your stop would end the account. Take only A+ setups until it grows.")});
+    var t=tradeAnalytics();
+    if(t.n>=20&&t.winRate>0&&t.payoff>0&&p0.riskPerTrade>0&&pi&&!pi.hit&&pi.left>0&&B.buffer>0){
+      var o={winRate:t.winRate/100,payoff:t.payoff,buffer:B.buffer,goal:pi.left,trades:1500,sims:1500,seed:hashStr(state.activeId||"x")};
+      var full=CTRules.passOdds(Object.assign({risk:p0.riskPerTrade},o)),half=CTRules.passOdds(Object.assign({risk:p0.riskPerTrade/2},o));
+      odds={full:full,half:half,winRate:t.winRate,payoff:t.payoff,risk:p0.riskPerTrade,n:t.n};
+      if(full&&half&&full.ruin>=40&&half.pass>=full.pass+5){factor=0.5;notes.push({t:"warn",h:"At "+fmt(p0.riskPerTrade)+" a trade your own numbers reach the target before the floor <b>"+full.pass+"%</b> of the time; at half size <b>"+half.pass+"%</b>. Half size today."});}
+    }
+    var last5=dd.slice(-5),tags={},top=null;
+    last5.forEach(function(x){x.trades.forEach(function(tr){(tr.mistakes||[]).forEach(function(m){tags[m]=(tags[m]||0)+1;});});});
+    Object.keys(tags).forEach(function(m){if(!top||tags[m]>tags[top])top=m;});
+    if(top&&tags[top]>=3)notes.push({t:"warn",h:"<b>"+esc(top)+"</b> showed up "+tags[top]+" times in your last "+pl(last5.length,"session")+". Today: "+esc(MISTAKE_FIX[top]||"name it before every entry and skip the trade if it applies")+"."});
+    var rv=rebillVsPass();
+    if(rv&&rv.late&&rv.left>0)notes.push({t:"warn",h:"On plan you pass after the rebill on "+weekdayLbl(rv.due)+". Don't force size to beat it — "+(rv.td>0?"beating it takes "+fmt(rv.perDay)+"/day over "+pl(rv.td,"day")+", only if that fits today's limits":"budget the rebill")+"."});
+    return{factor:factor,notes:notes,odds:odds};
+  }
+  var tpMemo={k:null,v:null};
+  function todayCtx(){
+    var k=modeKey(),id=state.activeId;
+    var key=[k,isoDate(),nowCSTMinutes()>=960?1:0,state.firm,state.plan,state.size,JSON.stringify(curLog()),JSON.stringify(curJournal()),JSON.stringify(state.calc||{}),
+      (state.stops||{})[k],(state.maxloss||{})[k],(state.targets||{})[k],(state.balance||{})[k],(state.dllAmt||{})[k],(state.consPct||{})[k],(state.days||{})[k],
+      (state.maxTrades||{})[id],(state.stage||{})[id],JSON.stringify(billingOf(id)||null)].join("|");
+    if(tpMemo.k===key)return tpMemo.v;
+    var c=cfg(),B=bufferInfo(),pi=passInfo(),P=livePlan(),open=openPlanDays(),cs=countedStats(c),funded=stageOf()==="funded";
+    var iso=upcomingSessions(1)[0],nextD=open[0]||null,target=0;
+    if(!pi.hit&&pi.left>0)target=nextD&&P.live[nextD-1]>0?P.live[nextD-1]:Math.ceil(pi.left/Math.max(1,pi.extra||1));
+    var pct=c.consPct>0&&!funded?c.consPct/100:0;
+    var ceiling=pct?Math.max(CTRules.tomorrowCap(cs.total,c.bestDay,pct),pct*c.baseTarget):Infinity;
+    var ps=psState(),mini=ps.instr,micro=MICRO_OF[mini];
+    if(!micro){for(var m in MICRO_OF)if(MICRO_OF[m]===ps.instr){mini=m;micro=ps.instr;}}
+    var Im=instrK(mini)||INSTR[0],Iu=instrK(micro)||INSTR[1],su=parseFloat(ps.stop),stopPts=ps.unit==="ticks"?su*Im.t:su;
+    var cc=contractCap(c.contracts)||{};
+    var base={target:target,stop:c.stop,dll:c.dllAmt,buffer:B.buffer,risk:c.risk,cap:maxTradesOf(),consCap:ceiling,stopPts:stopPts>0?stopPts:0,pp:Im.pp,microPp:Iu.pp,maxMini:cc.mini,maxMicro:cc.micro};
+    var p0=CTRules.todayPlan(base),sz=coachSize(c,B,p0,pi,iso);
+    var plan=sz.factor<1?CTRules.todayPlan(Object.assign({},base,{sizeFactor:sz.factor})):p0;
+    var minD=parseInt(c.minShort,10);if(isNaN(minD))minD=0;
+    var v={c:c,B:B,pi:pi,iso:iso,nextD:nextD,plan:plan,plan0:p0,sz:sz,mini:mini,micro:micro,stopPts:stopPts,funded:funded,cs:cs,pct:pct,minLeft:Math.max(0,minD-cs.days)};
+    tpMemo={k:key,v:v};return v;
+  }
+  function sizeTxt(X){
+    var p=X.plan,o=[];
+    if(p.micro!=null&&p.micro>0)o.push(p.micro+" "+X.micro);
+    if(p.mini)o.push(p.mini+" "+X.mini);
+    return o.length?o.join(" or "):"1 "+X.micro+" max";
+  }
+  function renderToday(){
+    var host=document.getElementById("todayCard");if(!host)return;
+    var X=todayCtx(),p=X.plan,c=X.c,pi=X.pi;
+    var when=X.iso?((X.iso===isoDate()?"Today · ":"Next session · ")+weekdayLbl(X.iso)):"";
+    var head='<div class="bh"><span class="bttl">Today\'s plan</span><span class="tpwhen">'+when+(X.sz.factor<1?' · <b class="a">half size</b>':'')+'</span></div>';
+    if(p.breached){host.className="bufcard todaycard";host.innerHTML=head+'<div class="bmsg bad">✕ The balance is at or under the floor — this account is done. Start the next one on this plan, not a bigger size.</div>';return;}
+    if(pi.hit){host.className="bufcard todaycard";host.innerHTML=head+'<div class="bmsg ok">◎ Target and minimum days are in — this one has passed. Convert it to Funded instead of trading it.</div>';return;}
+    var banked=pi.left<=0;
+    var by={stop:"your daily stop",dll:"the firm's daily limit",buffer:"half your buffer"}[p.limitBy];
+    var sizeSub=X.stopPts>0?(p.micro===0&&!p.mini?"stop too wide for this risk — tighten it":sizeTxt(X)+" at a "+X.stopPts+"-pt stop"):"set your stop in Armory → Position size";
+    function cell(k,v,sub,cls){return '<div class="bcell"><div class="k">'+k+'</div><div class="v'+(cls?" "+cls:"")+'">'+v+'</div><div class="tpsub">'+sub+'</div></div>';}
+    var cells=
+      cell("Target",banked?"banked":"+"+fmt(p.target),banked?pl(X.minLeft,"more day")+" for the minimum":(X.nextD?"plan day "+X.nextD:"past the plan"),banked?"g":"")+
+      cell("Max loss today","-"+fmt(p.lossLimit),by,"r")+
+      cell("Risk a trade",fmt(banked?Math.min(p.riskPerTrade,Math.max(25,Math.round(p.lossLimit/8))):p.riskPerTrade),banked?"1 "+X.micro+" — just get the day in":sizeSub)+
+      cell("Walk away","after "+pl(p.losses,"loser"),(p.trades?"or "+pl(p.trades,"trade")+" · ":"")+(banked?"or any green":"or at +"+fmt(p.target)))+
+      cell("Biggest day",p.ceiling?fmt(p.ceiling):"no cap",p.ceiling?"keeps consistency clean":"no consistency rule");
+    var notes=X.sz.notes.map(function(n){return '<li class="'+n.t+'">'+(n.t==="ok"?"✓ ":"▲ ")+n.h+'</li>';}).join("");
+    var msg=banked?"The target is banked. Trade the minimum, take any small green, and stop — a big loss now is the only way to lose this pass.":
+      (X.sz.factor<1?"Coach Co cut today's size in half — the reasons are below. Same rules, smaller risk.":"Set the max loss in your platform before the first trade. Hit the target or the walk-away line and the day is done.");
+    host.className="bufcard todaycard";
+    host.innerHTML=head+'<div class="tpgrid">'+cells+'</div><div class="bmsg '+(X.sz.factor<1?"warn":"ok")+'">'+msg+'</div>'+(notes?'<ul class="tpnotes">'+notes+'</ul>':'');
   }
   // ---- futures position-size calculator ----
   function psState(){if(!state.calc)state.calc={instr:"NQ",stop:10,risk:null,unit:"pts",tgt:null,riskUnit:"$",side:"long",entry:null};
@@ -2814,6 +2996,7 @@
       document.getElementById("psLog").disabled=false;
       document.querySelector("#psLogBar .hint").textContent="Stages side/instrument/entry/qty into the currently open day card — fill in the P&L once the trade closes.";
     }
+    renderToday();
   }
   // ---- risk lab: today's stop, kelly, risk of ruin, compounding ----
   function accStats(){
@@ -3535,6 +3718,20 @@
       out.push({head:"Plan for the run",impact:t.maxLossRun*t.avgLoss,
         body:"Your longest losing streak on record is "+pl(t.maxLossRun,"trade")+" — roughly "+cnum(-Math.round(t.maxLossRun*t.avgLoss))+" at your average loss. It will happen again. Size so that sequence is survivable and boring rather than account-ending."});
     }
+    // 12. which weekday pays you, from your dated days
+    var W=CTRules.byWeekday(datedDays().days),wk=Object.keys(W).filter(function(k){return W[k].n>=3;}).sort(function(a,b){return W[a].avg-W[b].avg;});
+    if(wk.length>=2){
+      var ww=W[wk[0]],wb=W[wk[wk.length-1]];
+      if(ww.net<0)out.push({head:"Your worst weekday",impact:Math.abs(ww.net),
+        body:"<b>"+WKDL[wk[0]]+"s</b> have made "+cnum(Math.round(ww.net))+" over "+pl(ww.n,"session")+", while <b>"+WKDL[wk[wk.length-1]]+"s</b> made "+cnum(Math.round(wb.net))+" over "+pl(wb.n,"session")+". Today's plan already halves your size on "+WKDL[wk[0]]+"s — or take them off until they turn."});
+    }
+    // 13. the odds of passing at your size, from your own win rate and payoff
+    var X=todayCtx(),od=X.sz.odds;
+    if(od&&od.full&&od.half){
+      out.push({head:"Odds of passing",impact:Math.abs(od.half.pass-od.full.pass)*Math.max(1,X.pi.left)/100+od.full.ruin*5,
+        body:"With your "+cpct(od.winRate)+" win rate and "+od.payoff.toFixed(2)+":1 payoff, risking "+cnum(Math.round(od.risk))+" a trade reaches the target before the floor about <b>"+od.full.pass+"%</b> of the time. At half size it's <b>"+od.half.pass+"%</b>. "+
+          (od.half.pass>od.full.pass+4?"Smaller size is the cheapest way to raise your pass rate.":(od.full.pass>od.half.pass+4?"Your edge is real — keep full size and let it work; cutting size only stretches the days.":"Size isn't the lever here — the win rate and payoff are."))});
+    }
     out.sort(function(a,b){return b.impact-a.impact;});
     return out;
   }
@@ -3761,7 +3958,7 @@
       rc.innerHTML='<div class="eqh"><span class="eqt">R-multiple distribution</span><span class="eqleg">'+pnls.length+' trades vs '+fmt(riskPer)+' risk</span></div><div class="rdist">'+bars+'</div>';
     }else rc.innerHTML='<div class="eqh"><span class="eqt">R-multiple distribution</span></div><div class="empty">Log individual trades to see your R distribution.</div>';
     // calendar heatmap of plan days
-    var cells="";for(d=1;d<=c.days;d++){var cls="cd",t="Day "+d;if(d in log){var vv=log[d];t+=": "+fmt(vv);cls+=vv>=dayTargets()[d-1]?" win":(vv>0?" partial":(vv<0?" loss":""));}cells+='<div class="'+cls+'" title="'+t+'">'+d+'</div>';}
+    var LP=livePlan().live,cells="";for(d=1;d<=c.days;d++){var cls="cd",t="Day "+d;if(d in log){var vv=log[d];t+=": "+fmt(vv);cls+=vv>=LP[d-1]?" win":(vv>0?" partial":" loss");}cells+='<div class="'+cls+'" title="'+t+'">'+d+'</div>';}
     cal.innerHTML='<div class="eqh"><span class="eqt">Day heatmap</span><span class="eqleg">green hit target · amber partial · red loss</span></div><div class="cal">'+cells+'</div>';
     renderDateAnalytics();
   }
@@ -4156,11 +4353,15 @@
   });
 
   document.getElementById("calBody").addEventListener("click",function(e){
+    if(e.target.closest("#calDetX")){calSel=null;renderCalendar();return;}
+    if(e.target.closest("#calDetOpen")){var sc=document.querySelector('#calGrid .calcell[data-date="'+calSel+'"]');calSel=null;
+      if(sc&&sc.dataset.plan){renderCalendar();focusDay(+sc.dataset.plan);return;}
+      if(sc){var dd2=ensureDayForDate(sc.dataset.date);save().then(function(){renderCalendar();focusDay(dd2);});}return;}
     if(e.target.closest("#calPrev")){shiftCalMonth(-1);save().then(renderCalendar);return;}
     if(e.target.closest("#calNext")){shiftCalMonth(1);save().then(renderCalendar);return;}
     if(e.target.closest("#calToday")){if(!state.calMonth)state.calMonth={};state.calMonth[modeKey()]=monthKeyNow();save().then(renderCalendar);return;}
     var cell=e.target.closest(".calcell");if(!cell||cell.classList.contains("blank")||cell.classList.contains("hol"))return;
-    if(cell.dataset.plan){focusDay(+cell.dataset.plan);return;} // a planned day: just open it
+    if(cell.dataset.plan||cell.dataset.extra){calSel=calSel===cell.dataset.date?null:cell.dataset.date;renderCalendar();return;} // a future day: show its numbers
     var iso=cell.dataset.date;if(!iso)return;
     var d=ensureDayForDate(iso);
     save().then(function(){focusDay(d);});
@@ -6288,7 +6489,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v81";
+var APP_BUILD="v82";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
