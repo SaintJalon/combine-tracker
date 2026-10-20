@@ -145,7 +145,23 @@
     return { days: days, perDay: Math.ceil(rem / days) };
   }
 
-  var api = { effectiveTarget: effectiveTarget, tomorrowCap: tomorrowCap, eodFloor: eodFloor, reviewDay: reviewDay,
+  // What each remaining day has to make, and whether the plan needs more days to stay safe.
+  // o = { remaining, daysLeft, base (plan's average day), cap (largest safe day) } → { perDay, days, extra, status }
+  // status: 'done' · 'ahead' (needs less than the plan average) · 'on' · 'behind' (needs more, still under the cap) ·
+  // 'stretched' (would need more than the cap, so `extra` days are added to keep every day under it).
+  function paceAdjust(o) {
+    var rem = Math.max(0, +o.remaining || 0), left = Math.max(0, o.daysLeft || 0), cap = o.cap > 0 ? o.cap : Infinity, base = o.base > 0 ? o.base : 0;
+    if (!rem) return { perDay: 0, days: left, extra: 0, status: 'done' };
+    var need = left > 0 ? rem / left : Infinity;
+    if (need <= cap + 1e-9) {
+      var st = !base ? 'on' : (need < base * 0.95 ? 'ahead' : (need <= base * 1.05 ? 'on' : 'behind'));
+      return { perDay: Math.ceil(need), days: left, extra: 0, status: st };
+    }
+    var days = Math.max(left, Math.ceil(rem / cap - 1e-9));
+    return { perDay: Math.ceil(rem / days), days: days, extra: days - left, status: 'stretched' };
+  }
+
+  var api = { paceAdjust: paceAdjust, effectiveTarget: effectiveTarget, tomorrowCap: tomorrowCap, eodFloor: eodFloor, reviewDay: reviewDay,
     todayPlan: todayPlan, passOdds: passOdds, byWeekday: byWeekday, fastestPath: fastestPath };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.CTRules = api;

@@ -144,4 +144,20 @@ t('fastest path: your realistic best day and the minimum days both stretch it', 
   assert.deepStrictEqual(R.fastestPath({ remaining: 500, target: 3000, pct: 0, minLeft: 3 }), { days: 3, perDay: 167 });
 });
 
+// Adaptive daily average
+t('pace: on plan → plan average; ahead → less a day', () => {
+  assert.deepStrictEqual(R.paceAdjust({ remaining: 3000, daysLeft: 10, base: 300, cap: 450 }), { perDay: 300, days: 10, extra: 0, status: 'on' });
+  assert.strictEqual(R.paceAdjust({ remaining: 2000, daysLeft: 10, base: 300, cap: 450 }).status, 'ahead');
+});
+t('pace: a red day → behind but still under the cap, same days', () => {
+  assert.deepStrictEqual(R.paceAdjust({ remaining: 3400, daysLeft: 9, base: 300, cap: 450 }), { perDay: 378, days: 9, extra: 0, status: 'behind' });
+});
+t('pace: too far behind → days are added so no day passes the cap', () => {
+  assert.deepStrictEqual(R.paceAdjust({ remaining: 3600, daysLeft: 6, base: 300, cap: 450 }), { perDay: 450, days: 8, extra: 2, status: 'stretched' });
+  assert.deepStrictEqual(R.paceAdjust({ remaining: 1000, daysLeft: 0, base: 300, cap: 450 }), { perDay: 334, days: 3, extra: 3, status: 'stretched' });
+});
+t('pace: nothing left → done', () => {
+  assert.strictEqual(R.paceAdjust({ remaining: -50, daysLeft: 3, base: 300, cap: 450 }).status, 'done');
+});
+
 console.log('\n' + n + ' passed');

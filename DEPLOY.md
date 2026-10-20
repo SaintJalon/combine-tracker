@@ -105,6 +105,11 @@ or a day big enough to raise your consistency target — what went right, and th
 with your own numbers (how far past the stop you went, what the trades after your cap made, next session's size and loss limit). It reads your
 trades and their mistake tags, so log trades (＋ Trade) for a real grade; a day logged as one number shows **CO –**.
 
+**Daily average that adapts:** **Daily target avg** is what each day left needs from where you actually are, not the
+plan's starting average. Fall behind and it rises — but never past a safe day (1.5× the plan's average, and never more
+than consistency allows): past that the plan **adds trading days** (up to 40) instead of asking for bigger days, and the
+progress card says how many and why. Get ahead and it drops — with a reminder to protect it rather than press.
+
 **Today's plan (Core):** the next session's numbers in one card — the day's **target** from the plan; the **max loss
 today**, the tightest of your daily stop, the firm's daily loss limit and half of your buffer to the floor (so one bad day
 can't end the account); **risk a trade** and the contracts that fit it at your Position-size stop (Armory); when to
