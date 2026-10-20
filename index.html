@@ -1602,6 +1602,7 @@
 
   // Plan/size keys are stable: saved accounts store them, so never rename one — mark it legacy instead.
   // lockOff: the trailing floor locks at starting balance + lockOff (0 = locks at the starting balance).
+  // oneTime: the firm sells it as a one-time purchase, so the rebill tracker starts with no rebill.
   var FIRMS={
     topstep:{name:"TopStep",planOrder:["combine","static","freedom"],plans:{
       combine:{name:"Combine",order:["50k","100k","150k"],sizes:{
@@ -1610,18 +1611,18 @@
         "150k":S("TopStep","Combine",150000,{target:9000,maxloss:4500,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"55%",consPct:55,consRaises:true,dll:"Optional $3,000",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2"})
       }},
       static:{name:"Static",order:["25k","50k"],sizes:{
-        "25k":S("TopStep","Static",25000,{target:2000,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS25,cons:"55%",consPct:55,consRaises:true,dll:"$500 · mandatory",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false}),
-        "50k":S("TopStep","Static",50000,{target:4000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS50,cons:"55%",consPct:55,consRaises:true,dll:"$1,000 · mandatory",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2",locks:false})
+        "25k":S("TopStep","Static",25000,{target:2000,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS25,cons:"55%",consPct:55,consRaises:true,dll:"$500 · mandatory",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false,oneTime:true}),
+        "50k":S("TopStep","Static",50000,{target:4000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS50,cons:"55%",consPct:55,consRaises:true,dll:"$1,000 · mandatory",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2",locks:false,oneTime:true})
       }},
       freedom:{name:"Freedom",order:["250k"],sizes:{
-        "250k":S("TopStep","Freedom",250000,{target:15000,maxloss:10000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_FREEDOM,cons:"55%",consPct:55,consRaises:true,dll:"$5,000 · mandatory",contracts:"25 minis / 250 micros",contractsShort:"25-mini",mindays:"min 2 to pass",minShort:"2"})
+        "250k":S("TopStep","Freedom",250000,{target:15000,maxloss:10000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_FREEDOM,cons:"55%",consPct:55,consRaises:true,dll:"$5,000 · mandatory",contracts:"25 minis / 250 micros",contractsShort:"25-mini",mindays:"min 2 to pass",minShort:"2",oneTime:true})
       }}
     }},
     mffu:{name:"MyFundedFutures",planOrder:["rapid","rapideod","pro","builder","studio","flex","core"],plans:{
       studio:{name:"Studio",order:["5k","10k","20k"],sizes:{
-        "5k":S("MyFundedFutures","Studio",5000,{target:500,maxloss:250,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 5 micros",contractsShort:"5-micro",mindays:"no minimum",minShort:"—",locks:false}),
-        "10k":S("MyFundedFutures","Studio",10000,{target:1000,maxloss:500,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"—",locks:false}),
-        "20k":S("MyFundedFutures","Studio",20000,{target:2000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"—",locks:false})
+        "5k":S("MyFundedFutures","Studio",5000,{target:500,maxloss:250,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 5 micros",contractsShort:"5-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true}),
+        "10k":S("MyFundedFutures","Studio",10000,{target:1000,maxloss:500,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true}),
+        "20k":S("MyFundedFutures","Studio",20000,{target:2000,maxloss:1000,dd:"Static (fixed floor)",ddDesc:DD_MFFU_STUDIO,contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true})
       }},
       rapid:{name:"Rapid",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("MyFundedFutures","Rapid",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_MFFU_RAPID,cons:"50%",consPct:50,contracts:"3 minis / 30 micros",contractsShort:"3-mini",mindays:"min 2 to pass",minShort:"2",lockOff:100}),
@@ -1678,10 +1679,10 @@
         "150k":S("Lucid","Daily Intraday",150000,{target:9000,maxloss:4500,dd:"Intraday trailing",ddDesc:DD_LUCID_DAILY_INTRA+LUCID_40,cons:"50%",consPct:50,dll:"$2,700 soft · if ON",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"})
       }},
       direct:{name:"Direct",order:["25k","50k","100k","150k"],sizes:{
-        "25k":S("Lucid","Direct",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID_DIRECT,cons:"20%",consPct:20,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"5 days a payout",minShort:"5",lockOff:100}),
-        "50k":S("Lucid","Direct",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LUCID_DIRECT,cons:"20%",consPct:20,dll:"$1,200 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"5 days a payout",minShort:"5",lockOff:100}),
-        "100k":S("Lucid","Direct",100000,{target:6000,maxloss:3500,dd:"EOD trailing",ddDesc:DD_LUCID_DIRECT,cons:"20%",consPct:20,dll:"$2,100 soft",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"5 days a payout",minShort:"5",lockOff:100}),
-        "150k":S("Lucid","Direct",150000,{target:9000,maxloss:5000,dd:"EOD trailing",ddDesc:DD_LUCID_DIRECT,cons:"20%",consPct:20,dll:"$3,000 soft",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"5 days a payout",minShort:"5",lockOff:100})
+        "25k":S("Lucid","Direct",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID_DIRECT,cons:"20%",consPct:20,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"5 days a payout",minShort:"5",lockOff:100,oneTime:true}),
+        "50k":S("Lucid","Direct",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LUCID_DIRECT,cons:"20%",consPct:20,dll:"$1,200 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"5 days a payout",minShort:"5",lockOff:100,oneTime:true}),
+        "100k":S("Lucid","Direct",100000,{target:6000,maxloss:3500,dd:"EOD trailing",ddDesc:DD_LUCID_DIRECT,cons:"20%",consPct:20,dll:"$2,100 soft",contracts:"6 minis / 60 micros",contractsShort:"6-mini",mindays:"5 days a payout",minShort:"5",lockOff:100,oneTime:true}),
+        "150k":S("Lucid","Direct",150000,{target:9000,maxloss:5000,dd:"EOD trailing",ddDesc:DD_LUCID_DIRECT,cons:"20%",consPct:20,dll:"$3,000 soft",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"5 days a payout",minShort:"5",lockOff:100,oneTime:true})
       }},
       maxx:{name:"Maxx",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("Lucid","Maxx",25000,{target:1250,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LUCID_MAXX,cons:"40%",consPct:40,contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 3 to pass",minShort:"3"}),
@@ -1704,10 +1705,10 @@
         "150k":S("Tradeify","Select",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_SELECT,cons:"40%",consPct:40,contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"min 3 to pass",minShort:"3",lockOff:100})
       }},
       lightning:{name:"Lightning",order:["25k","50k","100k","150k"],sizes:{
-        "25k":S("Tradeify","Lightning",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"no minimum",minShort:"—",lockOff:100}),
-        "50k":S("Tradeify","Lightning",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,dll:"$1,250 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"—",lockOff:100}),
-        "100k":S("Tradeify","Lightning",100000,{target:6000,maxloss:4000,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,dll:"$2,500 soft",contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"no minimum",minShort:"—",lockOff:100}),
-        "150k":S("Tradeify","Lightning",150000,{target:9000,maxloss:5250,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,dll:"$3,000 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"—",lockOff:100})
+        "25k":S("Tradeify","Lightning",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"no minimum",minShort:"—",lockOff:100,oneTime:true}),
+        "50k":S("Tradeify","Lightning",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,dll:"$1,250 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"—",lockOff:100,oneTime:true}),
+        "100k":S("Tradeify","Lightning",100000,{target:6000,maxloss:4000,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,dll:"$2,500 soft",contracts:"8 minis / 80 micros",contractsShort:"8-mini",mindays:"no minimum",minShort:"—",lockOff:100,oneTime:true}),
+        "150k":S("Tradeify","Lightning",150000,{target:9000,maxloss:5250,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,dll:"$3,000 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"—",lockOff:100,oneTime:true})
       }}
     }},
     apex:{name:"Apex",planOrder:["eod","intraday"],plans:{
@@ -1979,9 +1980,9 @@
   }
   // The next rebill against the projected pass date: will this account pass before it charges again
   // (or resets)? Null without a tracked purchase date or a projection.
-  function rebillDue(){var b=billingOf(state.activeId);if(!b||b.ended)return null;var r=rebillInfo(b);return r.left===0?addDaysIso(r.next,r.cycle):r.next;}
+  function rebillDue(){var b=billingOf(state.activeId);if(!rebills(b))return null;var r=rebillInfo(b);return r.left===0?addDaysIso(r.next,r.cycle):r.next;}
   function rebillVsPass(){
-    var a=activeAcct(),b=a&&billingOf(a.id);if(!b||b.ended)return null;
+    var a=activeAcct(),b=a&&billingOf(a.id);if(!rebills(b))return null;
     var pi=passInfo();if(pi.hit||!pi.iso)return null;
     var rb=rebillInfo(b),due=rebillDue(),left=Math.max(0,pi.left);
     return{due:due,pass:pi.iso,late:pi.iso>=due,td:rb.tdLeft,need:pi.sessions,left:left,perDay:rb.tdLeft>0?left/rb.tdLeft:null,planPer:pi.sessions?left/pi.sessions:null,price:b.price};
@@ -3116,6 +3117,8 @@
   // ---- rebill tracker: opt-in per account; firms rebill every `cycle` days from the purchase date ----
   // state.billing[id] = {bought, cycle, price?, first?, ended?}; `ended` freezes the charge count once the subscription stops.
   function billingOf(id){return state.billing&&state.billing[id]&&state.billing[id].bought?state.billing[id]:null;}
+  // a tracked account that still rebills: not ended, and not a one-time purchase
+  function rebills(b){return !!(b&&!b.ended&&!b.oneTime);}
   // left = calendar days until the next rebill (0 on a rebill day). tdLeft / tdCycle = days you can still trade
   // before the next charge / in the whole cycle: Mon–Fri minus market holidays — billing counts every day.
   // hols names the market holidays from today to the next charge.
@@ -3171,7 +3174,7 @@
     return stop===null||nowCSTMinutes()<stop;
   }
   // Charges paid: the purchase plus every rebill up to today (or the end date); a rebill day counts as charged.
-  function billCharges(b){var e=daysBetween(b.bought)-(b.ended?daysBetween(b.ended):0);return 1+Math.floor(Math.max(0,e)/(b.cycle||30));}
+  function billCharges(b){if(b.oneTime)return 1;var e=daysBetween(b.bought)-(b.ended?daysBetween(b.ended):0);return 1+Math.floor(Math.max(0,e)/(b.cycle||30));}
   // null until a rebill price is set. The first payment defaults to the rebill price — promo codes are what make them differ.
   function billSpent(b){if(b.price==null)return null;var first=b.first!=null?b.first:b.price;return Math.round((first+(billCharges(b)-1)*b.price)*100)/100;}
   function fmtc(n){return n%1?"$"+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):fmt(n);}
@@ -3195,7 +3198,7 @@
     var allNote=T.others?'<div class="note">All accounts: <b>'+fmtc(T.tot)+'</b> spent across '+T.cnt+' tracked account'+(T.cnt===1?"":"s")+'.</div>':"";
     if(!b){
       host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4><button type="button" class="secbtn" id="billOn">＋ Track purchase date</button></div>'+
-        '<div class="note">Optional — log the day you bought this account and its price to count down to the next 30-day rebill and see what you\'ve spent.</div>'+allNote;
+        '<div class="note">Optional — log the day you bought this account and its price to count down to the next 30-day rebill and see what you\'ve spent. One-time purchases (no rebill) can be tracked too.</div>'+allNote;
       return;
     }
     var n=billCharges(b),spent=billSpent(b),head,dates,tail;
@@ -3203,13 +3206,25 @@
       '<div class="item"><div class="k">First payment</div><div class="v edit" id="billFirst"'+(b.first==null?' style="color:var(--muted2)"':'')+'>'+(b.first!=null?fmtc(b.first):"Same")+'</div></div>'+
       '<div class="item"><div class="k">Total spent</div><div class="v">'+(spent!=null?fmtc(spent):"—")+'</div></div>'+
       '<div class="item"><div class="k">Charges</div><div class="v">'+n+'</div></div>';
+    if(b.oneTime){
+      // bought once: nothing renews, so there's no countdown — just what it cost
+      head='<button type="button" class="secbtn" id="billRecur" title="This account renews on a cycle">↻ It rebills</button>';
+      money='<div class="item"><div class="k">Price</div><div class="v edit" id="billPrice">'+(b.price!=null?fmtc(b.price):"Set")+'</div></div>'+
+        '<div class="item"><div class="k">Total spent</div><div class="v">'+(spent!=null?fmtc(spent):"—")+'</div></div>';
+      var days1=tradingDaysBetween(b.bought,addDaysIso(isoDate(),1));
+      host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4>'+head+'</div>'+
+        '<div class="grid"><div class="item"><div class="k">Purchased</div><div class="v edit" id="billBought">'+weekdayLbl(b.bought)+'</div></div>'+
+        '<div class="item"><div class="k">Billing</div><div class="v">One-time</div></div>'+money+'</div>'+
+        '<div class="pomsg">■ One-time purchase — no rebill, so no countdown or rebill warnings for this account. '+pl(days1,"trading day")+' since you bought it.</div>'+allNote;
+      return;
+    }
     if(!b.ended){
       var r=rebillInfo(b),pct=Math.round((r.cycle-r.left)/r.cycle*100),col=r.tone==="bad"?"red":(r.tone==="warn"?"amber":"green"),msg;
       var td=r.tdLeft+" trading day"+(r.tdLeft===1?"":"s"),hol=r.hols.length?" Market holiday"+(r.hols.length>1?"s":"")+" not counted: "+r.hols.join(", ")+".":"";
       if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+". The next one is "+weekdayLbl(addDaysIso(r.next,r.cycle))+", <b>"+td+"</b> away."+hol;
       else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+") — "+(r.tdLeft?"<b>"+td+"</b> left to trade":"<b>no trading days</b> left before it")+"."+hol+" Cancel before then if you don't want another cycle.";
       else msg="↻ Next rebill in "+r.left+" days — <b>"+td+"</b> left to trade, of "+r.tdCycle+" this cycle."+hol;
-      head='<button type="button" class="secbtn" id="billEnd">Mark ended</button>';
+      head='<span class="bbtns"><button type="button" class="secbtn" id="billOnce" title="Bought once — it never renews">No rebill</button><button type="button" class="secbtn" id="billEnd">Mark ended</button></span>';
       dates='<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+' <span class="bn">· '+(r.left===0?"now":r.left+"d")+'</span></div></div>'+
         '<div class="item"><div class="k">Trading days left</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+r.tdLeft+' <span class="bn">of '+r.tdCycle+' · Mon–Fri</span></div></div>';
       tail='<div class="bufbar"><div class="fill" style="width:'+pct+'%;background:var(--'+col+')"></div></div>'+
@@ -4172,7 +4187,7 @@
       var sub=f.name+" · "+pl.name+" · "+a.size.toUpperCase();
       var lo=leaderOf(a),badge=a.lead?'<span class="badge lead">★ Leader</span>':(lo?'<span class="badge foll" title="Follows '+esc(lo.name)+'">⇄ '+esc(lo.name.length>10?lo.name.slice(0,9)+"…":lo.name)+'</span>':"");
       var bl=billingOf(a.id);
-      if(bl&&!bl.ended){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="'+(rb.left===0?"Rebills today":rb.tdLeft+" trading day"+(rb.tdLeft===1?"":"s")+" left · rebills "+weekdayLbl(rb.next)+" (in "+rb.left+" day"+(rb.left===1?"":"s")+")")+'">↻ '+(rb.left===0?"today":rb.tdLeft+" td")+'</span>';}
+      if(rebills(bl)){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="'+(rb.left===0?"Rebills today":rb.tdLeft+" trading day"+(rb.tdLeft===1?"":"s")+" left · rebills "+weekdayLbl(rb.next)+" (in "+rb.left+" day"+(rb.left===1?"":"s")+")")+'">↻ '+(rb.left===0?"today":rb.tdLeft+" td")+'</span>';}
       html+='<div class="acch'+(a.id===state.activeId?" active":"")+'" data-id="'+a.id+'" title="'+(a.id===state.activeId?"Tap to rename":"Switch to this account")+'">'+
         '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span>'+badge+'</div>'+
         '<div class="achbtns">'+
@@ -5019,6 +5034,7 @@
     if(e.target.closest("#billOn")){
       if(!state.billing)state.billing={};
       state.billing[id]={bought:t,cycle:30};
+      if(cfg().oneTime)state.billing[id].oneTime=true; // the firm sells this plan once: start with no rebill
       // straight into the date picker: today is only a placeholder for the real purchase day
       save().then(function(){rerenderBilling();var bb=document.getElementById("billBought");if(bb)bb.click();});
       return;
@@ -5030,6 +5046,8 @@
       b.ended=t;save().then(rerenderBilling);return;
     }
     if(e.target.closest("#billResume")){delete b.ended;save().then(rerenderBilling);return;}
+    if(e.target.closest("#billOnce")){b.oneTime=true;delete b.ended;save().then(function(){rerenderBilling();renderAll();});return;}
+    if(e.target.closest("#billRecur")){delete b.oneTime;save().then(function(){rerenderBilling();renderAll();});return;}
     if(e.target.closest("#billOff")){
       var rs=billSpent(b);
       if(!(await mxConfirm("Remove this account's rebill record?"+(rs!=null?" Its "+fmtc(rs)+" drops out of your total spent.":""),{title:"↻ Remove rebill record",tone:"warn",okText:"Remove"})))return;
@@ -6489,7 +6507,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v82";
+var APP_BUILD="v83";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
