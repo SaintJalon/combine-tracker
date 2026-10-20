@@ -530,6 +530,8 @@
   .rbwarn.bad b{color:var(--msg-bad)}
   .calcell .crb{display:block;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--red);margin-top:4px}
   .calcell.rebill{border-color:var(--red);border-style:solid}
+  .calcell.rbday{opacity:.75}
+  .calcell.lastday{border-color:var(--amber)}
   .calcell.plan.late{border-color:var(--red)}
   .calcell.plan.late .cplan{color:var(--red)}
   .calcell .cplan{display:block;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:8px}
@@ -1951,10 +1953,11 @@
     var c=cfg(),j=curJournal(),used={},out=[],d,cur=new Date(isoDate()+"T00:00:00");
     var log=curLog();
     for(d in j)if(j.hasOwnProperty(d)&&(d in log)&&j[d]&&j[d].date)used[j[d].date]=1; // only traded days hold a date
-    if(!todayTradeable()||used[isoDate()])cur.setDate(cur.getDate()+1);
+    var rb=rebillDays(); // no trading on a rebill day
+    if(!todayTradeable()||used[isoDate()]||rb[isoDate()])cur.setDate(cur.getDate()+1);
     while(out.length<n){
       var iso=isoOf(cur),w=cur.getDay();
-      if(w!==0&&w!==6&&!holidayOn(iso)&&!used[iso])out.push(iso);
+      if(w!==0&&w!==6&&!holidayOn(iso)&&!used[iso]&&!rb[iso])out.push(iso);
       cur.setDate(cur.getDate()+1);
     }
     return out;
@@ -2018,7 +2021,7 @@
     var rows=Math.ceil((mondayBack+daysInMonth)/7);
     var cur=new Date(y,m,1-mondayBack);
     var todayIso=isoDate(),html="",monthTotal=0,openCount=0,pi=passInfo(),planOn={},extraOn={},rvp=rebillVsPass(),rbDue=rebillDue();
-    var X=todayCtx(),consDay=X.pct?X.pct*c.target:Infinity,riskN=0,firstOpen=null;
+    var X=todayCtx(),consDay=X.pct?X.pct*c.target:Infinity,riskN=0,firstOpen=null,rbSet=rebillDays(),rw0=rebillRunway();
     if(!pi.hit){
       var up=upcomingSessions(Math.max(pi.sessions,pi.open.length));
       pi.open.forEach(function(d,i){planOn[up[i]]=d;});
@@ -2054,11 +2057,15 @@
           }else if(holidayOn(iso)){
             cls.push("hol");
             content='<span class="cn">'+cur.getDate()+'</span><span class="chol">closed</span>';
+          }else if(rbSet[iso]){
+            cls.push("hol","rbday");
+            content='<span class="cn">'+cur.getDate()+'</span><span class="chol">no trading</span>';
           }else{
             cls.push("open");openCount++;
             content='<span class="cn">'+cur.getDate()+'</span><span class="cadd">+ log</span>';
           }
-          if(iso===rbDue){cls.push("rebill");content+='<span class="crb">↻ rebill</span>';}
+          if(rbSet[iso]){cls.push("rebill");content+='<span class="crb">↻ rebill</span>';}
+          else if(rw0&&iso===rw0.last&&val==null){cls.push("lastday");content+='<span class="crisk">last day before rebill</span>';}
           html+='<div class="calcell '+cls.join(" ")+(iso===calSel?" calpick":"")+'" data-date="'+iso+'"'+(planOn[iso]?' data-plan="'+planOn[iso]+'"':'')+(extraOn[iso]?' data-extra="1"':'')+'>'+content+'</div>';
         }
         cur.setDate(cur.getDate()+1);
@@ -2855,8 +2862,13 @@
     last5.forEach(function(x){x.trades.forEach(function(tr){(tr.mistakes||[]).forEach(function(m){tags[m]=(tags[m]||0)+1;});});});
     Object.keys(tags).forEach(function(m){if(!top||tags[m]>tags[top])top=m;});
     if(top&&tags[top]>=3)notes.push({t:"warn",h:"<b>"+esc(top)+"</b> showed up "+tags[top]+" times in your last "+pl(last5.length,"session")+". Today: "+esc(MISTAKE_FIX[top]||"name it before every entry and skip the trade if it applies")+"."});
+    var rw=rebillRunway();
+    if(rw&&rw.today)notes.push({t:"warn",h:"<b>Today is the rebill day</b> — you can't trade this account today. Next session: "+(iso?weekdayLbl(iso):"after it")+"."});
+    else if(rw&&rw.td<=3)notes.push({t:"warn",h:"Rebills <b>"+weekdayLbl(rw.due)+"</b>"+(rw.price!=null?" ("+fmtc(rw.price)+")":"")+" and you can't trade that day — "+
+      (rw.td===0?"<b>no trading days</b> left before it.":(rw.td===1?"<b>today is the last trading day</b> before it.":"<b>"+pl(rw.td,"trading day")+"</b> left: "+rw.days.map(weekdayLbl).join(", ")+"."))+
+      (pi&&!pi.hit&&pi.left>0?" To pass first you'd need "+fmt(Math.ceil(pi.left/Math.max(1,rw.td)))+"/day — only if that fits today's max loss and consistency; otherwise cancel or budget the rebill.":"")});
     var rv=rebillVsPass();
-    if(rv&&rv.late&&rv.left>0)notes.push({t:"warn",h:"On plan you pass after the rebill on "+weekdayLbl(rv.due)+". Don't force size to beat it — "+(rv.td>0?"beating it takes "+fmt(rv.perDay)+"/day over "+pl(rv.td,"day")+", only if that fits today's limits":"budget the rebill")+"."});
+    if(rv&&rv.late&&rv.left>0&&!(rw&&rw.td<=3))notes.push({t:"warn",h:"On plan you pass after the rebill on "+weekdayLbl(rv.due)+". Don't force size to beat it — "+(rv.td>0?"beating it takes "+fmt(rv.perDay)+"/day over "+pl(rv.td,"day")+", only if that fits today's limits":"budget the rebill")+"."});
     return{factor:factor,notes:notes,odds:odds};
   }
   var tpMemo={k:null,v:null};
@@ -3131,7 +3143,22 @@
     var n=(e>0&&e%cyc===0)?k:k+1,left=n*cyc-e,next=addDaysIso(b.bought,n*cyc),t=isoDate();
     var due=left===0?addDaysIso(next,cyc):next; // on a rebill day the cycle you're trading in started today
     return {cycle:cyc,left:left,next:next,tone:left<=1?"bad":(left<=5?"warn":""),
-      tdLeft:tradingDaysBetween(todayTradeable()?t:addDaysIso(t,1),due),tdCycle:tradingDaysBetween(addDaysIso(due,-cyc),due),hols:holidaysBetween(t,due)};
+      // the rebill day itself can't be traded (the account renews that day), so it never counts as a trading day
+      tdLeft:tradingDaysBetween(todayTradeable()&&left!==0?t:addDaysIso(t,1),due),tdCycle:tradingDaysBetween(addDaysIso(due,1-cyc),due),hols:holidaysBetween(t,due)};
+  }
+  // The active account's rebill dates from today on (a few cycles out): no trading on any of them. {iso:1}
+  function rebillDays(){
+    var b=billingOf(state.activeId),o={};if(!rebills(b))return o;
+    var r=rebillInfo(b),d=r.next;
+    for(var i=0;i<8;i++){o[d]=1;d=addDaysIso(d,r.cycle);}
+    return o;
+  }
+  // The last trading day before the next rebill, and how many are left. {due, last, td, days:[iso…]} or null
+  function rebillRunway(){
+    var b=billingOf(state.activeId);if(!rebills(b))return null;
+    var r=rebillInfo(b),due=r.left===0?addDaysIso(r.next,r.cycle):r.next,days=[],d=todayTradeable()&&r.left!==0?isoDate():addDaysIso(isoDate(),1);
+    for(;d<due;d=addDaysIso(d,1)){var w=new Date(d+"T00:00:00").getDay();if(w!==0&&w!==6&&!holidayOn(d))days.push(d);}
+    return{due:due,today:r.left===0,td:days.length,days:days,last:days[days.length-1]||null,price:b.price};
   }
   // Trading days in [a, b): Mon–Fri, minus market holidays.
   function tradingDaysBetween(a,b){
@@ -3232,8 +3259,8 @@
     if(!b.ended){
       var r=rebillInfo(b),pct=Math.round((r.cycle-r.left)/r.cycle*100),col=r.tone==="bad"?"red":(r.tone==="warn"?"amber":"green"),msg;
       var td=r.tdLeft+" trading day"+(r.tdLeft===1?"":"s"),hol=r.hols.length?" Market holiday"+(r.hols.length>1?"s":"")+" not counted: "+r.hols.join(", ")+".":"";
-      if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+". The next one is "+weekdayLbl(addDaysIso(r.next,r.cycle))+", <b>"+td+"</b> away."+hol;
-      else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+") — "+(r.tdLeft?"<b>"+td+"</b> left to trade":"<b>no trading days</b> left before it")+"."+hol+" Cancel before then if you don't want another cycle.";
+      if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+" and can't be traded until tomorrow. The next one is "+weekdayLbl(addDaysIso(r.next,r.cycle))+", <b>"+td+"</b> away."+hol;
+      else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+") — "+(r.tdLeft?"<b>"+td+"</b> left to trade":"<b>no trading days</b> left before it")+" — you can't trade on the rebill day itself."+hol+" Cancel before then if you don't want another cycle.";
       else msg="↻ Next rebill in "+r.left+" days — <b>"+td+"</b> left to trade, of "+r.tdCycle+" this cycle."+hol;
       head='<span class="bbtns">'+billSeg(b)+'<button type="button" class="secbtn" id="billEnd">Mark ended</button></span>';
       dates='<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+' <span class="bn">· '+(r.left===0?"now":r.left+"d")+'</span></div></div>'+
@@ -6522,7 +6549,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v85";
+var APP_BUILD="v86";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

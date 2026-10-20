@@ -77,6 +77,9 @@ Not every account rebills: when you start the rebill tracker you pick **Rebills 
 and the **↻ Rebills / One-time** switch on the tracker changes it any time. A one-time account keeps its price and purchase
 date but has no countdown, account-bar badge or rebill warnings. Nothing is picked for you — plans often sold once
 (TopStep Static and Freedom, MFFU Studio, Lucid Direct, Tradeify Lightning) just show a hint.
+The **rebill day can't be traded** (the account renews that day), so it never counts as a trading day: the plan, pass date
+and Today's plan skip it, the calendar marks it **no trading** and flags the **last day before rebill**, and from 3 trading
+days out Today's plan lists the days you have left and what passing before it would take.
 
 Tap any section heading to fold it; folded sections stay folded next time you open the app
 (handy for the account picker once it's set).
