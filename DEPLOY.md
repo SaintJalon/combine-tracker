@@ -73,10 +73,10 @@ you're in, and whether the Entry Guard is clear — tap either one to jump to it
 appears there when you have logged days and no export in 7+ days; tap it to export.
 A **Spent** chip shows what you've paid across all accounts once any account has a rebill price;
 tap it to open the rebill tracker.
-Not every account rebills: tap **No rebill** in the rebill tracker for a one-time purchase and it keeps the price and
-purchase date but drops the countdown, the account-bar badge and every rebill warning (**↻ It rebills** turns it back on).
-Every account starts out rebilling; for plans often sold once (TopStep Static and Freedom, MFFU Studio, Lucid Direct,
-Tradeify Lightning) the tracker suggests No rebill, but only you switch it.
+Not every account rebills: when you start the rebill tracker you pick **Rebills monthly** or **One-time purchase**,
+and the **↻ Rebills / One-time** switch on the tracker changes it any time. A one-time account keeps its price and purchase
+date but has no countdown, account-bar badge or rebill warnings. Nothing is picked for you — plans often sold once
+(TopStep Static and Freedom, MFFU Studio, Lucid Direct, Tradeify Lightning) just show a hint.
 
 Tap any section heading to fold it; folded sections stay folded next time you open the app
 (handy for the account picker once it's set).

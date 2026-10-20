@@ -335,7 +335,11 @@
   .bill .note{font-size:10.5px;color:var(--muted2);margin-top:8px;line-height:1.55}
   .plan.bill .grid{margin-top:12px;grid-template-columns:repeat(4,1fr)}
   .bill .bufbar{margin:12px 0 0}
-  .bill .bbtns{display:flex;gap:6px}
+  .bill .bbtns{display:flex;gap:6px;flex-wrap:wrap}
+  .bill .bseg{display:inline-flex;border:1px solid var(--line2);border-radius:3px;overflow:hidden}
+  .bill .bseg button{background:transparent;border:0;color:var(--muted);padding:5px 10px;font:inherit;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+  .bill .bseg button+button{border-left:1px solid var(--line2)}
+  .bill .bseg button.on{background:var(--accent-soft);color:var(--accent)}
   .bill .bn{font-size:10.5px;font-weight:600;color:var(--muted2)}
   .bill .note b{color:var(--text)}
   .copytag{display:inline-block;font-size:9.5px;font-weight:800;color:var(--blue);background:var(--blue-soft);padding:1px 6px;border-radius:2px;vertical-align:middle;letter-spacing:.06em;text-transform:uppercase}
@@ -3190,6 +3194,13 @@
     el.hidden=!T.cnt;
     if(T.cnt){el.textContent="Spent "+fmt(T.tot);el.title=fmtc(T.tot)+" spent across "+T.cnt+" tracked account"+(T.cnt===1?"":"s")+" — tap for the rebill tracker";}
   }
+  // Rebills / One-time: always your pick, shown on the tracker so it can change any time.
+  function billSeg(b){
+    var once=b&&b.oneTime;
+    return '<span class="bseg" role="group" aria-label="Does this account rebill?">'+
+      '<button type="button" data-bill="recur"'+(once?'':' class="on" aria-pressed="true"')+'>↻ Rebills</button>'+
+      '<button type="button" data-bill="once"'+(once?' class="on" aria-pressed="true"':'')+'>One-time</button></span>';
+  }
   function renderBilling(){
     var host=document.getElementById("billPanel"),b=billingOf(state.activeId);
     // the card's all-accounts line only shows when another account adds to what's already on screen
@@ -3197,8 +3208,8 @@
     renderSpendChip(T);
     var allNote=T.others?'<div class="note">All accounts: <b>'+fmtc(T.tot)+'</b> spent across '+T.cnt+' tracked account'+(T.cnt===1?"":"s")+'.</div>':"";
     if(!b){
-      host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4><button type="button" class="secbtn" id="billOn">＋ Track purchase date</button></div>'+
-        '<div class="note">Optional — log the day you bought this account and its price to count down to the next 30-day rebill and see what you\'ve spent. One-time purchases (no rebill) can be tracked too.</div>'+allNote;
+      host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4><span class="bbtns"><button type="button" class="secbtn" id="billOn">＋ Rebills monthly</button><button type="button" class="secbtn" id="billOnOnce">＋ One-time purchase</button></span></div>'+
+        '<div class="note">Optional — log the day you bought this account and its price. Pick <b>Rebills monthly</b> to count down to each rebill, or <b>One-time purchase</b> if it never renews'+(cfg().oneTime?' (this plan is often sold that way)':'')+'. You can switch it later.</div>'+allNote;
       return;
     }
     var n=billCharges(b),spent=billSpent(b),head,dates,tail;
@@ -3208,14 +3219,14 @@
       '<div class="item"><div class="k">Charges</div><div class="v">'+n+'</div></div>';
     if(b.oneTime){
       // bought once: nothing renews, so there's no countdown — just what it cost
-      head='<button type="button" class="secbtn" id="billRecur" title="This account renews on a cycle">↻ It rebills</button>';
+      head='<span class="bbtns">'+billSeg(b)+'<button type="button" class="secbtn" id="billOff">Remove</button></span>';
       money='<div class="item"><div class="k">Price</div><div class="v edit" id="billPrice">'+(b.price!=null?fmtc(b.price):"Set")+'</div></div>'+
         '<div class="item"><div class="k">Total spent</div><div class="v">'+(spent!=null?fmtc(spent):"—")+'</div></div>';
       var days1=tradingDaysBetween(b.bought,addDaysIso(isoDate(),1));
       host.innerHTML='<div class="bh"><h4>↻ Rebill tracker</h4>'+head+'</div>'+
         '<div class="grid"><div class="item"><div class="k">Purchased</div><div class="v edit" id="billBought">'+weekdayLbl(b.bought)+'</div></div>'+
         '<div class="item"><div class="k">Billing</div><div class="v">One-time</div></div>'+money+'</div>'+
-        '<div class="pomsg">■ One-time purchase — no rebill, so no countdown or rebill warnings for this account. '+pl(days1,"trading day")+' since you bought it.</div>'+allNote;
+        '<div class="pomsg">■ One-time purchase — no rebill, so no countdown or rebill warnings for this account (switch to <b>Rebills</b> if it renews). '+pl(days1,"trading day")+' since you bought it.</div>'+allNote;
       return;
     }
     if(!b.ended){
@@ -3224,12 +3235,12 @@
       if(r.left===0)msg="↻ <b>Rebill day</b> — this account renews today"+(b.price!=null?" ("+fmtc(b.price)+")":"")+". The next one is "+weekdayLbl(addDaysIso(r.next,r.cycle))+", <b>"+td+"</b> away."+hol;
       else if(r.tone)msg="↻ Rebills <b>"+(r.left===1?"tomorrow":"in "+r.left+" days")+"</b> ("+weekdayLbl(r.next)+(b.price!=null?" · "+fmtc(b.price):"")+") — "+(r.tdLeft?"<b>"+td+"</b> left to trade":"<b>no trading days</b> left before it")+"."+hol+" Cancel before then if you don't want another cycle.";
       else msg="↻ Next rebill in "+r.left+" days — <b>"+td+"</b> left to trade, of "+r.tdCycle+" this cycle."+hol;
-      head='<span class="bbtns"><button type="button" class="secbtn" id="billOnce" title="Bought once — it never renews">No rebill</button><button type="button" class="secbtn" id="billEnd">Mark ended</button></span>';
+      head='<span class="bbtns">'+billSeg(b)+'<button type="button" class="secbtn" id="billEnd">Mark ended</button></span>';
       dates='<div class="item"><div class="k">Next rebill</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+(r.left===0?"Today":weekdayLbl(r.next))+' <span class="bn">· '+(r.left===0?"now":r.left+"d")+'</span></div></div>'+
         '<div class="item"><div class="k">Trading days left</div><div class="v"'+(r.tone?' style="color:var(--'+col+')"':'')+'>'+r.tdLeft+' <span class="bn">of '+r.tdCycle+' · Mon–Fri</span></div></div>';
       tail='<div class="bufbar"><div class="fill" style="width:'+pct+'%;background:var(--'+col+')"></div></div>'+
         '<div class="pomsg'+(r.tone?" "+r.tone:"")+'">'+msg+'</div>'+
-        (cfg().oneTime?'<div class="note">This plan is often sold as a one-time purchase. If yours doesn\'t renew, tap <b>No rebill</b>.</div>':'');
+        (cfg().oneTime?'<div class="note">This plan is often sold as a one-time purchase. If yours doesn\'t renew, switch it to <b>One-time</b>.</div>':'');
     }else{
       head='<span class="bbtns"><button type="button" class="secbtn" id="billResume">Resume</button><button type="button" class="secbtn" id="billOff">Remove</button></span>';
       var held=tradingDaysBetween(b.bought,addDaysIso(b.ended,1));
@@ -5032,9 +5043,11 @@
   function billMoney(v){var x=parseFloat(v);return(isNaN(x)||x<0)?null:Math.round(x*100)/100;}
   document.getElementById("billPanel").addEventListener("click",async function(e){
     var id=state.activeId,b=billingOf(id),el,t=isoDate();
-    if(e.target.closest("#billOn")){
+    var startOnce=e.target.closest("#billOnOnce");
+    if(e.target.closest("#billOn")||startOnce){
       if(!state.billing)state.billing={};
-      state.billing[id]={bought:t,cycle:30}; // always starts rebilling — No rebill is your call, never automatic
+      state.billing[id]={bought:t,cycle:30}; // rebills or one-time is your pick, never automatic
+      if(startOnce)state.billing[id].oneTime=true;
       // straight into the date picker: today is only a placeholder for the real purchase day
       save().then(function(){rerenderBilling();var bb=document.getElementById("billBought");if(bb)bb.click();});
       return;
@@ -5046,8 +5059,10 @@
       b.ended=t;save().then(rerenderBilling);return;
     }
     if(e.target.closest("#billResume")){delete b.ended;save().then(rerenderBilling);return;}
-    if(e.target.closest("#billOnce")){b.oneTime=true;delete b.ended;save().then(function(){rerenderBilling();renderAll();});return;}
-    if(e.target.closest("#billRecur")){delete b.oneTime;save().then(function(){rerenderBilling();renderAll();});return;}
+    var seg=e.target.closest("[data-bill]");
+    if(seg){var once=seg.getAttribute("data-bill")==="once";if(!!b.oneTime===once)return;
+      if(once){b.oneTime=true;delete b.ended;}else delete b.oneTime;
+      save().then(function(){rerenderBilling();renderAll();});return;}
     if(e.target.closest("#billOff")){
       var rs=billSpent(b);
       if(!(await mxConfirm("Remove this account's rebill record?"+(rs!=null?" Its "+fmtc(rs)+" drops out of your total spent.":""),{title:"↻ Remove rebill record",tone:"warn",okText:"Remove"})))return;
@@ -6507,7 +6522,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v84";
+var APP_BUILD="v85";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
