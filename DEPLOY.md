@@ -59,7 +59,7 @@ The app is split into six programs (bottom bar on a phone, top bar on desktop �
 
 | Program | What's in it |
 |---|---|
-| **01 Core** | Firm · plan · size picker, rebill tracker and copy trading at the top, the Accounts & Copy Groups card (log a day for every account at once; each group's combined P&L today / month / all time; move accounts between groups), then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
+| **01 Core** | Firm · plan · size picker, rebill tracker and copy trading at the top, the Accounts & Copy Groups card (log a day for every account at once; each group's combined P&L today / month / all time; move accounts between groups), Today's plan (target, max loss, size and walk-away line for the next session), then your day log (month calendar and day cards: net P&L, trades, notes, "followed my plan"), progress to target, buffer to floor, Coach Co, target / days / stop / max-loss, plan rules |
 | **02 Intel** | Weekly Review (week net, best/worst day and setup, rule breaks, Coach Co's one fix for next week), stats, equity curve, by-setup table, searchable trade log, R-distribution, weekday / week / month breakdowns |
 | **03 Protocol** | Pre-trade checklist, daily schedule, discipline score + trade cap + cooldown, your rules |
 | **04 Armory** | Position size, money management, risk lab |
@@ -94,8 +94,23 @@ Tap the **Target** or **Max Loss** number on Core to match your dashboard if a f
 **Coach Co day review:** every logged day gets a **CO** grade chip (0–100 execution). Open the day for Coach Co's
 review: what went wrong, worst first — max-loss breach, over your daily stop, the firm's daily loss limit, over your trade
 cap, revenge (tagged, or size up after a loser), moved stop, oversized, chased / mistimed entries, no setup, early exits,
-or a day big enough to raise your consistency target — what went right, and the one fix for tomorrow. It reads your
+or a day big enough to raise your consistency target — what went right, and the one fix for the next session, written
+with your own numbers (how far past the stop you went, what the trades after your cap made, next session's size and loss limit). It reads your
 trades and their mistake tags, so log trades (＋ Trade) for a real grade; a day logged as one number shows **CO –**.
+
+**Today's plan (Core):** the next session's numbers in one card — the day's **target** from the plan; the **max loss
+today**, the tightest of your daily stop, the firm's daily loss limit and half of your buffer to the floor (so one bad day
+can't end the account); **risk a trade** and the contracts that fit it at your Position-size stop (Armory); when to
+**walk away** (after 2 losers, at your trade cap, or at the target); and the **biggest day** that keeps consistency clean.
+Coach Co cuts it to **half size** after two red days in a row, on a weekday that has lost you money over 3+ sessions, or
+when your own win rate and payoff (20+ trades) say half size passes more often — and says why. It also flags a thin
+buffer, a mistake that keeps repeating in your last 5 sessions, and a rebill that lands before the pass.
+
+**Month View:** logged days show Coach Co's grade (**CO 85**) and ✓ when you followed the plan; future plan days are
+marked **▲ at risk** when the day's target is bigger than consistency allows, the buffer is thin, or the day falls on or
+after the rebill. Tap a future day for its numbers (need, max loss, risk a trade, biggest clean day) and **Open day** to
+log it. Under the grid: the fastest path that keeps consistency clean at your real average green day, and a legend.
+Intel's day heatmap now colors days by the same live plan as Core.
 
 **Copy trading — groups:** you can run several copy groups at once, each with its own leader — say your TopStep
 50K Static leads one group and your 100K leads another. In **Core → Copy trading**, the **Group** picker lists your

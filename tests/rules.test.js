@@ -95,4 +95,53 @@ t('a big day that raises the consistency target is flagged, and not called green
   assert.ok(r.good.indexOf('green') < 0);
 });
 
+// Today's plan
+const base = { target: 450, stop: 400, dll: 1200, buffer: 2000, risk: 100, cap: 4, consCap: Infinity, stopPts: 10, pp: 20, microPp: 2, maxMini: 4, maxMicro: 40 };
+t('today: daily stop is the tightest limit; $100 a trade → 4 losers to the stop, 5 MNQ at 10 pts', () => {
+  const p = R.todayPlan(base);
+  assert.strictEqual(p.lossLimit, 400); assert.strictEqual(p.limitBy, 'stop');
+  assert.strictEqual(p.riskPerTrade, 100); assert.strictEqual(p.losses, 4);
+  assert.strictEqual(p.micro, 5); assert.strictEqual(p.mini, 0); assert.strictEqual(p.ceiling, null);
+});
+t('today: thin buffer → half the buffer ($250) is the limit, so 2 losers at $100 end the day', () => {
+  const p = R.todayPlan(Object.assign({}, base, { buffer: 500 }));
+  assert.strictEqual(p.lossLimit, 250); assert.strictEqual(p.limitBy, 'buffer');
+  assert.strictEqual(p.riskPerTrade, 100); assert.strictEqual(p.losses, 2);
+});
+t('today: firm limit tighter than your stop wins; half size halves risk but keeps the walk-away count', () => {
+  const p = R.todayPlan(Object.assign({}, base, { dll: 300, sizeFactor: 0.5 }));
+  assert.strictEqual(p.limitBy, 'dll'); assert.strictEqual(p.lossLimit, 300);
+  assert.strictEqual(p.riskPerTrade, 50); assert.strictEqual(p.losses, 3); assert.strictEqual(p.micro, 2);
+});
+t('today: contracts respect the plan cap; consistency ceiling shows', () => {
+  const p = R.todayPlan(Object.assign({}, base, { stop: 2000, buffer: 9000, risk: 1000, consCap: 1499.6, maxMini: 2 }));
+  assert.strictEqual(p.mini, 2); assert.strictEqual(p.ceiling, 1500);
+});
+t('today: breached account → nothing to trade', () => {
+  assert.strictEqual(R.todayPlan(Object.assign({}, base, { buffer: 0 })).breached, true);
+});
+// Pass odds
+t('pass odds: seeded, repeatable, and half size survives more often', () => {
+  const o = { winRate: 0.45, payoff: 1.5, risk: 200, buffer: 1000, goal: 2000, trades: 200, seed: 7 };
+  const a = R.passOdds(o), b = R.passOdds(o), h = R.passOdds(Object.assign({}, o, { risk: 100 }));
+  assert.deepStrictEqual(a, b); assert.ok(a.pass + a.ruin <= 100); assert.ok(h.ruin < a.ruin);
+});
+t('pass odds: no edge data → null; nothing left to make → 100%', () => {
+  assert.strictEqual(R.passOdds({ winRate: 0, payoff: 1, risk: 1, buffer: 1, goal: 1 }), null);
+  assert.deepStrictEqual(R.passOdds({ winRate: 0.5, payoff: 1, risk: 1, buffer: 1, goal: 0 }), { pass: 100, ruin: 0 });
+});
+// Weekday results
+t('by weekday: Tuesdays and Fridays grouped with averages', () => {
+  const w = R.byWeekday([{ date: '2026-10-13', net: 300 }, { date: '2026-10-16', net: -200 }, { date: '2026-10-20', net: 100 }, { date: '2026-10-23', net: -400 }]);
+  assert.strictEqual(w[2].n, 2); assert.strictEqual(w[2].avg, 200); assert.strictEqual(w[5].net, -600); assert.strictEqual(w[5].wins, 0);
+});
+// Fastest clean path
+t('fastest path: $3,000 left on a $3,000 target at 50% → 2 days of $1,500', () => {
+  assert.deepStrictEqual(R.fastestPath({ remaining: 3000, target: 3000, pct: 0.5, minLeft: 0 }), { days: 2, perDay: 1500 });
+});
+t('fastest path: your realistic best day and the minimum days both stretch it', () => {
+  assert.deepStrictEqual(R.fastestPath({ remaining: 3000, target: 3000, pct: 0.5, perDayMax: 700 }), { days: 5, perDay: 600 });
+  assert.deepStrictEqual(R.fastestPath({ remaining: 500, target: 3000, pct: 0, minLeft: 3 }), { days: 3, perDay: 167 });
+});
+
 console.log('\n' + n + ' passed');
