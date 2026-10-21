@@ -74,6 +74,11 @@ you're in, and whether the Entry Guard is clear — tap either one to jump to it
 appears there when you have logged days and no export in 7+ days; tap it to export.
 A **Spent** chip shows what you've paid across all accounts once any account has a rebill price;
 tap it to open the rebill tracker.
+**TopStep Labs:** Static 25K (Drop #001) and 50K (#006), Freedom 250K (#002) and the **Labs Challenge** plan — $1.5K
+(#007: $500 static max loss, 2 micros), $3K Return (#008: $1,000 static, 5 minis) and $3K Revenge (#009: $500 static,
+2 minis). A Challenge is two rounds: hit the target, do it again, take the reward; the tracker's target is one round —
+start round 2 with Path → ＋ New attempt. All Labs drops are one-time fees.
+
 Not every account rebills: when you start the rebill tracker you pick **Rebills monthly** or **One-time purchase**,
 and the **↻ Rebills / One-time** switch on the tracker changes it any time. A one-time account keeps its price and purchase
 date but has no countdown, account-bar badge or rebill warnings. Nothing is picked for you — plans often sold once
