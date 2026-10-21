@@ -173,6 +173,38 @@
   .acch .badge.bill.warn{background:var(--amber-soft);color:var(--amber)}
   .acch .badge.bill.bad{background:var(--red-soft);color:var(--red)}
   .acch .badge+.badge{margin-left:4px}
+  .accts{align-items:center}
+  .acch.acur{text-align:left;font:inherit;color:inherit;min-width:0;max-width:min(420px,100%)}
+  .acch.acur>div{min-width:0}.acch.acur .nm,.acch.acur .sb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .acch .acaret{color:var(--accent);font-size:12px;flex-shrink:0}
+  .acnavs{display:inline-flex;align-items:center;gap:2px;flex-shrink:0}
+  .acnav{border:1px solid var(--line);background:var(--card);color:var(--muted);font-size:16px;line-height:1;min-width:34px;min-height:34px;border-radius:3px;cursor:pointer}
+  .acnav:disabled{opacity:.35;cursor:default}.acpos{font-size:10.5px;color:var(--muted2);min-width:34px;text-align:center}
+  button.acch.add{font:inherit;font-weight:700;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase}
+  .acsheet-back{position:fixed;inset:0;z-index:900;background:var(--dim);display:flex;justify-content:center;align-items:flex-start;padding:6vh 16px 16px;animation:dlgFade .16s ease-out}
+  .acsheet{width:min(640px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--hud),linear-gradient(var(--card),var(--card)),var(--bg);border:1px solid var(--accent-border);border-radius:4px;padding:14px 14px 10px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+  .acsh{display:flex;align-items:center;justify-content:space-between}.acsh h3{margin:0;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+  .acsearch{width:100%;margin-top:10px;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:9px 10px}
+  .acfirms{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:8px 0 4px;flex-shrink:0}
+  .acfirms button{flex-shrink:0;background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:2px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .acfirms button.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .aclist{overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:80px;margin:4px -4px 0;padding:0 4px}
+  .acgrp{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:12px 0 4px}
+  .acrow{display:flex;align-items:stretch;gap:0;border:1px solid var(--line);border-radius:3px;margin-top:6px;background:linear-gradient(var(--card),var(--card)),var(--bg)}
+  .acrow.cur{border-color:var(--accent-border);box-shadow:inset 3px 0 0 var(--accent)}
+  .acrow.ind{margin-left:16px}
+  .acgo{flex:1;min-width:0;text-align:left;background:transparent;border:0;color:inherit;font:inherit;padding:9px 10px;cursor:pointer;display:grid;gap:3px}
+  .acgo .acn{font-size:13px;font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.acgo .acn small{color:var(--accent);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase}
+  .acgo .acs{font-size:10.5px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .acgo .acp{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden}.acgo .acp b.g{color:var(--green)}.acgo .acp b.r{color:var(--red)}
+  .acbar{flex:0 0 70px;height:4px;background:var(--line);border-radius:2px;overflow:hidden}.acbar i{display:block;height:100%}
+  .acgo .acb .badge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:1px 6px;border-radius:2px}
+  .acgo .acb .badge.lead{background:var(--amber-soft);color:var(--amber)}.acgo .acb .badge.foll{background:var(--blue-soft);color:var(--blue)}
+  .acgo .acb .badge.bill{background:var(--card2);color:var(--muted)}.acgo .acb .badge.bill.warn{background:var(--amber-soft);color:var(--amber)}.acgo .acb .badge.bill.bad{background:var(--red-soft);color:var(--red)}
+  .acgo .acb .badge+.badge{margin-left:4px}
+  .acact{flex:0 0 44px;width:44px;max-width:44px;border:0;border-left:1px solid var(--line);background:transparent;color:var(--muted);font-size:15px;text-align:center;-webkit-appearance:none;appearance:none;cursor:pointer;border-radius:0 3px 3px 0}
+  .acfoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line);margin-top:8px}.acfoot .hint{font-size:10.5px;color:var(--muted2)}
+  body.acopen{overflow:hidden}
   .acch.add{color:var(--muted);font-weight:700;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;border-style:dashed;border-color:var(--line2);padding:10px 14px}
   @media(hover:hover){.acch.add:hover{color:var(--accent);border-color:var(--accent)}}
 
@@ -1038,7 +1070,13 @@
     body:has(.wrap input:focus,.wrap textarea:focus,.wrap select:focus) .tabs{visibility:hidden;opacity:0;transition:none}
     .acctwrap{margin:0 -16px 4px;padding-left:16px}
     .acctlbl{display:none}
-    .accts{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-right:16px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+    .accts{flex-wrap:nowrap;overflow:hidden;padding-right:16px;gap:6px}
+    .acch.acur{flex:1 1 auto;padding:7px 9px}
+    .acall{font-size:0!important;padding:10px 11px!important}.acall::before{content:"☰";font-size:15px}
+    .acaddt{display:none}#acctAdd{padding:10px 12px}
+    .acpos{display:none}
+    .acsheet-back{padding:0;align-items:stretch}
+    .acsheet{max-height:none;height:100%;width:100%;border-radius:0;border:0;padding:calc(12px + env(safe-area-inset-top)) 14px calc(10px + env(safe-area-inset-bottom))}
     .accts::-webkit-scrollbar{display:none}
     .acch{scroll-snap-align:start}
     .status2,.grid2,.rlab,.rulegrid,.mmgrid2{grid-template-columns:1fr}
@@ -4493,28 +4531,100 @@
     else{document.getElementById("coCons").innerHTML="<b>No consistency rule:</b> one big day is fine on this plan. The only thing that ends the eval is touching the Max Loss Limit — protect the floor and keep losers contained.";}
   }
 
-  function renderAcctBar(){
-    var host=document.getElementById("acctBar"),html="",n=state.accounts.length;
-    state.accounts.forEach(function(a,idx){
-      var f=FIRMS[a.firm]||FIRMS.topstep;
-      var pl=f.plans[a.plan]||f.plans[f.planOrder[0]];
-      var szc=pl.sizes&&pl.sizes[a.size],sub=f.name+" · "+pl.name+" · "+(szc&&szc.sizeLbl||a.size.toUpperCase());
-      var lo=leaderOf(a),badge=a.lead?'<span class="badge lead">★ Leader</span>':(lo?'<span class="badge foll" title="Follows '+esc(lo.name)+'">⇄ '+esc(lo.name.length>10?lo.name.slice(0,9)+"…":lo.name)+'</span>':"");
-      var bl=billingOf(a.id);
-      if(rebills(bl)){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="'+(rb.left===0?"Rebills today":rb.tdLeft+" trading day"+(rb.tdLeft===1?"":"s")+" left · rebills "+weekdayLbl(rb.next)+" (in "+rb.left+" day"+(rb.left===1?"":"s")+")")+'">↻ '+(rb.left===0?"today":rb.tdLeft+" td")+'</span>';}
-      html+='<div class="acch'+(a.id===state.activeId?" active":"")+'" data-id="'+a.id+'" title="'+(a.id===state.activeId?"Tap to rename":"Switch to this account")+'">'+
-        '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+sub+'</span>'+badge+'</div>'+
-        '<div class="achbtns">'+
-          (idx>0?'<button type="button" class="amv" data-mv="'+a.id+'" data-dir="-1" title="Move left">◀</button>':'')+
-          (idx<n-1?'<button type="button" class="amv" data-mv="'+a.id+'" data-dir="1" title="Move right">▶</button>':'')+
-          '<button type="button" class="adup" data-dup="'+a.id+'" title="Duplicate account">⧉</button>'+
-          (n>1?'<button type="button" class="x" data-del="'+a.id+'" title="Delete account">×</button>':'')+
-        '</div>'+
-        '</div>';
-    });
-    html+='<div class="acch add" id="acctAdd">＋ Add account</div>';
-    host.innerHTML=html;
+  // One account's badges: leader / follows, and the rebill countdown.
+  function acctBadges(a){
+    var lo=leaderOf(a),badge=a.lead?'<span class="badge lead">★ Leader</span>':(lo?'<span class="badge foll" title="Follows '+esc(lo.name)+'">⇄ '+esc(lo.name.length>10?lo.name.slice(0,9)+"…":lo.name)+'</span>':"");
+    var bl=billingOf(a.id);
+    if(rebills(bl)){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="'+(rb.left===0?"Rebills today":rb.tdLeft+" trading day"+(rb.tdLeft===1?"":"s")+" left · rebills "+weekdayLbl(rb.next)+" (in "+rb.left+" day"+(rb.left===1?"":"s")+")")+'">↻ '+(rb.left===0?"today":rb.tdLeft+" td")+'</span>';}
+    return badge;
   }
+  function acctSub(a){
+    var f=FIRMS[a.firm]||FIRMS.topstep,pl=f.plans[a.plan]||f.plans[f.planOrder[0]],szc=pl.sizes&&pl.sizes[a.size];
+    return f.name+" · "+pl.name+" · "+(szc&&szc.sizeLbl||a.size.toUpperCase());
+  }
+  // The top of the app: the open account, step through accounts, open the full list, add one.
+  function renderAcctBar(){
+    var host=document.getElementById("acctBar"),a=activeAcct(),n=state.accounts.length,idx=state.accounts.indexOf(a);
+    host.innerHTML=
+      '<button type="button" class="acch active acur" id="acctCur" data-id="'+a.id+'" aria-haspopup="dialog" title="All accounts">'+
+        '<div><span class="nm">'+esc(a.name)+'</span><span class="sb">'+acctSub(a)+'</span>'+acctBadges(a)+'</div><span class="acaret" aria-hidden="true">▾</span></button>'+
+      (n>1?'<span class="acnavs"><button type="button" class="acnav" data-step="-1" aria-label="Previous account"'+(idx<=0?" disabled":"")+'>‹</button>'+
+        '<span class="acpos">'+(idx+1)+'/'+n+'</span>'+
+        '<button type="button" class="acnav" data-step="1" aria-label="Next account"'+(idx>=n-1?" disabled":"")+'>›</button></span>':'')+
+      '<button type="button" class="acch add acall" id="acctAll">☰ All accounts'+(n>1?' · '+n:'')+'</button>'+
+      '<button type="button" class="acch add" id="acctAdd" title="Add account">＋<span class="acaddt"> Add</span></button>';
+    if(acSheetOpen)renderAcSheet();
+  }
+  // ---- the accounts sheet: every account, grouped by copy group, with its progress ----
+  var acSheetOpen=false,acQ="",acFirm="";
+  function acctProgress(a){
+    return asAcct(a,function(){var c=cfg(),cs=countedStats(c),st=(state.stage&&state.stage[a.id])||"eval";
+      return{total:cs.total,target:c.target,days:cs.days,stage:st,pct:c.target>0?Math.max(0,Math.min(100,cs.total/c.target*100)):0};});
+  }
+  function acRow(a,indent){
+    var P=acctProgress(a),cur=a.id===state.activeId;
+    return '<div class="acrow'+(cur?" cur":"")+(indent?" ind":"")+'"><button type="button" class="acgo" data-go="'+a.id+'">'+
+      '<span class="acn">'+(a.lead?"★ ":(leaderOf(a)?"⇄ ":""))+esc(a.name)+(cur?' <small>open</small>':'')+'</span>'+
+      '<span class="acs">'+acctSub(a)+' · '+P.stage+'</span>'+
+      '<span class="acp"><span class="acbar"><i style="width:'+P.pct.toFixed(0)+'%;background:var(--'+(P.total<0?"red":(P.pct>=100?"green":"accent"))+')"></i></span>'+
+      '<b class="'+(P.total>0?"g":(P.total<0?"r":""))+'">'+fmt(P.total)+'</b> / '+fmt(P.target)+(P.days?' · '+pl(P.days,"day"):'')+'</span>'+
+      '<span class="acb">'+acctBadges(a)+'</span></button>'+
+      '<select class="acact" data-act="'+a.id+'" aria-label="Manage '+esc(a.name)+'"><option value="">⋯</option><option value="rename">Rename</option><option value="dup">Duplicate</option><option value="up">Move up</option><option value="down">Move down</option><option value="del">Delete…</option></select></div>';
+  }
+  function renderAcSheet(){
+    var el=document.getElementById("acSheet");if(!el)return;
+    var firms={};state.accounts.forEach(function(a){firms[a.firm]=1;});
+    var q=acQ.trim().toLowerCase(),list=state.accounts.filter(function(a){
+      if(acFirm&&a.firm!==acFirm)return false;
+      return !q||(a.name+" "+acctSub(a)).toLowerCase().indexOf(q)>=0;});
+    var html="";
+    if(!q&&!acFirm){
+      // grouped: each copy group (leader, then followers), then everything else
+      leaders().forEach(function(L){
+        html+='<div class="acgrp">★ '+esc(L.name)+'\'s group · '+pl(followersOf(L).length+1,"account")+'</div>'+acRow(L,false)+followersOf(L).map(function(x){return acRow(x,true);}).join("");
+      });
+      var free=state.accounts.filter(isFreeAcct);
+      if(free.length)html+=(leaders().length?'<div class="acgrp">Not in a group</div>':'')+free.map(function(x){return acRow(x,false);}).join("");
+    }else html=list.length?list.map(function(x){return acRow(x,false);}).join(""):'<div class="empty">No accounts match.</div>';
+    el.querySelector(".aclist").innerHTML=html;
+    el.querySelector(".acfirms").innerHTML='<button type="button" data-firm=""'+(acFirm?'':' class="on"')+'>All · '+state.accounts.length+'</button>'+
+      Object.keys(firms).map(function(k){var n=state.accounts.filter(function(a){return a.firm===k;}).length;return '<button type="button" data-firm="'+k+'"'+(acFirm===k?' class="on"':'')+'>'+esc((FIRMS[k]||{}).name||k)+' · '+n+'</button>';}).join("");
+    el.querySelector(".acsh h3").textContent="Accounts · "+state.accounts.length;
+  }
+  function openAcSheet(){
+    if(document.getElementById("acSheet"))return;
+    var back=document.createElement("div");back.className="acsheet-back";back.id="acSheet";
+    back.innerHTML='<div class="acsheet" role="dialog" aria-modal="true" aria-label="Accounts">'+
+      '<div class="acsh"><h3>Accounts</h3><button type="button" class="secbtn" id="acClose" aria-label="Close">×</button></div>'+
+      '<input type="search" class="acsearch" id="acSearch" placeholder="Search accounts…" value="'+esc(acQ)+'">'+
+      '<div class="acfirms"></div><div class="aclist"></div>'+
+      '<div class="acfoot"><button type="button" class="secbtn" id="acAdd">＋ Add account</button><span class="hint">Tap an account to open it · ⋯ to rename, copy, reorder or delete</span></div></div>';
+    document.body.appendChild(back);acSheetOpen=true;document.body.classList.add("acopen");
+    renderAcSheet();
+    var cur=back.querySelector(".acrow.cur");if(cur)cur.scrollIntoView({block:"center"});
+    back.addEventListener("click",async function(e){
+      if(e.target===back||e.target.closest("#acClose")){closeAcSheet();return;}
+      var fb=e.target.closest(".acfirms [data-firm]");if(fb){acFirm=fb.getAttribute("data-firm");renderAcSheet();return;}
+      if(e.target.closest("#acAdd")){closeAcSheet();addAccount();return;}
+      var go=e.target.closest("[data-go]");
+      if(go){var id=go.getAttribute("data-go");closeAcSheet();if(id!==state.activeId){state.activeId=id;ensureAccounts();save().then(renderAll);}return;}
+    });
+    back.addEventListener("input",function(e){if(e.target.id==="acSearch"){acQ=e.target.value;renderAcSheet();}});
+    back.addEventListener("change",async function(e){
+      var sel=e.target.closest("[data-act]");if(!sel)return;
+      var id=sel.getAttribute("data-act"),act=sel.value;sel.value="";var a=acctById(id);if(!a||!act)return;
+      if(act==="rename"){var nn=await mxPrompt("Rename account:",a.name,{title:"Rename account",okText:"Rename"});if(nn===null)return;a.name=(nn.trim()||a.name).slice(0,24);}
+      else if(act==="dup"){var keep=state.activeId;duplicateAccount(id);state.activeId=keep;}
+      else if(act==="up"||act==="down")moveAccount(id,act==="up"?-1:1);
+      else if(act==="del"){await deleteAccount(id);return;}
+      ensureAccounts();await save();renderAll();
+    });
+
+    setTimeout(function(){var s2=document.getElementById("acSearch");if(s2&&window.matchMedia("(hover:hover)").matches)s2.focus();},50);
+  }
+  document.addEventListener("keydown",function(e){if(acSheetOpen&&!mxDlgOpen&&e.key==="Escape"){e.preventDefault();closeAcSheet();}});
+  function closeAcSheet(){var el=document.getElementById("acSheet");if(el)el.remove();acSheetOpen=false;document.body.classList.remove("acopen");var b=document.getElementById("acctCur");if(b)b.focus();}
+
 
   function renderCopyPanel(){
     var host=document.getElementById("copyPanel");
@@ -4696,53 +4806,38 @@
     save().then(function(){focusDay(d);});
   });
 
-  document.getElementById("acctBar").addEventListener("click",async function(e){
-    var mv=e.target.closest(".amv");
-    if(mv){e.stopPropagation();moveAccount(mv.dataset.mv,parseInt(mv.dataset.dir,10));save().then(renderAll);return;}
-    var dup=e.target.closest(".adup");
-    if(dup){e.stopPropagation();duplicateAccount(dup.dataset.dup);ensureAccounts();save().then(renderAll);return;}
-    var del=e.target.getAttribute("data-del");
-    if(del){
-      var victim=null;for(var i=0;i<state.accounts.length;i++){if(state.accounts[i].id===del)victim=state.accounts[i];}
-      if(victim&&(await mxConfirm('Delete "'+victim.name+'" and its P&L log?\n\nThis cannot be undone from the app — export a backup first if you might want it back.',{title:"✕ Delete account",tone:"danger",okText:"Delete"}))){
-        if(victim.lead)followersOf(victim).forEach(bakeFollower);
-        state.accounts=state.accounts.filter(function(x){return x.id!==del;});
-        delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
-        if(state.stops)delete state.stops["acct:"+del];if(state.consPct)delete state.consPct["acct:"+del];if(state.dllAmt)delete state.dllAmt["acct:"+del];
-        if(state.follow)delete state.follow["acct:"+del];
-        if(state.attempts)delete state.attempts[del];if(state.attemptMeta)delete state.attemptMeta[del];
-        if(state.maxTrades)delete state.maxTrades[del];if(state.stage)delete state.stage[del];if(state.payout)delete state.payout[del];
-        if(state.cooldown)delete state.cooldown[del];if(state.lastTradeAt)delete state.lastTradeAt[del];
-        if(state.planning)delete state.planning[del];if(state.payoutGoal)delete state.payoutGoal[del];if(state.payouts)delete state.payouts[del];
-        if(state.autoFund)delete state.autoFund[del];if(state.billing)delete state.billing[del];
-        if(state.copyView===del)state.copyView=null;
-        if(state.activeId===del)state.activeId=state.accounts[0].id;
-        ensureAccounts();save().then(renderAll);
-      }
-      return;
-    }
-    if(e.target.closest("#acctAdd")){
-      var n=state.accounts.length+1;
-      var name=await mxPrompt("Name this account (e.g. TopStep #2):","Account "+n,{title:"＋ New account",okText:"Create"});
-      if(name===null)return;
-      name=(name.trim()||("Account "+n)).slice(0,24);
-      var id=genId();
-      state.accounts.push({id:id,name:name,firm:state.firm,plan:state.plan,size:state.size});
-      state.activeId=id;
-      ensureAccounts();save().then(renderAll);
-      return;
-    }
-    var chip=e.target.closest(".acch");if(!chip||!chip.dataset.id)return;
-    if(chip.dataset.id===state.activeId){
-      var a=activeAcct();
-      var nn=await mxPrompt("Rename account:",a.name,{title:"Rename account",okText:"Rename"});
-      if(nn===null)return;
-      a.name=(nn.trim()||a.name).slice(0,24);
-      save().then(renderAll);
-      return;
-    }
-    state.activeId=chip.dataset.id;
+  async function deleteAccount(del){
+    var victim=acctById(del);if(!victim||state.accounts.length<2)return;
+    if(!(await mxConfirm('Delete "'+victim.name+'" and its P&L log?\n\nThis cannot be undone from the app — export a backup first if you might want it back.',{title:"✕ Delete account",tone:"danger",okText:"Delete"})))return;
+    if(victim.lead)followersOf(victim).forEach(bakeFollower);
+    state.accounts=state.accounts.filter(function(x){return x.id!==del;});
+    delete state.logs["acct:"+del];delete state.targets["acct:"+del];delete state.maxloss["acct:"+del];
+    if(state.stops)delete state.stops["acct:"+del];if(state.consPct)delete state.consPct["acct:"+del];if(state.dllAmt)delete state.dllAmt["acct:"+del];
+    if(state.follow)delete state.follow["acct:"+del];
+    if(state.attempts)delete state.attempts[del];if(state.attemptMeta)delete state.attemptMeta[del];
+    if(state.maxTrades)delete state.maxTrades[del];if(state.stage)delete state.stage[del];if(state.payout)delete state.payout[del];
+    if(state.cooldown)delete state.cooldown[del];if(state.lastTradeAt)delete state.lastTradeAt[del];
+    if(state.planning)delete state.planning[del];if(state.payoutGoal)delete state.payoutGoal[del];if(state.payouts)delete state.payouts[del];
+    if(state.autoFund)delete state.autoFund[del];if(state.billing)delete state.billing[del];
+    if(state.copyView===del)state.copyView=null;
+    if(state.activeId===del)state.activeId=state.accounts[0].id;
+    ensureAccounts();await save();renderAll();
+  }
+  async function addAccount(){
+    var n=state.accounts.length+1;
+    var name=await mxPrompt("Name this account (e.g. TopStep #2):","Account "+n,{title:"＋ New account",okText:"Create"});
+    if(name===null)return;
+    name=(name.trim()||("Account "+n)).slice(0,24);
+    var id=genId();
+    state.accounts.push({id:id,name:name,firm:state.firm,plan:state.plan,size:state.size});
+    state.activeId=id;
     ensureAccounts();save().then(renderAll);
+  }
+  document.getElementById("acctBar").addEventListener("click",function(e){
+    var st=e.target.closest("[data-step]");
+    if(st){var i=state.accounts.indexOf(activeAcct())+parseInt(st.dataset.step,10);if(i<0||i>=state.accounts.length)return;state.activeId=state.accounts[i].id;ensureAccounts();save().then(renderAll);return;}
+    if(e.target.closest("#acctAdd")){addAccount();return;}
+    if(e.target.closest("#acctCur")||e.target.closest("#acctAll")){openAcSheet();return;}
   });
 
   // copy-trading panel: choose leader + toggle followers
@@ -6825,7 +6920,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v90";
+var APP_BUILD="v91";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
