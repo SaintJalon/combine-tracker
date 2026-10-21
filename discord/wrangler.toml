@@ -1,0 +1,16 @@
+# Optional: deploy from a terminal with `npx wrangler deploy` (run inside discord/).
+# The dashboard route in README.md needs no tools at all.
+# Secrets: npx wrangler secret put DISCORD_TOKEN   (and DISCORD_PUBLIC_KEY, SETUP_KEY)
+name = "simple-start-bot"
+main = "worker.mjs"
+compatibility_date = "2026-01-01"
+
+# The day's posts (8:00, 9:30, 12:00, 3:00 PM ET and Sunday 6:00 PM ET) — the worker works out
+# Eastern time itself, so daylight saving needs no change here.
+[triggers]
+crons = ["*/30 * * * *"]
+
+[vars]
+TRACKER_URL = "https://saintjalon.github.io/combine-tracker/"
+# DISCORD_APP_ID = "…"   (Developer Portal → General Information → Application ID)
+# GUILD_ID = "…"         (Discord → right-click your server → Copy Server ID)
