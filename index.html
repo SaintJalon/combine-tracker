@@ -1623,9 +1623,10 @@
   // Drawdown descriptions, checked against each firm's own help center / product pages (Sep 2026;
   // MyFundedFutures, Lucid, Tradeify and TopStep re-checked Oct 2026).
   var TS_DD="<b>End-of-day</b> trailing: the Maximum Loss Limit trails your highest end-of-day balance (not intraday peaks), never moves down, and locks for good at your starting balance once it gets there. It's watched in real time, unrealized P&L included, so touching it intraday liquidates the account. The number that matters is your <b>buffer = balance − current floor</b>. Under $500 buffer, drop to micros or stop.";
-  var TS_LABS25="<b>Static</b> Maximum Loss Limit (Topstep Labs 25K): the floor sits at $24,000 and never moves — no trailing, no ratchet. Keep the balance above it at all times and that's the whole drawdown rule. The $500 daily loss limit is mandatory on this Combine.";
-  var TS_FREEDOM="<b>End-of-day</b> trailing (Topstep Labs 250K Freedom): the $10,000 Maximum Loss Limit trails your highest end-of-day balance and is watched in real time. The <b>$5,000 daily loss limit is mandatory</b>. 55% consistency target. One-time $499 with a 90-day expiration; the Express Funded stage switches to a $1,000 <b>static</b> Max Loss.";
-  var TS_LABS50="<b>Static</b> Maximum Loss Limit (Topstep Labs 50K): the floor sits at $48,000 and never moves — every dollar of profit is extra room. The $1,000 daily loss limit is mandatory on this Combine.";
+  var TS_LABS25="<b>Static</b> Maximum Loss Limit (Topstep Labs 25K): the floor sits at $24,000 and never moves — no trailing, no ratchet. Keep the balance above it at all times and that's the whole drawdown rule. The $500 daily loss limit is mandatory on this Combine. One-time $75 (Labs Drop #001), $4,000 payout cap.";
+  var TS_FREEDOM="<b>End-of-day</b> trailing (Topstep Labs 250K Freedom): the $10,000 Maximum Loss Limit trails your highest end-of-day balance and is watched in real time. The <b>$5,000 daily loss limit is mandatory</b>. 55% consistency target. One-time $499 with a 90-day expiration (Labs Drop #002), $25,000 payout cap; the Express Funded stage switches to a $1,000 <b>static</b> Max Loss.";
+  var TS_CHALLENGE="<b>Topstep Labs Challenge</b> — two rounds: hit the target, then <b>do it again</b>, and the cash reward is yours (the Challenge then ends). Each round has a <b>static</b> Max Loss Limit that never moves, no daily loss limit, no consistency target and no minimum days. The target here is one round: when round 1 is done, start round 2 fresh with Path → <b>＋ New attempt</b>. One-time fee, no rebill.";
+  var TS_LABS50="<b>Static</b> Maximum Loss Limit (Topstep Labs 50K): the floor sits at $48,000 and never moves — every dollar of profit is extra room. The $1,000 daily loss limit is mandatory on this Combine. One-time $149 (Labs Drop #006), $8,000 payout cap.";
   var DD_MFFU_STUDIO="<b>Static</b> Max Loss Limit (Studio #003 5K, #001 10K, #002 20K): the floor never moves — no trailing and no end-of-day reset, in the evaluation or sim funded. Micros only. No daily loss limit, no consistency rule and no minimum days.";
   var DD_MFFU_RAPID="<b>End-of-day</b> trailing in the evaluation: the Max Loss only moves at the session close, up to each new closing high, so intraday dips don't move it (touching it intraday still breaches). A <b>50% consistency rule</b> applies in the eval only. Once funded, Rapid switches to <b>intraday</b> trailing — the floor follows your equity high in real time, open profits included — and locks at <b>starting balance + $100</b>. No daily loss limit.";
   var DD_MFFU_EOD="<b>End-of-day</b> trailing: the Max Loss only moves at the session close, up to each new closing high, and locks for good at <b>starting balance + $100</b>. Intraday dips don't move it, but touching it intraday still breaches.";
@@ -1683,7 +1684,7 @@
   // lockOff: the trailing floor locks at starting balance + lockOff (0 = locks at the starting balance).
   // oneTime: the firm usually sells it as a one-time purchase — the rebill tracker suggests No rebill, never sets it.
   var FIRMS={
-    topstep:{name:"TopStep",planOrder:["combine","static","freedom"],plans:{
+    topstep:{name:"TopStep",planOrder:["combine","static","freedom","challenge"],plans:{
       combine:{name:"Combine",order:["50k","100k","150k"],sizes:{
         "50k":S("TopStep","Combine",50000,{target:3000,maxloss:2000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"55%",consPct:55,consRaises:true,dll:"Optional $1,000",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"min 2 to pass",minShort:"2"}),
         "100k":S("TopStep","Combine",100000,{target:6000,maxloss:3000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"55%",consPct:55,consRaises:true,dll:"Optional $2,000",contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 2 to pass",minShort:"2"}),
@@ -1692,6 +1693,12 @@
       static:{name:"Static",order:["25k","50k"],sizes:{
         "25k":S("TopStep","Static",25000,{target:2000,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS25,cons:"55%",consPct:55,consRaises:true,dll:"$500 · mandatory",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false,oneTime:true}),
         "50k":S("TopStep","Static",50000,{target:4000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS50,cons:"55%",consPct:55,consRaises:true,dll:"$1,000 · mandatory",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2",locks:false,oneTime:true})
+      }},
+      challenge:{name:"Labs Challenge",order:["1.5k","3k-008","3k-009"],sizes:{
+        // Labs Challenges have no account size of their own: a nominal $50K balance carries the static floor
+        "1.5k":S("TopStep","Labs Challenge",50000,{title:"TopStep — $1.5K Challenge (Labs #007)",sizeLbl:"1.5K · #007",target:1500,maxloss:500,maxlossLabel:"Static Max Loss",risk:75,stop:150,dd:"Static (fixed floor)",ddDesc:TS_CHALLENGE+" $99 · $1,500 reward · trade up to 2 micros.",contracts:"0 minis / 2 micros",contractsShort:"2-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true}),
+        "3k-008":S("TopStep","Labs Challenge",50000,{title:"TopStep — $3K Challenge · Return (Labs #008)",sizeLbl:"3K Return · #008",target:3000,maxloss:1000,maxlossLabel:"Static Max Loss",risk:150,stop:300,dd:"Static (fixed floor)",ddDesc:TS_CHALLENGE+" $199 · $3,000 reward · up to 5 minis / 50 micros.",contracts:"5 minis / 50 micros",contractsShort:"5-mini",mindays:"no minimum",minShort:"—",locks:false,oneTime:true}),
+        "3k-009":S("TopStep","Labs Challenge",50000,{title:"TopStep — $3K Challenge · Revenge (Labs #009)",sizeLbl:"3K Revenge · #009",target:3000,maxloss:500,maxlossLabel:"Static Max Loss",risk:75,stop:150,dd:"Static (fixed floor)",ddDesc:TS_CHALLENGE+" $65 · $3,000 reward · up to 2 minis / 20 micros.",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"no minimum",minShort:"—",locks:false,oneTime:true})
       }},
       freedom:{name:"Freedom",order:["250k"],sizes:{
         "250k":S("TopStep","Freedom",250000,{target:15000,maxloss:10000,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_FREEDOM,cons:"55%",consPct:55,consRaises:true,dll:"$5,000 · mandatory",contracts:"25 minis / 250 micros",contractsShort:"25-mini",mindays:"min 2 to pass",minShort:"2",oneTime:true})
@@ -4449,7 +4456,7 @@
     var pl=firm().plans[state.plan],host=document.getElementById("sizeSel");
     host.innerHTML=pl.order.map(function(sz){
       var s=pl.sizes[sz];
-      return '<button data-size="'+sz+'"'+(sz===state.size?' class="active"':'')+'><span class="f">'+fmt(s.target)+'</span>'+sz.toUpperCase()+'</button>';
+      return '<button data-size="'+sz+'"'+(sz===state.size?' class="active"':'')+'><span class="f">'+fmt(s.target)+'</span>'+(s.sizeLbl||sz.toUpperCase())+'</button>';
     }).join("");
   }
 
@@ -4491,7 +4498,7 @@
     state.accounts.forEach(function(a,idx){
       var f=FIRMS[a.firm]||FIRMS.topstep;
       var pl=f.plans[a.plan]||f.plans[f.planOrder[0]];
-      var sub=f.name+" · "+pl.name+" · "+a.size.toUpperCase();
+      var szc=pl.sizes&&pl.sizes[a.size],sub=f.name+" · "+pl.name+" · "+(szc&&szc.sizeLbl||a.size.toUpperCase());
       var lo=leaderOf(a),badge=a.lead?'<span class="badge lead">★ Leader</span>':(lo?'<span class="badge foll" title="Follows '+esc(lo.name)+'">⇄ '+esc(lo.name.length>10?lo.name.slice(0,9)+"…":lo.name)+'</span>':"");
       var bl=billingOf(a.id);
       if(rebills(bl)){var rb=rebillInfo(bl);badge+='<span class="badge bill'+(rb.tone?" "+rb.tone:"")+'" title="'+(rb.left===0?"Rebills today":rb.tdLeft+" trading day"+(rb.tdLeft===1?"":"s")+" left · rebills "+weekdayLbl(rb.next)+" (in "+rb.left+" day"+(rb.left===1?"":"s")+")")+'">↻ '+(rb.left===0?"today":rb.tdLeft+" td")+'</span>';}
@@ -6818,7 +6825,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v89";
+var APP_BUILD="v90";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
