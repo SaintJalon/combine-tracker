@@ -74,6 +74,11 @@ you're in, and whether the Entry Guard is clear — tap either one to jump to it
 appears there when you have logged days and no export in 7+ days; tap it to export.
 A **Spent** chip shows what you've paid across all accounts once any account has a rebill price;
 tap it to open the rebill tracker.
+**Accounts bar:** the top shows the open account (name, firm · plan · size, leader / follower and rebill badges) with
+‹ › to step through accounts, **☰ All accounts** and **＋**. Tap the account or ☰ for the accounts sheet: search, filter by
+firm, every account grouped by copy group with its P&L against target, and a **⋯** menu to rename, duplicate, move up /
+down or delete. On a phone the bar fits one line and the sheet opens full screen.
+
 **TopStep Labs:** Static 25K (Drop #001) and 50K (#006), Freedom 250K (#002) and the **Labs Challenge** plan — $1.5K
 (#007: $500 static max loss, 2 micros), $3K Return (#008: $1,000 static, 5 minis) and $3K Revenge (#009: $500 static,
 2 minis). A Challenge is two rounds: hit the target, do it again, take the reward; the tracker's target is one round —
