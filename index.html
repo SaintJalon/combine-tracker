@@ -549,6 +549,30 @@
   .jnscale,.jnchips{display:flex;flex-wrap:wrap;gap:6px}
   .jnscale button,.jnchips button{background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:2px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;min-width:36px}
   .jnscale button.on,.jnchips button.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .jnseg{display:flex;gap:0;margin-top:12px;border:1px solid var(--line2);border-radius:3px;overflow:hidden}
+  .jnseg button{flex:1;background:transparent;border:0;color:var(--muted);padding:11px 6px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+  .jnseg button+button{border-left:1px solid var(--line2)}
+  .jnseg button.on{background:var(--accent-soft);color:var(--accent)}
+  .jnseg small{font-size:10px;color:var(--muted2);letter-spacing:0;margin-left:3px}.jnseg button.on small{color:var(--accent)}
+  #tab-journal.jv-pre .jsec-post,#tab-journal.jv-post .jsec-pre{display:none}
+  .jnstep{display:inline-flex;align-items:stretch;border:1px solid var(--line2);border-radius:2px;overflow:hidden}
+  .jnstep button{background:transparent;border:0;color:var(--accent);font-size:17px;font-weight:800;min-width:40px;cursor:pointer}
+  .jnstep input[type=number]{border:0!important;border-radius:0!important;width:64px!important;text-align:center}
+  .jnsugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;text-transform:none;letter-spacing:0}
+  .jnsugg button{background:transparent;border:1px dashed var(--line2);color:var(--muted);border-radius:12px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;text-align:left}
+  .jnsugg button.used{border-style:solid;border-color:var(--accent-border);color:var(--accent)}
+  .jnsugg button.lv{border-color:rgba(var(--accent-rgb),.45);color:var(--text)}
+  .jnnext{margin-top:12px;text-align:right}
+  #tab-journal.jv-all .jnnext{display:none}
+  @media(max-width:760px){
+    .jnscale{flex:1;display:grid;grid-template-columns:repeat(5,1fr)}
+    .jnscale button{min-height:44px;font-size:14px}
+    .jnchips button{padding:9px 12px;font-size:12.5px}
+    .jnrow{gap:8px}.jnk{min-width:0;flex-basis:100%}
+    .jnsugg button{padding:8px 12px;font-size:12.5px}
+    .jnl textarea{min-height:64px}
+    .jnnext .secbtn{width:100%;padding:12px}
+  }
   .jnhint{font-size:10.5px;color:var(--muted2)}
   .jnl{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
   .jnl textarea{display:block;width:100%;margin-top:5px;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:8px 10px;font-size:12.5px;resize:vertical;text-transform:none;letter-spacing:0}
@@ -1593,24 +1617,32 @@
     </div>
     <div class="eqcard jnday" id="jnDay"></div>
 
-    <h2 class="section">Before the session</h2>
-    <div class="eqcard jnform" id="jnPre">
-      <div class="jnrow"><span class="jnk">Mood</span><span class="jnscale" data-jn="mood"></span></div>
-      <div class="jnrow"><span class="jnk">Sleep</span><input type="number" inputmode="decimal" step="0.5" min="0" max="14" data-jn="sleep" placeholder="hours"></div>
-      <div class="jnrow"><span class="jnk">Warm-up</span><span class="jnchips"><button type="button" id="jnWarm" aria-pressed="false">Mind warm-up done</button></span><span class="jnhint">breathing or a focus routine before the charts</span></div>
-      <label class="jnl">Plan &amp; bias<textarea data-jn="plan" rows="2" placeholder="Levels, bias, the one setup you're waiting for…"></textarea></label>
-      <label class="jnl">I only trade if…<textarea data-jn="rules" rows="2" placeholder="e.g. I'm calm, I've seen my setup, my max loss is set in the platform"></textarea></label>
+    <div class="jnseg" role="tablist" aria-label="Journal part">
+      <button type="button" data-jseg="pre" role="tab">Before <small id="jnCntPre"></small></button>
+      <button type="button" data-jseg="post" role="tab">After <small id="jnCntPost"></small></button>
+      <button type="button" data-jseg="all" role="tab">Both</button>
     </div>
 
-    <h2 class="section">After the session</h2>
-    <div class="eqcard jnform" id="jnPost">
+    <h2 class="section jsec-pre">Before the session</h2>
+    <div class="eqcard jnform jsec-pre" id="jnPre">
+      <div class="jnrow"><span class="jnk">Mood</span><span class="jnscale" data-jn="mood"></span></div>
+      <div class="jnrow"><span class="jnk">Sleep</span><span class="jnstep"><button type="button" data-jsl="-0.5" aria-label="Half an hour less">−</button><input type="number" inputmode="decimal" step="0.5" min="0" max="14" data-jn="sleep" placeholder="hrs"><button type="button" data-jsl="0.5" aria-label="Half an hour more">+</button></span><span class="jnchips jnquick"><button type="button" data-jsv="5">5h</button><button type="button" data-jsv="6">6h</button><button type="button" data-jsv="7">7h</button><button type="button" data-jsv="8">8h</button></span></div>
+      <div class="jnrow"><span class="jnk">Warm-up</span><span class="jnchips"><button type="button" id="jnWarm" aria-pressed="false">Mind warm-up done</button></span><span class="jnhint">breathing or a focus routine before the charts</span></div>
+      <label class="jnl">Plan &amp; bias<textarea data-jn="plan" rows="2" placeholder="Levels, bias, the one setup you're waiting for…"></textarea><span class="jnsugg" data-jsug="plan"></span></label>
+      <label class="jnl">I only trade if…<textarea data-jn="rules" rows="2" placeholder="e.g. I'm calm, I've seen my setup, my max loss is set in the platform"></textarea><span class="jnsugg" data-jsug="rules"></span></label>
+    </div>
+
+    <div class="jnnext jsec-pre"><button type="button" class="secbtn" id="jnToPost">Next: after the session →</button></div>
+
+    <h2 class="section jsec-post">After the session</h2>
+    <div class="eqcard jnform jsec-post" id="jnPost">
       <div class="jnrow"><span class="jnk">Discipline</span><span class="jnscale" data-jn="disc"></span></div>
       <div class="jnrow"><span class="jnk">Temperature</span><span class="jnscale" data-jn="temp"></span><span class="jnhint">1 cool &amp; focused · 5 running hot</span></div>
       <div class="jnrow jnemo"><span class="jnk">I felt</span><span class="jnchips" data-jn="emo"></span></div>
-      <label class="jnl">What went well<textarea data-jn="well" rows="2" placeholder="What did you do right — even on a red day? What was there before your best trade?"></textarea></label>
-      <label class="jnl">What went wrong<textarea data-jn="wrong" rows="2" placeholder="Where did you leave the plan? What did it cost?"></textarea></label>
-      <label class="jnl">Lesson<textarea data-jn="lesson" rows="2" placeholder="The one thing today taught you"></textarea></label>
-      <label class="jnl">One thing for tomorrow<textarea data-jn="tomorrow" rows="2" placeholder="Shows on Today's plan next session"></textarea></label>
+      <label class="jnl">What went well<textarea data-jn="well" rows="2" placeholder="What did you do right — even on a red day? What was there before your best trade?"></textarea><span class="jnsugg" data-jsug="well"></span></label>
+      <label class="jnl">What went wrong<textarea data-jn="wrong" rows="2" placeholder="Where did you leave the plan? What did it cost?"></textarea><span class="jnsugg" data-jsug="wrong"></span></label>
+      <label class="jnl">Lesson<textarea data-jn="lesson" rows="2" placeholder="The one thing today taught you"></textarea><span class="jnsugg" data-jsug="lesson"></span></label>
+      <label class="jnl">One thing for tomorrow<textarea data-jn="tomorrow" rows="2" placeholder="Shows on Today's plan next session"></textarea><span class="jnsugg" data-jsug="tomorrow"></span></label>
     </div>
 
     <h2 class="section">Coach Co · from your journal</h2>
@@ -3100,6 +3132,59 @@
     return{rows:rows,total:tot,any:any};
   }
   function jnDefaultDate(){return lastSession();}
+  // tap-to-add lines for each box: what that day's trades show, then common answers
+  var JN_SUGG={
+    plan:["Wait for my A+ setup only","No trades in the first 15 minutes","Bias long above the open, short below","Levels marked: PDH / PDL / overnight high-low"],
+    rules:["I'm calm and rested","My setup is actually there","My max loss is set in the platform","No big news in the next 15 minutes"],
+    well:["Waited for my setup","Took the stop without moving it","Stopped at my daily limit","Let a winner reach the target","Walked away when I was done"],
+    wrong:["Traded before my setup formed","Revenge trade after a loss","Moved my stop","Traded too big","Kept trading past my cap","Cut a winner early"],
+    lesson:["Patience pays — wait for the trigger","The first loss is the cheapest one","Size down when I'm off","My edge is in the morning","Done is done — walk away"]
+  };
+  function jnDayFacts(iso){
+    var leaks={},good={};
+    state.accounts.forEach(function(a){
+      var r=acctNetOn(a,iso);if(!r||r.copied)return;
+      var k="acct:"+a.id,j=(state.journal&&state.journal[k])||{},jj=null;
+      for(var x in j){if(j.hasOwnProperty(x)&&j[x]&&j[x].date===iso){jj=j[x];break;}}
+      if(!jj)return;
+      asAcct(a,function(){var rr=dayReview(cfg(),r.v,jj);rr.leaks.forEach(function(l){leaks[l.k]=Math.max(leaks[l.k]||0,l.n);});rr.good.forEach(function(g){good[g]=1;});});
+    });
+    return{leaks:leaks,good:good};
+  }
+  function jnSuggest(k,iso){
+    var live=[],F=jnDayFacts(iso);
+    if(k==="well")Object.keys(F.good).forEach(function(g){live.push(DAY_GOOD[g].replace(/\.$/,""));});
+    if(k==="wrong")Object.keys(F.leaks).forEach(function(l){live.push(DAY_COACH[l].t+(F.leaks[l]>1?" ×"+F.leaks[l]:""));});
+    if(k==="tomorrow"){
+      var X=todayCtx(),p=X.plan;
+      if(!p.breached){live.push("Stop at -"+fmt(p.lossLimit));live.push("Walk away after "+pl(p.losses,"loser"));if(p.trades)live.push("Max "+pl(p.trades,"trade"));}
+      Object.keys(F.leaks).forEach(function(l){var m={"revenge":"Five minutes off after every loser","over-cap":"The last trade is trade "+maxTradesOf(),"moved-stop":"Stop goes in with the order and stays","chase":"No trigger candle close, no trade","oversized":"Size from the calculator only","no-setup":"Name the setup before I click","early-exit":"Let it reach the target or the stop"}[l];if(m)live.push(m);});
+      live.push("Only my A+ setup");
+    }
+    var all=live.map(function(t){return{t:t,lv:1};}).concat((JN_SUGG[k]||[]).map(function(t){return{t:t};}));
+    var seen={};return all.filter(function(x){if(seen[x.t])return false;seen[x.t]=1;return true;}).slice(0,7);
+  }
+  function renderJnSugg(){
+    var e=jnEntry(jnDate||jnDefaultDate());
+    document.querySelectorAll('#tab-journal [data-jsug]').forEach(function(host){
+      var k=host.getAttribute("data-jsug"),cur=(e[k]||"").toLowerCase();
+      host.innerHTML=jnSuggest(k,jnDate).map(function(x){var used=cur.indexOf(x.t.toLowerCase())>=0;return '<button type="button" data-jadd="'+esc(x.t)+'" class="'+(used?"used":"")+(x.lv?" lv":"")+'"'+(x.lv?' title="From this day\'s trades"':'')+'>'+(used?"✓ ":"+ ")+esc(x.t)+'</button>';}).join("");
+    });
+  }
+  // which half is on screen: your pick, else by the clock — before the open shows Before
+  var jnView=null;
+  function jnCounts(e){
+    var pre=["mood","sleep","warm","plan","rules"],post=["disc","temp","emo","well","wrong","lesson","tomorrow"];
+    function filled(k){var v=e[k];return Array.isArray(v)?v.length>0:(typeof v==="string"?!!v.trim():!!v);}
+    return{pre:pre.filter(filled).length+"/"+pre.length,post:post.filter(filled).length+"/"+post.length};
+  }
+  function jnApplyView(){
+    var v=jnView||(window.matchMedia("(max-width:760px)").matches?((jnDate===isoDate()&&nowCSTMinutes()<8*60+30)?"pre":"post"):"all");
+    var P=document.getElementById("tab-journal");P.classList.remove("jv-pre","jv-post","jv-all");P.classList.add("jv-"+v);
+    document.querySelectorAll(".jnseg [data-jseg]").forEach(function(b){var on=b.getAttribute("data-jseg")===v;b.classList.toggle("on",on);b.setAttribute("aria-selected",on?"true":"false");});
+    var c=jnCounts(jnEntry(jnDate));document.getElementById("jnCntPre").textContent=c.pre;document.getElementById("jnCntPost").textContent=c.post;
+  }
+  function jnGrow(el){if(el&&el.tagName==="TEXTAREA"){el.style.height="auto";el.style.height=Math.min(el.scrollHeight+2,320)+"px";}}
   function jnShift(dir){var d=new Date((jnDate||jnDefaultDate())+"T00:00:00");do{d.setDate(d.getDate()+dir);}while(!isTradingDate(isoOf(d)));var iso=isoOf(d);if(iso>isoDate())return;jnDate=iso;renderJournal();}
   function renderJournal(){
     if(!jnDate)jnDate=jnDefaultDate();
@@ -3119,6 +3204,8 @@
     document.querySelector('.jnchips[data-jn="emo"]').innerHTML=JN_EMO.map(function(t){var on=emo.indexOf(t)>=0;return '<button type="button" data-je="'+esc(t)+'" aria-pressed="'+on+'"'+(on?' class="on"':'')+'>'+esc(t)+'</button>';}).join("");
     document.querySelectorAll('#tab-journal textarea[data-jn], #tab-journal input[data-jn]').forEach(function(el){var k=el.getAttribute("data-jn");if(document.activeElement!==el)el.value=e[k]!=null?e[k]:"";});
     document.getElementById("jnSaved").textContent=e.t?"saved":"";
+    document.querySelectorAll('#tab-journal textarea[data-jn]').forEach(jnGrow);
+    renderJnSugg();jnApplyView();
     renderJnCoach();renderJnList();
   }
   function jnSet(k,v){
@@ -3173,6 +3260,15 @@
       if(ev.target.closest("#jnPrev")){jnShift(-1);return;}
       if(ev.target.closest("#jnNext")){jnShift(1);return;}
       if(ev.target.closest("#jnToday")){jnDate=jnDefaultDate();renderJournal();return;}
+      var sg=ev.target.closest("[data-jseg]");if(sg){jnView=sg.getAttribute("data-jseg");jnApplyView();return;}
+      if(ev.target.closest("#jnToPost")){jnView="post";jnApplyView();document.querySelector(".jnseg").scrollIntoView({block:"start",behavior:"smooth"});return;}
+      var ad=ev.target.closest("[data-jadd]");
+      if(ad){var box=ad.closest("label").querySelector("textarea"),k2=box.getAttribute("data-jn"),t2=ad.getAttribute("data-jadd"),cv=box.value.trim();
+        if(cv.toLowerCase().indexOf(t2.toLowerCase())<0){box.value=cv?cv.replace(/[.\s]*$/,"")+". "+t2:t2;jnSet(k2,box.value);jnGrow(box);jnQueueSave();renderJnSugg();jnApplyView();}
+        return;}
+      var sl=ev.target.closest("[data-jsl],[data-jsv]");
+      if(sl){var cur0=+jnEntry(jnDate).sleep||0,nv=sl.hasAttribute("data-jsv")?+sl.getAttribute("data-jsv"):Math.max(0,Math.min(14,(cur0||7)+parseFloat(sl.getAttribute("data-jsl"))));
+        jnSet("sleep",nv);renderJournal();jnQueueSave();return;}
       if(ev.target.closest("#jnWarm")){jnSet("warm",jnEntry(jnDate).warm?"":true);renderJournal();jnQueueSave();return;}
       var sb=ev.target.closest(".jnscale [data-jv]");
       if(sb){var k=sb.parentNode.getAttribute("data-jn"),v=+sb.getAttribute("data-jv");jnSet(k,jnEntry(jnDate)[k]===v?"":v);renderJournal();jnQueueSave();return;}
@@ -3186,7 +3282,7 @@
       if(ev.target.id==="jnSearch"){renderJnList();return;}
       var k=ev.target.getAttribute&&ev.target.getAttribute("data-jn");if(!k)return;
       var v=ev.target.value;if(k==="sleep"){v=v===""?"":Math.max(0,Math.min(14,parseFloat(v)));if(v!==""&&isNaN(v))v="";}
-      jnSet(k,v);jnQueueSave();
+      jnSet(k,v);jnGrow(ev.target);jnQueueSave();jnApplyView();
     });
     P.addEventListener("change",function(ev){if(ev.target.id==="jnDate"){var v=ev.target.value;if(v&&v<=isoDate()){jnDate=v;renderJournal();}else ev.target.value=jnDate;}});
   })();
@@ -6920,7 +7016,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v91";
+var APP_BUILD="v92";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
