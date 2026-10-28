@@ -65,7 +65,7 @@ The app is split into six programs (bottom bar on a phone, top bar on desktop �
 | **04 Armory** | Position size, money management, risk lab |
 | **05 Path** | Attempts, funded / payout, planning & goals |
 | **06 Replay** | Sparring Program: replay real market days bar by bar and trade them under your own rules, plus the Sparring Log of every session |
-| **07 Journal** | One entry per trading day across all your accounts: the day's P&L on every account (with CO grades), mood and sleep before the open, your plan and "I only trade if…", then discipline 1–5, how you felt, what went well / wrong, the lesson and one thing for tomorrow — which shows on Today's plan next session. Coach Co reads it for sleep, mood, discipline and emotion patterns against your P&L; past entries are searchable |
+| **07 Journal** | One entry per trading day across all your accounts: the day's P&L on every account (with CO grades), mood and sleep before the open, your plan and "I only trade if…", then discipline 1–5, how you felt, what went well / wrong, the lesson and one thing for tomorrow — which shows on Today's plan next session. Coach Co reads it for sleep, mood, discipline and emotion patterns against your P&L; past entries are searchable On a phone it opens on **Before** or **After** by the time of day and shows how much of each is filled in; every box has tap-to-add lines (from that day's own trades where it can), sleep has − / + and 5–8 h quick picks, and the 1–5 scales are big tap targets |
 
 The `>_` button (or key `0`) opens **System**: Matrix / Construct theme, accent, digital rain,
 CRT scanlines, animations, boot sequence, and Backup & Export. Those effect settings are per
