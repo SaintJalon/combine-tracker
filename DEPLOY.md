@@ -123,6 +123,10 @@ the work, sleep, warm-up); coach while it's fresh; when a leak shows up, point t
 day is something to repeat ("Do more of this"); split the day into two sessions with a reset break; warm up your mind and
 take your emotional temperature (Journal). Its daily principles include the book's ideas, credited on the card.
 
+**Day numbers follow the calendar:** logged days are always numbered in date order (a day backfilled later slots in
+where its date belongs, with its trades and notes), and logging a day after today's is already in dates it to the most
+recent trading day you haven't logged — a missed day lands on the day you missed, not the next session.
+
 **Daily average that adapts:** **Daily target avg** is what each day left needs from where you actually are, not the
 plan's starting average. Fall behind and it rises — but never past a safe day (1.5× the plan's average, and never more
 than consistency allows): past that the plan **adds trading days** (up to 40) instead of asking for bigger days, and the
