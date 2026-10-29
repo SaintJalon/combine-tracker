@@ -2041,6 +2041,12 @@
     var cur=new Date(t+"T00:00:00");
     do{cur.setDate(cur.getDate()-1);}while(!isTradingDate(isoOf(cur)));
     if(!isTradingDate(t)&&!used[isoOf(cur)])return isoOf(cur);
+    // a trading day with today already logged: you're catching up a day you missed — the most recent
+    // session you haven't logged in the last two weeks (never before the account opened)
+    if(isTradingDate(t)){
+      var a0=activeAcct(),back=new Date(t+"T00:00:00");
+      for(var b=0;b<14;b++){back.setDate(back.getDate()-1);var bi=isoOf(back);if(a0&&a0.start&&bi<a0.start)break;if(isTradingDate(bi)&&!used[bi])return bi;}
+    }
     cur=new Date(t+"T00:00:00");
     for(var i=0;i<30;i++){cur.setDate(cur.getDate()+1);var iso=isoOf(cur);if(isTradingDate(iso)&&!used[iso])return iso;}
     return t;
@@ -2337,11 +2343,30 @@
   // (an account that already traded before following loses nothing), a leader day on a date the
   // follower already logged is skipped (your own day wins), and every other leader day fills the
   // next free slot, in date order, with its date stamped in the follower's journal (flagged copied).
+  // Day numbers follow the calendar: dated logged days are renumbered in date order, using the same day
+  // numbers they already hold (undated days keep theirs). In place; → {old: new} or null if already in order.
+  function reorderByDate(log,j){
+    var keys=Object.keys(log).filter(function(d){return j[d]&&j[d].date;}).map(Number).sort(function(a,b){return a-b;});
+    if(keys.length<2)return null;
+    var items=keys.map(function(d){return{d:d,v:log[d],e:j[d]};});
+    var sorted=items.slice().sort(function(x,y){return x.e.date<y.e.date?-1:(x.e.date>y.e.date?1:x.d-y.d);});
+    if(sorted.every(function(it,i){return it.d===keys[i];}))return null;
+    var map={};
+    keys.forEach(function(d){delete log[d];delete j[d];});
+    sorted.forEach(function(it,i){var nd=keys[i];map[it.d]=nd;log[nd]=it.v;j[nd]=it.e;});
+    return map;
+  }
   function syncFollowers(){
     if(!state.journal)state.journal={};
     state.accounts.forEach(function(a){
       if(a.lead&&a.follow)bakeFollower(a);                 // a leader doesn't follow anyone
       else if(a.follow&&!leaderOf(a))bakeFollower(a);      // its leader is gone: keep what it has, stand alone
+    });
+    var dayMaps={};
+    state.accounts.forEach(function(a){
+      if(a.follow)return; // followers are put in order after their copies are rebuilt
+      var k="acct:"+a.id,lg=state.logs[k],jj=state.journal[k];
+      if(lg&&jj){var m=reorderByDate(lg,jj);if(m)dayMaps[k]=m;}
     });
     leaders().forEach(function(L){
       var lead=state.logs["acct:"+L.id]||{},lj=state.journal["acct:"+L.id]||{};
@@ -2359,9 +2384,14 @@
           out[slot]=lead[x.d]; // 1:1 — a copier places the same trade on every account
           if(x.date)fj[slot]={note:"",trades:[],date:x.date,copied:true};
         });
+        // own days and copies together, in date order; the own-days record follows its days to their new numbers
+        var fm=reorderByDate(out,fj);
+        if(fm){var no={};for(var od in rec.own){if(rec.own.hasOwnProperty(od))no[fm[od]||od]=rec.own[od];}rec.own=no;dayMaps[k]=fm;}
         state.logs[k]=out;
       });
     });
+    // the day open in the editor moves with its new number
+    var am=dayMaps[modeKey()];if(am&&openDay!=null&&am[openDay])openDay=am[openDay];
   }
 
   // ---- copy group: the leader plus every account following it, P&L combined ----
@@ -7016,7 +7046,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v92";
+var APP_BUILD="v93";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
