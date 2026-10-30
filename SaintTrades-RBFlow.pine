@@ -657,8 +657,8 @@ delSig(Sig s) =>
     true
 
 // A7: may a new signal in this direction start now?
-canSignal(bool bull, bool blocked) =>
-    bool ok = not blocked and (dirIn == "Both" or (bull ? dirIn == "Longs only" : dirIn == "Shorts only"))
+canSignal(bool bull, bool blk) =>
+    bool ok = not blk and (dirIn == "Both" or (bull ? dirIn == "Longs only" : dirIn == "Shorts only"))
     if ok and overlap != "Take every signal"
         for s in sigs
             if not s.resolved and isLive(selT(s)) and (overlap == "One at a time" or s.bull == bull)
@@ -976,12 +976,12 @@ if barstate.isconfirmed
             if use4hRb
                 Zone zHi = na
                 Zone zLo = na
-                for z in c5
-                    if z.formT >= ck.t and z.formT < bt
-                        if not z.bull and z.tip == ck.h
-                            zHi := z
-                        if z.bull and z.tip == ck.l
-                            zLo := z
+                for zc in c5
+                    if zc.formT >= ck.t and zc.formT < bt
+                        if not zc.bull and zc.tip == ck.h
+                            zHi := zc
+                        if zc.bull and zc.tip == ck.l
+                            zLo := zc
                 for j = 0 to 1
                     Zone z = j == 0 ? zHi : zLo
                     if not na(z) and not z.swept
@@ -1008,7 +1008,7 @@ if barstate.isconfirmed
     // ---- untouched target RBs keep extending
     if tgtDraw == "All untouched" and array.size(pool) > 0
         for z in pool
-            box.set_right(z.bx, bar_index)
+            setRight(z.bx, bar_index)
 
     // ---- only the newest maxDraw signals keep their drawings; finished, undrawn ones go
     int kept = 0
