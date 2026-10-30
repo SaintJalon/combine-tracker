@@ -162,7 +162,15 @@ You also get alerts when a limit fills and when a trade closes. There are also f
   | No 1H RB below | Skipped. With the fixed-R fallback: 3R target at 1059, hit. |
   | Longs only | The short is skipped |
 
-- **Random-data check:** on random prices there is no edge, so results should average about 0R. See the numbers in the commit / PR notes. A strongly positive number here would mean the code was peeking at future bars.
+- **Random-data check:** random prices have no edge, so results should average about 0R. A strongly positive number would mean the code was peeking at future bars. Three seeded random walks of 15 trading days each on 1m bars, all levels on, taking every signal:
+
+  | Entry | Trades | Full to target | ½ at 1R + BE |
+  |---|---|---|---|
+  | RB close | 120 | −0.26R avg, 12% hit | +0.00R avg, 51% win |
+  | Body edge | 120 | −0.35R avg, 12% hit | −0.05R avg, 51% win |
+  | CE limit | 110 | −0.39R avg, 7% hit | −0.35R avg, 38% win |
+
+  Slightly below zero is what conservative fills should give: the stop wins same-bar ties, and the 16:00 flatten cuts winners short. Seeds swing from +0.11R to −0.83R, so a few dozen trades prove nothing either way.
 
 ## Limitations
 
