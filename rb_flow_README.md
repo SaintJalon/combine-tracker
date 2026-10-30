@@ -176,9 +176,9 @@ You also get alerts when a limit fills and when a trade closes. There are also f
 
   | Entry | Trades | Full to target | ½ at 1R + BE |
   |---|---|---|---|
-  | RB close | 120 | −0.26R avg, 12% hit | +0.00R avg, 51% win |
-  | Body edge | 120 | −0.35R avg, 12% hit | −0.05R avg, 51% win |
-  | CE limit | 110 | −0.39R avg, 7% hit | −0.35R avg, 38% win |
+  | RB close | 243 | −0.19R avg, 13% win | +0.02R avg, 53% win |
+  | Body edge | 232 | −0.25R avg, 12% win | +0.01R avg, 53% win |
+  | CE limit | 198 | −0.32R avg, 8% win | −0.31R avg, 41% win |
 
   Slightly below zero is what conservative fills should give: the stop wins same-bar ties, and the 16:00 flatten cuts winners short. Seeds swing from +0.11R to −0.83R, so a few dozen trades prove nothing either way.
 
