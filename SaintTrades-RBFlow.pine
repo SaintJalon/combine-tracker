@@ -124,6 +124,8 @@ type Trade
     float  rr
     float  tp1
     Zone   tz
+    int    kind      = 0       // target: 0 = target-timeframe RB, 1 = opposite 4H level, 2 = fixed R
+    string tgtName   = ""
     bool   mkt       = false
     bool   valid     = false
     string why       = ""
@@ -163,6 +165,12 @@ type Sig
     box    tpBx
     box    slBx
     box    tzBx
+    line   lnE
+    line   lnT
+    line   lnS
+    label  tgE
+    label  tgT
+    label  tgS
     label  lb
     label  res
 
@@ -217,8 +225,8 @@ entrySel = input.string("RB close (market)", "Entry shown & alerted", options=["
 stopTk   = input.int(4, "Stop buffer past the tip (ticks)", minval=0, maxval=400, tooltip="4 ticks = 1 point on NQ / MNQ.", group=G_TR)
 tpAt     = input.string("Near edge", "TP at the target RB's", options=["Near edge", "CE (50%)"], group=G_TR)
 minRR    = input.float(1.5, "Minimum R:R to take a trade", minval=0, step=0.25, group=G_TR)
-closeTgt = input.string("Skip the trade", "If the nearest target RB is closer than that", options=["Skip the trade", "Use the next one out"], group=G_TR)
-noTgtIn  = input.string("Skip the trade", "If there is no target RB beyond the entry", options=["Skip the trade", "Fixed R target"], group=G_TR)
+closeTgt = input.string("Use the next one out", "If the nearest target RB is closer than that", options=["Use the next one out", "Skip the trade"], group=G_TR)
+noTgtIn  = input.string("Opposite 4H high/low, then fixed R", "If no target RB is far enough", options=["Opposite 4H high/low, then fixed R", "Fixed R target", "Skip the trade"], tooltip="Shorts aim for the previous 4H low and longs for the previous 4H high, when it is at least the minimum R:R away. Otherwise the fixed R target. The breakdown table scores each kind of target separately.", group=G_TR)
 fixR     = input.float(3.0, "Fixed R target", minval=0.5, step=0.5, group=G_TR)
 maxRisk  = input.float(0.0, "Max stop size (points, 0 = off)", minval=0, step=1, group=G_TR)
 limMin   = input.int(60, "Sweep limits cancel after (minutes)", minval=1, maxval=1440, group=G_TR)
@@ -230,8 +238,12 @@ riskUsd  = input.float(0.0, "Risk per trade ($) for a contract count (0 = off)",
 colBull = input.color(#26a69a, "Bullish 5m RB", inline="c1", group=G_VIS)
 colBear = input.color(#ef5350, "Bearish 5m RB", inline="c1", group=G_VIS)
 colTgt  = input.color(#ffffff, "Target RB", inline="c2", group=G_VIS)
+colEnt  = input.color(#2962ff, "Entry", inline="c3", group=G_VIS)
 colTp   = input.color(#26a69a, "TP", inline="c3", group=G_VIS)
 colSl   = input.color(#ef5350, "SL", inline="c3", group=G_VIS)
+tagMode = input.string("All trades", "Entry / TP / SL tags", options=["All trades", "Live trade only", "Off"], tooltip="Price lines with a tag at the right: BUY/SELL price, TP price and R, SL price and points. A finished trade's tag shows ✓ HIT or ✗ HIT and its result.", group=G_VIS)
+tagSz   = input.string("Normal", "Tag size", options=["Small", "Normal", "Large"], group=G_VIS)
+showSkip = input.bool(true, "Show skipped setups (grey ✕)", tooltip="Setups the shown entry didn't trade. Hover the ✕ for the reason.", group=G_VIS)
 lblMode = input.string("Compact", "Signal labels", options=["Compact", "Full", "Off"], tooltip="Compact = BUY / SELL and the entry price. Full adds the setup and level. Hover a label for every detail.", group=G_VIS)
 tgtDraw = input.string("Targets only", "Draw target RBs", options=["Targets only", "All untouched", "Off"], tooltip="All untouched draws every untouched target-timeframe RB, so you can compare them with JS RB.", group=G_VIS)
 maxDraw = input.int(40, "Signals kept on the chart", minval=1, maxval=100, group=G_VIS)
@@ -271,7 +283,9 @@ selIdx   = entrySel == "RB close (market)" ? 0 : entrySel == "Body-edge limit" ?
 useM     = mgmt == "½ at TP1 + breakeven"
 tpCe     = tpAt == "CE (50%)"
 useNext  = closeTgt == "Use the next one out"
-noTgtFix = noTgtIn == "Fixed R target"
+noTgtMode = noTgtIn == "Skip the trade" ? 2 : noTgtIn == "Fixed R target" ? 1 : 0
+TAG_SZ   = tagSz == "Small" ? size.small : tagSz == "Large" ? size.large : size.normal
+tagsOn   = tagMode != "Off"
 limBars  = math.max(1, math.round(limMin * 60.0 / timeframe.in_seconds()))
 fullTbl  = tblMode == "Full"
 
@@ -293,7 +307,7 @@ var array<float> eSumF  = array.new<float>(3, 0.0)
 var array<float> eSumM  = array.new<float>(3, 0.0)
 var array<int>   eWinM  = array.new<int>(3, 0)
 // breakdown of the shown entry
-BK_N = 12
+BK_N = 15
 var array<int>   bN   = array.new<int>(BK_N, 0)
 var array<int>   bW   = array.new<int>(BK_N, 0)
 var array<float> bSum = array.new<float>(BK_N, 0.0)
@@ -407,33 +421,44 @@ sweptBy(Candle k, bool bull) =>
                 array.push(hits, lv)
     hits
 
-// R5/R6: [target price, target RB, reason when there is none]
+// R5/R6: [target price, target RB, reason when there is none, kind, name].
+// Kind 0 = the nearest untouched opposing target-timeframe RB; when none is far enough,
+// 1 = the opposite previous-4H high/low, 2 = a fixed R target (input).
 pickTgt(bool bull, float e, float rk) =>
     Zone  best  = na
     float bestP = na
-    bool  any   = false
+    bool  near  = false
     for z in pool
         if z.fresh and z.bull != bull
             float p = tpCe ? z.ce : z.edge
             if bull ? p > e : p < e
-                any := true
                 bool okRR = math.abs(p - e) >= minRR * rk
+                near := near or not okRR
                 if (okRR or not useNext) and (na(bestP) or (bull ? p < bestP : p > bestP))
                     best := z
                     bestP := p
-    string why = ""
-    if na(bestP)
-        if any
-            why := tgtTfIn + " RB closer than " + str.tostring(minRR) + "R"
-        else if noTgtFix
-            bestP := bull ? e + fixR * rk : e - fixR * rk
-        else
-            why := "No untouched " + tgtTfIn + " RB beyond the entry"
-    else if math.abs(bestP - e) < minRR * rk
-        why := tgtTfIn + " RB closer than " + str.tostring(minRR) + "R"
+    string why  = ""
+    int    kind = 0
+    string name = tgtTfIn + " RB"
+    if not na(bestP) and math.abs(bestP - e) < minRR * rk
+        why := "Nearest " + tgtTfIn + " RB is closer than " + str.tostring(minRR) + "R"
         bestP := na
         best := na
-    [bestP, best, why]
+    else if na(bestP)
+        if noTgtMode == 2
+            why := near ? "Every " + tgtTfIn + " RB beyond the entry is closer than " + str.tostring(minRR) + "R" : "No untouched " + tgtTfIn + " RB beyond the entry"
+        else
+            if noTgtMode == 0
+                for lv in lvls
+                    if lv.grp == 0 and lv.side == (bull ? 1 : -1) and na(lv.deadT) and not lv.broken and (bull ? lv.price > e : lv.price < e) and math.abs(lv.price - e) >= minRR * rk
+                        bestP := lv.price
+                        kind := 1
+                        name := lv.name
+            if na(bestP)
+                bestP := bull ? e + fixR * rk : e - fixR * rk
+                kind := 2
+                name := "fixed " + str.tostring(fixR) + "R"
+    [bestP, best, why, kind, name]
 
 mkTrade(bool bull, float e, float stop, bool mkt) =>
     Trade t = Trade.new(entry=e, stop=stop, mkt=mkt)
@@ -444,13 +469,15 @@ mkTrade(bool bull, float e, float stop, bool mkt) =>
     else if maxRisk > 0 and rk > maxRisk
         t.why := "Stop " + str.tostring(rk, "0.00") + " pts > max " + str.tostring(maxRisk)
     else
-        [p, z, why] = pickTgt(bull, e, rk)
+        [p, z, why, kind, name] = pickTgt(bull, e, rk)
         if na(p)
             t.why := why
         else
             t.valid := true
             t.tgt := p
             t.tz := z
+            t.kind := kind
+            t.tgtName := name
             t.rr := math.abs(p - e) / rk
             t.tp1 := bull ? e + tp1R * rk : e - tp1R * rk
             if mkt
@@ -570,14 +597,23 @@ ctsTxt(Trade t) =>
     res
 
 tgtTxt(Trade t) =>
-    na(t.tz) ? px(t.tgt) + " (fixed " + str.tostring(fixR) + "R)" : px(t.tgt) + " (" + tgtTfIn + " RB " + px(math.min(t.tz.tip, t.tz.edge)) + " – " + px(math.max(t.tz.tip, t.tz.edge)) + ")"
+    t.kind == 0 and not na(t.tz) ? px(t.tgt) + " (" + tgtTfIn + " RB " + px(math.min(t.tz.tip, t.tz.edge)) + " – " + px(math.max(t.tz.tip, t.tz.edge)) + ")" : px(t.tgt) + " (" + t.tgtName + ")"
 
 entryName(Sig s, int m) =>
     m == 0 ? (s.setup == "Sweep" ? "RB close (market)" : "Body-edge limit (4H RB)") : m == 1 ? "Body-edge limit" : "CE limit"
 
 lblTxt(Sig s, Trade t) =>
-    string base = dirTxt(s) + (t.mkt ? " " : " LMT ") + px(t.entry)
+    string base = tagsOn ? dirTxt(s) + (t.mkt ? "" : " LMT") : dirTxt(s) + (t.mkt ? " " : " LMT ") + px(t.entry)
     lblMode == "Full" ? base + "\n" + setupTxt(s) : base
+
+tagTxtE(Sig s, Trade t) =>
+    dirTxt(s) + (t.filled ? " " : " LIMIT ") + px(t.entry)
+
+tagTxtT(Trade t) =>
+    "TP " + px(t.tgt) + "   +" + str.tostring(t.rr, "0.0") + "R · " + t.tgtName
+
+tagTxtS(Trade t) =>
+    "SL " + px(t.stop) + "   −1R · " + str.tostring(t.risk, "0.00") + " pts"
 
 sigTip(Sig s, Trade t) =>
     dirTxt(s) + " · " + setupTxt(s) + "\n" + entryName(s, selIdx) + ": " + px(t.entry) + "\nStop: " + px(t.stop) + " (" + str.tostring(t.risk, "0.00") + " pts)\nTarget: " + tgtTxt(t) + "\nR:R " + str.tostring(t.rr, "0.0") + ctsTxt(t) + "\n5m RB: " + px(math.min(s.rb.tip, s.rb.edge)) + " – " + px(math.max(s.rb.tip, s.rb.edge)) + " · CE " + px(s.rb.ce) + (t.why != "" ? "\n" + t.why : "")
@@ -588,13 +624,30 @@ drawSig(Sig s) =>
     color c = s.bull ? colBull : colBear
     int x0 = bar_index
     s.rbBx := box.new(math.max(s.rb.formBar, bar_index - MAX_AGE), math.max(s.rb.tip, s.rb.edge), x0, math.min(s.rb.tip, s.rb.edge), border_color=color.new(c, 20), bgcolor=color.new(c, 80))
-    string st = t.filled ? line.style_solid : line.style_dashed
-    s.tpBx := box.new(x0, math.max(t.entry, t.tgt), x0 + 1, math.min(t.entry, t.tgt), border_color=color.new(colTp, 50), border_style=st, bgcolor=color.new(colTp, 88), text="TP " + px(t.tgt) + " · " + str.tostring(t.rr, "0.0") + "R", text_size=size.small, text_color=colTp, text_halign=text.align_right, text_valign=s.bull ? text.align_top : text.align_bottom)
-    s.slBx := box.new(x0, math.max(t.entry, t.stop), x0 + 1, math.min(t.entry, t.stop), border_color=color.new(colSl, 50), border_style=st, bgcolor=color.new(colSl, 88), text="SL " + px(t.stop), text_size=size.small, text_color=colSl, text_halign=text.align_right, text_valign=s.bull ? text.align_bottom : text.align_top)
+    s.tpBx := box.new(x0, math.max(t.entry, t.tgt), x0 + 1, math.min(t.entry, t.tgt), border_color=color.new(colTp, 100), bgcolor=color.new(colTp, 85))
+    s.slBx := box.new(x0, math.max(t.entry, t.stop), x0 + 1, math.min(t.entry, t.stop), border_color=color.new(colSl, 100), bgcolor=color.new(colSl, 85))
+    if tagsOn
+        string st = t.filled ? line.style_solid : line.style_dashed
+        s.lnE := line.new(x0, t.entry, x0 + 1, t.entry, color=colEnt, width=2, style=st)
+        s.lnT := line.new(x0, t.tgt, x0 + 1, t.tgt, color=colTp, width=2, style=st)
+        s.lnS := line.new(x0, t.stop, x0 + 1, t.stop, color=colSl, width=2, style=st)
+        s.tgE := label.new(x0 + 1, t.entry, tagTxtE(s, t), style=label.style_label_left, color=colEnt, textcolor=color.white, size=TAG_SZ, tooltip=sigTip(s, t))
+        s.tgT := label.new(x0 + 1, t.tgt, tagTxtT(t), style=label.style_label_left, color=colTp, textcolor=color.white, size=TAG_SZ, tooltip=sigTip(s, t))
+        s.tgS := label.new(x0 + 1, t.stop, tagTxtS(t), style=label.style_label_left, color=colSl, textcolor=color.white, size=TAG_SZ, tooltip=sigTip(s, t))
     if tgtDraw == "Targets only" and not na(t.tz)
         s.tzBx := box.new(math.max(t.tz.formBar, bar_index - MAX_AGE), math.max(t.tz.tip, t.tz.edge), x0, math.min(t.tz.tip, t.tz.edge), border_color=color.new(colTgt, 10), bgcolor=color.new(colTgt, 90), text=tgtTfIn, text_size=size.tiny, text_color=colTgt, text_halign=text.align_right)
     if lblMode != "Off"
-        s.lb := label.new(s.sigBar, s.rb.tip, lblTxt(s, t), style=s.bull ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=size.small, tooltip=sigTip(s, t))
+        s.lb := label.new(s.sigBar, s.rb.tip, lblTxt(s, t), style=s.bull ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=TAG_SZ, tooltip=sigTip(s, t))
+    s.drawn := true
+    true
+
+// a setup the shown entry didn't trade: a grey ✕ with the reason
+drawSkip(Sig s) =>
+    Trade t = selT(s)
+    color g = color.gray
+    s.rbBx := box.new(math.max(s.rb.formBar, bar_index - MAX_AGE), math.max(s.rb.tip, s.rb.edge), bar_index, math.min(s.rb.tip, s.rb.edge), border_color=color.new(g, 40), bgcolor=color.new(g, 85))
+    if lblMode != "Off"
+        s.lb := label.new(s.sigBar, s.rb.tip, dirTxt(s) + " ✕", style=s.bull ? label.style_label_up : label.style_label_down, color=color.new(g, 40), textcolor=color.white, size=size.small, tooltip=dirTxt(s) + " · " + setupTxt(s) + "\nSkipped: " + t.why + "\n5m RB: " + px(math.min(s.rb.tip, s.rb.edge)) + " – " + px(math.max(s.rb.tip, s.rb.edge)))
     s.drawn := true
     true
 
@@ -603,12 +656,39 @@ setRight(box b, int x) =>
         box.set_right(b, x)
     true
 
-extendSig(Sig s) =>
-    setRight(s.rbBx, bar_index)
-    setRight(s.tpBx, bar_index)
-    setRight(s.slBx, bar_index)
-    setRight(s.tzBx, bar_index)
+delTags(Sig s) =>
+    line.delete(s.lnE)
+    line.delete(s.lnT)
+    line.delete(s.lnS)
+    label.delete(s.tgE)
+    label.delete(s.tgT)
+    label.delete(s.tgS)
+    s.lnE := na
+    s.lnT := na
+    s.lnS := na
+    s.tgE := na
+    s.tgT := na
+    s.tgS := na
     true
+
+// move the right end of a signal's drawings to bar x
+moveEnd(Sig s, int x) =>
+    setRight(s.rbBx, x)
+    setRight(s.tpBx, x)
+    setRight(s.slBx, x)
+    setRight(s.tzBx, x)
+    if not na(s.lnE)
+        line.set_x2(s.lnE, x)
+        line.set_x2(s.lnT, x)
+        line.set_x2(s.lnS, x)
+    if not na(s.tgE)
+        label.set_x(s.tgE, x)
+        label.set_x(s.tgT, x)
+        label.set_x(s.tgS, x)
+    true
+
+extendSig(Sig s) =>
+    moveEnd(s, bar_index)
 
 // the shown trade finished: freeze its drawings at the exit and print the result
 finishSig(Sig s) =>
@@ -616,16 +696,23 @@ finishSig(Sig s) =>
     int   xb = useM ? t.exitM : t.exitF
     float xp = useM ? t.pxM : t.pxF
     float r  = useM ? t.rM : t.r
-    setRight(s.rbBx, xb)
-    setRight(s.tpBx, xb)
-    setRight(s.slBx, xb)
-    setRight(s.tzBx, xb)
+    moveEnd(s, xb)
     if not na(s.tpBx)
         box.set_bgcolor(s.tpBx, color.new(colTp, r > 0 ? 75 : 93))
     if not na(s.slBx)
         box.set_bgcolor(s.slBx, color.new(colSl, r < 0 ? 75 : 93))
-    color rc = r > 0 ? colTp : r < 0 ? colSl : color.gray
-    s.res := label.new(xb, xp, fmtR(r), style=label.style_label_left, color=color.new(color.black, 100), textcolor=rc, size=size.small, tooltip=dirTxt(s) + " " + setupTxt(s) + "\nEntry " + px(t.entry) + " → exit " + px(xp) + "\nFull to target: " + fmtR(t.r) + " · ½ at TP1 + BE: " + fmtR(t.rM))
+    string tip = dirTxt(s) + " " + setupTxt(s) + "\nEntry " + px(t.entry) + " → exit " + px(xp) + "\nFull to target: " + fmtR(t.r) + " · ½ at TP1 + BE: " + fmtR(t.rM)
+    if tagMode == "Live trade only"
+        delTags(s)
+    // the exit's own tag carries the result; an exit anywhere else gets its own label
+    label hitTag = na(s.tgE) ? na : xp == t.tgt ? s.tgT : xp == t.stop ? s.tgS : xp == t.entry ? s.tgE : na
+    if not na(hitTag)
+        label.set_text(hitTag, label.get_text(hitTag) + "   " + (r > 0 ? "✓" : r < 0 ? "✗" : "■") + " HIT " + fmtR(r))
+        label.set_tooltip(hitTag, tip)
+    else
+        color rc = r > 0 ? colTp : r < 0 ? colSl : color.gray
+        bool atLvl = xp == t.tgt or xp == t.stop or xp == t.entry
+        s.res := label.new(xb, xp, fmtR(r) + (atLvl ? "" : " flattened"), style=label.style_label_left, color=rc, textcolor=color.white, size=TAG_SZ, tooltip=tip)
     true
 
 // the shown limit never filled
@@ -637,6 +724,7 @@ cancelSig(Sig s) =>
     s.tpBx := na
     s.slBx := na
     s.tzBx := na
+    delTags(s)
     setRight(s.rbBx, bar_index)
     if not na(s.rbBx)
         box.set_bgcolor(s.rbBx, color.new(s.bull ? colBull : colBear, 92))
@@ -653,6 +741,7 @@ delSig(Sig s) =>
     box.delete(s.tzBx)
     label.delete(s.lb)
     label.delete(s.res)
+    delTags(s)
     s.drawn := false
     true
 
@@ -708,7 +797,10 @@ countSig(Sig s) =>
                 8  => s.tb == 0
                 9  => s.tb == 1
                 10 => s.tb == 2
-                => s.tb == 3
+                11 => s.tb == 3
+                12 => ts.kind == 0
+                13 => ts.kind == 1
+                => ts.kind == 2
             if inRow
                 array.set(bN, k, array.get(bN, k) + 1)
                 array.set(bW, k, array.get(bW, k) + (r > 0 ? 1 : 0))
@@ -750,7 +842,7 @@ countSig(Sig s) =>
             array.shift(dN)
             array.shift(dW)
             array.shift(dR)
-        log.info(s.dayName + " · " + dirTxt(s) + " · " + setupTxt(s) + " · " + entryName(s, selIdx) + " " + px(ts.entry) + " · SL " + px(ts.stop) + " · TP " + px(ts.tgt) + " · " + fmtR(r) + " (full " + fmtR(ts.r) + ", ½+BE " + fmtR(ts.rM) + ")")
+        log.info(s.dayName + " · " + dirTxt(s) + " · " + setupTxt(s) + " · " + entryName(s, selIdx) + " " + px(ts.entry) + " · SL " + px(ts.stop) + " · TP " + px(ts.tgt) + " (" + ts.tgtName + ") · " + fmtR(r) + " (full " + fmtR(ts.r) + ", ½+BE " + fmtR(ts.rM) + ")")
     true
 
 // ---- per-bar context. Called every bar so their state stays consistent; used on confirmed bars only.
@@ -882,9 +974,11 @@ if barstate.isconfirmed
                         if gotFill
                             aFill := true
                             alert(dirTxt(s) + " " + syminfo.ticker + " filled @ " + px(t.entry) + "  SL " + px(t.stop) + "  TP " + px(t.tgt) + "  (" + str.tostring(t.rr, "0.0") + "R)", alert.freq_once_per_bar_close)
-                            if s.drawn and not na(s.tpBx)
-                                box.set_border_style(s.tpBx, line.style_solid)
-                                box.set_border_style(s.slBx, line.style_solid)
+                            if s.drawn and not na(s.lnE)
+                                line.set_style(s.lnE, line.style_solid)
+                                line.set_style(s.lnT, line.style_solid)
+                                line.set_style(s.lnS, line.style_solid)
+                                label.set_text(s.tgE, tagTxtE(s, t))
                         bool shownDone = useM ? t.doneM : t.doneF
                         bool justDone  = shownDone and (useM ? t.exitM : t.exitF) == bar_index
                         if justDone
@@ -949,6 +1043,8 @@ if barstate.isconfirmed
                                     lv.usedBear := true
                             z.swept := true
                             Sig s = mkSig(z, bull, "Sweep", names, grp, ck.late ? close : ck.c)
+                            if not selT(s).valid and showSkip
+                                drawSkip(s)
                             if selT(s).valid
                                 drawSig(s)
                                 Trade t = selT(s)
@@ -989,6 +1085,8 @@ if barstate.isconfirmed
                         if canSignal(bull, blocked)
                             z.swept := true
                             Sig s = mkSig(z, bull, "4H RB", bull ? "4H Low RB" : "4H High RB", 0, na)
+                            if not selT(s).valid and showSkip
+                                drawSkip(s)
                             if selT(s).valid
                                 drawSig(s)
                                 Trade t = selT(s)
@@ -1045,23 +1143,23 @@ if barstate.islast and tblMode != "Off"
         "Middle Right" => position.middle_right
         => position.top_right
     if na(stat)
-        stat := table.new(tblPos, 6, 31, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+        stat := table.new(tblPos, 6, 34, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
     else
         table.set_position(stat, tblPos)
     color hdr = color.new(color.gray, 20)
     color row = color.new(color.black, 55)
     color txt = color.white
-    table.clear(stat, 0, 0, 5, 30)
+    table.clear(stat, 0, 0, 5, 33)
     int live = 0
     for s in sigs
         if not s.resolved
             live += 1
 
     tc(stat, 0, 0, "RB Flow " + entTfIn + " → " + tgtTfIn, txt, hdr, "")
-    tc(stat, 1, 0, "Setups", txt, hdr, "Signals that met a setup. " + str.tostring(S.noTgt) + " of them had no valid target for the shown entry.")
+    tc(stat, 1, 0, "Setups", txt, hdr, "Signals that met a setup.")
     tc(stat, 2, 0, str.tostring(S.setups), txt, hdr, "")
-    tc(stat, 3, 0, "Live", txt, hdr, "")
-    tc(stat, 4, 0, str.tostring(live), txt, hdr, "")
+    tc(stat, 3, 0, "Skipped", txt, hdr, "Setups the shown entry didn't trade (no target far enough, or the stop too wide). Grey ✕ on the chart. " + str.tostring(live) + " signals are live now.")
+    tc(stat, 4, 0, str.tostring(S.noTgt), txt, hdr, "")
     tc(stat, 5, 0, str.tostring(S.days) + " days", txt, hdr, "Trading days on the chart")
 
     string tipF = "Whole position to the target RB, same stop. Average R per trade."
@@ -1101,7 +1199,7 @@ if barstate.islast and tblMode != "Off"
         tc(stat, 3, 6, "Avg R", txt, hdr, "")
         tc(stat, 4, 6, "Net R", txt, hdr, "")
         tc(stat, 5, 6, "", txt, hdr, "")
-        array<string> bNames = array.from("Sweep", "4H RB", "Longs", "Shorts", "Level: 4H H/L", "Level: day", "Level: week+", "Level: session", "Asia 18–02", "London 02–08:30", "NY AM 08:30–12", "NY PM 12–18")
+        array<string> bNames = array.from("Sweep", "4H RB", "Longs", "Shorts", "Level: 4H H/L", "Level: day", "Level: week+", "Level: session", "Asia 18–02", "London 02–08:30", "NY AM 08:30–12", "NY PM 12–18", "Target: " + tgtTfIn + " RB", "Target: 4H level", "Target: fixed R")
         for k = 0 to BK_N - 1
             int   n = array.get(bN, k)
             float v = array.get(bSum, k)
@@ -1111,12 +1209,12 @@ if barstate.islast and tblMode != "Off"
             tc(stat, 3, 7 + k, n > 0 ? fmtR(v / n) : "-", rColor(v, n, txt), row, "")
             tc(stat, 4, 7 + k, n > 0 ? fmtR(v) : "-", rColor(v, n, txt), row, "")
             tc(stat, 5, 7 + k, "", txt, row, "")
-        tc(stat, 0, 19, "Day (newest)", txt, hdr, "Every trade is also in the Pine Logs.")
-        tc(stat, 1, 19, "Trades", txt, hdr, "")
-        tc(stat, 2, 19, "W–L", txt, hdr, "")
-        tc(stat, 3, 19, "Net R", txt, hdr, "")
-        tc(stat, 4, 19, "", txt, hdr, "")
-        tc(stat, 5, 19, "", txt, hdr, "")
+        tc(stat, 0, 22, "Day (newest)", txt, hdr, "Every trade is also in the Pine Logs.")
+        tc(stat, 1, 22, "Trades", txt, hdr, "")
+        tc(stat, 2, 22, "W–L", txt, hdr, "")
+        tc(stat, 3, 22, "Net R", txt, hdr, "")
+        tc(stat, 4, 22, "", txt, hdr, "")
+        tc(stat, 5, 22, "", txt, hdr, "")
         int nD = array.size(dKey)
         for j = 0 to 9
             int i = nD - 1 - j
@@ -1124,9 +1222,9 @@ if barstate.islast and tblMode != "Off"
                 int   n = array.get(dN, i)
                 int   w = array.get(dW, i)
                 float v = array.get(dR, i)
-                tc(stat, 0, 20 + j, array.get(dName, i), txt, row, "")
-                tc(stat, 1, 20 + j, str.tostring(n), txt, row, "")
-                tc(stat, 2, 20 + j, str.tostring(w) + "–" + str.tostring(n - w), txt, row, "")
-                tc(stat, 3, 20 + j, fmtR(v), rColor(v, n, txt), row, "")
-                tc(stat, 4, 20 + j, "", txt, row, "")
-                tc(stat, 5, 20 + j, "", txt, row, "")
+                tc(stat, 0, 23 + j, array.get(dName, i), txt, row, "")
+                tc(stat, 1, 23 + j, str.tostring(n), txt, row, "")
+                tc(stat, 2, 23 + j, str.tostring(w) + "–" + str.tostring(n - w), txt, row, "")
+                tc(stat, 3, 23 + j, fmtR(v), rColor(v, n, txt), row, "")
+                tc(stat, 4, 23 + j, "", txt, row, "")
+                tc(stat, 5, 23 + j, "", txt, row, "")

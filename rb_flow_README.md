@@ -43,22 +43,28 @@ Highs only count for shorts and lows only for longs. Opens and mids count both w
 |---|---|
 | **Entry** | **RB close (market):** the close of the 5m RB candle. **Body-edge limit:** the bottom of the wick zone. **CE limit:** 50% of the wick. Pick one under *Entry shown & alerted*. The table measures all three. |
 | **Stop** | 5m RB tip + 4 ticks (1 NQ point) |
-| **Target** | The near edge of the nearest untouched bullish 1H RB below the entry (or its CE, an input) |
-| **Taken only if** | The target is at least **1.5R** away. If the nearest 1H RB is closer than that, the trade is skipped (or the next 1H RB out is used, an input). If there is no 1H RB below, it is skipped (or a fixed-R target is used). |
+| **Target** | The near edge (or CE, an input) of the nearest untouched bullish 1H RB below the entry that is at least **1.5R** away. If there is none, the **previous 4H low**, if it is at least 1.5R away. Otherwise a **fixed 3R**. Each kind of target is scored separately in the breakdown, so you can see whether the 1H RB targets really do best. Set *If no target RB is far enough* to **Skip the trade** for the strict 1H-RB-only model. |
 | **Ends** | At the stop or the target. At **16:00 NY** anything still open closes at the bar's close and unfilled limits are cancelled. No new signals until the 18:00 open. |
 
 On the chart each signal gets:
-- its red/green **5m RB** box
-- a **SELL 28,845.00** label (hover it for setup, level, stop, target, R:R and contract count)
-- TradingView-style **TP / SL boxes** with prices
-- the white **1H target** box
+- its red/green **5m RB** box, with a **SELL** / **BUY** marker (hover it for setup, level, stop, target, R:R and contract count)
+- TradingView-style green / red **TP / SL zones**
+- three thick price lines with tags at the right:
+  - blue **SELL 28,845.00** (the entry)
+  - green **TP 28,300.00 +21.8R · 1H RB** (the target and what it is)
+  - red **SL 28,863.00 −1R · 18.00 pts** (the stop and its size)
+- the white **1H target** box when the target is a 1H RB
 
-Pending limits are dashed until they fill. When a trade ends, its result (e.g. **+21.8R** or **−1.0R**) is printed at the exit.
+Pending limits are dashed (**SELL LIMIT …**) until they fill. When a trade ends, the tag it ended on shows **✓ HIT +21.8R** or **✗ HIT −1.0R**. A trade closed at 16:00 gets a "flattened" tag at its exit price.
+
+A setup the shown entry couldn't trade (no target, or the stop wider than your max) is a grey **SELL ✕**. Hover it for the reason.
+
+*Entry / TP / SL tags* can be shown on every trade (default), on the live trade only, or turned off. *Tag size* sets how big they are.
 
 ## Install
 
 1. Pine Editor → paste `SaintTrades-RBFlow.pine` → **Save** → **Add to chart**.
-2. Use **MNQ1! or NQ1! on the 1-minute chart** (a 5m chart works too, with the same results). Defaults are your model: 5m entry RBs, 1H target RBs.
+2. Use **MNQ1! or NQ1!**. A 1-minute chart only loads about 10 days. A **5-minute chart gives exactly the same trades** and loads about 5× more days, so use it to judge the model and the 1m to trade. Defaults are your model: 5m entry RBs, 1H target RBs.
 3. Load as much history as your plan allows (scroll left), then read the table.
 
 After any code change, remove it from the chart and add it again.
@@ -103,7 +109,10 @@ This is how you and I check the model, one day at a time:
 | Entry shown & alerted | RB close (market) | Body-edge limit and CE limit are the others. A 4H RB is only known at the 4H close, so its "market" entry is the body-edge limit. |
 | Stop buffer | 4 ticks | Past the tip |
 | TP at the target RB's | Near edge | Or its CE |
-| Minimum R:R | 1.5 | Below this the trade is skipped |
+| Minimum R:R | 1.5 | A 1H RB closer than this isn't used as the target |
+| If the nearest target RB is closer than that | Use the next one out | Or skip the trade |
+| If no target RB is far enough | Opposite 4H high/low, then fixed R | Or straight to the fixed R, or skip the trade (the strict model) |
+| Fixed R target | 3R | |
 | Max stop size | off | Points. Skip RBs with a wider stop. |
 | Sweep limits cancel after | 60 min | 4H RB limits cancel when the next 4H candle closes |
 | TP1 for ½ + breakeven | 1R | Used by the managed result |
@@ -115,10 +124,10 @@ This is how you and I check the model, one day at a time:
 
 | Row | Meaning |
 |---|---|
-| Setups / Live / days | Signals found, signals still running, trading days on the chart |
+| Setups / Skipped / days | Signals found, setups the shown entry couldn't trade (grey ✕), trading days on the chart |
 | **Entry rows** | For each entry: trades filled / trades with a valid target, **Hit 1H** = share that reached the 1H RB before the stop, **Avg R** and **Net R** with the whole position to the target, and **½ + BE** = average R and win % when managed |
 | ▶ row | For the shown entry: max drawdown in R, longest losing run, share of green days, net R |
-| **Breakdown** (Full) | The shown entry split by setup, side, the level swept (4H / day / week+ / session) and the time of the signal (Asia, London, NY AM, NY PM) |
+| **Breakdown** (Full) | The shown entry split by setup, side, the level swept (4H / day / week+ / session), the time of the signal (Asia, London, NY AM, NY PM) and the kind of target (1H RB / 4H level / fixed R) |
 | **Days** (Full) | The last 10 trading days |
 
 Judge it by **average R on at least ~100 trades**, not by win rate. A 1H target is often 4–10R away, so a 25% hit rate can still make money, and a 60% win rate can still lose. Then check it on a different date range than the one you tuned on.
@@ -146,7 +155,7 @@ You also get alerts when a limit fills and when a trade closes. There are also f
   - every drawing and table mode
 
   A 5m chart gives exactly the same trades as a 1m chart.
-- **Known-answer scenarios** (hand-calculated first, 22 checks, all pass):
+- **Known-answer scenarios** (hand-calculated first, 25 checks, all pass):
 
   | Scenario | Result |
   |---|---|
@@ -154,12 +163,13 @@ You also get alerts when a limit fills and when a trade closes. There are also f
   | Same, body-edge limit | Filled at 1100 on the retrace → **+8.18R** |
   | Same, CE limit at 1105 | Price never came back that high → no trade |
   | TP at the 1H RB's CE (1000) | **+7.54R**. If price stops at 1005 instead, it is flattened at 16:00 for +7.15R. |
-  | Minimum R:R 7 (target is 6.77R) | Skipped |
+  | Minimum R:R 7 (the 1H RB is only 6.77R away) | Falls back to a fixed 3R at 1059 and hits. With "skip": no trade. |
   | Bullish mirror image | BUY at 1002, SL 989, TP 1090 → same R |
   | 4H RB: the 5m RB that made the 4H high, retested next 4H candle | Limit at 1100.5, SL 1109 → **+10.65R**. Off with the setup turned off. |
   | Price runs through the stop | −1R on all three entries |
   | Still open at 16:00 | Closed at the 15:59 close: (1098 − close) / 13 R, managed 0.5 + half of that |
-  | No 1H RB below | Skipped. With the fixed-R fallback: 3R target at 1059, hit. |
+  | No 1H RB below, previous 4H low too close | Fixed 3R target at 1059, hit. With "skip": no trade. |
+  | No 1H RB below, previous 4H low 48 points down | TP at the 4H low 1050 → **+3.69R**; the mirror image aims for the 4H high |
   | Longs only | The short is skipped |
 
 - **Random-data check:** random prices have no edge, so results should average about 0R. A strongly positive number would mean the code was peeking at future bars. Three seeded random walks of 15 trading days each on 1m bars, all levels on, taking every signal:
