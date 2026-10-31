@@ -194,7 +194,7 @@ G_VIS = "5 · Visuals"
 G_ST  = "6 · Stats"
 
 useSweep = input.bool(true, "Sweep: a 5m RB off a key level", tooltip="The 5m wick reaches a key level and the body closes back on the near side (R3).", group=G_SET)
-use4hRb  = input.bool(true, "4H RB: the 5m RB that made the 4H high / low", tooltip="Known when the 4H candle closes. Traded on the retest of its zone during the next 4H candle (R4).", group=G_SET)
+use4hRb  = input.bool(false, "4H RB: the 5m RB that made the 4H high / low", tooltip="Known when the 4H candle closes. Traded on the retest of its zone during the next 4H candle (R4).", group=G_SET)
 entTfIn  = input.string("5m", "Entry RB timeframe", options=["1m", "3m", "5m", "15m"], group=G_SET)
 tgtTfIn  = input.string("1H", "Target RB timeframe", options=["15m", "30m", "1H", "2H", "4H"], group=G_SET)
 dirIn    = input.string("Both", "Direction", options=["Both", "Longs only", "Shorts only"], group=G_SET)
@@ -203,12 +203,12 @@ useWin   = input.bool(false, "Only signal inside (NY)", inline="win", group=G_SE
 winSess  = input.session("0800-1600", "", inline="win", group=G_SET)
 
 use4H   = input.bool(true, "Previous 4H high / low", group=G_LV)
-usePD   = input.bool(true, "Previous day high / low", group=G_LV)
-useOpen = input.bool(true, "Daily / weekly / monthly / quarterly / yearly opens", group=G_LV)
-usePW   = input.bool(true, "Previous week high / low", group=G_LV)
-usePM   = input.bool(true, "Previous month high / low", group=G_LV)
-useMon  = input.bool(true, "Monday high / low", group=G_LV)
-useAsia = input.bool(true, "Asia high / low (NY)", inline="as", group=G_LV)
+usePD   = input.bool(false, "Previous day high / low", group=G_LV)
+useOpen = input.bool(false, "Daily / weekly / monthly / quarterly / yearly opens", group=G_LV)
+usePW   = input.bool(false, "Previous week high / low", group=G_LV)
+usePM   = input.bool(false, "Previous month high / low", group=G_LV)
+useMon  = input.bool(false, "Monday high / low", group=G_LV)
+useAsia = input.bool(false, "Asia high / low (NY)", inline="as", group=G_LV)
 asiaSes = input.session("2000-0400", "", inline="as", group=G_LV)
 useLon  = input.bool(false, "London high / low (NY)", inline="ln", group=G_LV)
 lonSes  = input.session("0300-0900", "", inline="ln", group=G_LV)
@@ -226,9 +226,9 @@ stopTk   = input.int(4, "Stop buffer past the tip (ticks)", minval=0, maxval=400
 tpAt     = input.string("Near edge", "TP at the target RB's", options=["Near edge", "CE (50%)"], group=G_TR)
 minRR    = input.float(1.5, "Minimum R:R to take a trade", minval=0, step=0.25, group=G_TR)
 closeTgt = input.string("Use the next one out", "If the nearest target RB is closer than that", options=["Use the next one out", "Skip the trade"], group=G_TR)
-noTgtIn  = input.string("Opposite 4H high/low, then fixed R", "If no target RB is far enough", options=["Opposite 4H high/low, then fixed R", "Fixed R target", "Skip the trade"], tooltip="Shorts aim for the previous 4H low and longs for the previous 4H high, when it is at least the minimum R:R away. Otherwise the fixed R target. The breakdown table scores each kind of target separately.", group=G_TR)
+noTgtIn  = input.string("Skip the trade", "If no target RB is far enough", options=["Opposite 4H high/low, then fixed R", "Fixed R target", "Skip the trade"], tooltip="Shorts aim for the previous 4H low and longs for the previous 4H high, when it is at least the minimum R:R away. Otherwise the fixed R target. The breakdown table scores each kind of target separately.", group=G_TR)
 fixR     = input.float(3.0, "Fixed R target", minval=0.5, step=0.5, group=G_TR)
-maxRisk  = input.float(0.0, "Max stop size (points, 0 = off)", minval=0, step=1, group=G_TR)
+maxRisk  = input.float(40.0, "Max stop size (points, 0 = off)", minval=0, step=1, group=G_TR)
 limMin   = input.int(60, "Sweep limits cancel after (minutes)", minval=1, maxval=1440, group=G_TR)
 tp1R     = input.float(1.0, "TP1 for ½ + breakeven (R)", minval=0.25, step=0.25, group=G_TR)
 mgmt     = input.string("Full to target", "Results use", options=["Full to target", "½ at TP1 + breakeven"], tooltip="Which result the chart labels, breakdown, daily log and alerts use (A6). The entry rows show both.", group=G_TR)
@@ -241,9 +241,9 @@ colTgt  = input.color(#ffffff, "Target RB", inline="c2", group=G_VIS)
 colEnt  = input.color(#2962ff, "Entry", inline="c3", group=G_VIS)
 colTp   = input.color(#26a69a, "TP", inline="c3", group=G_VIS)
 colSl   = input.color(#ef5350, "SL", inline="c3", group=G_VIS)
-tagMode = input.string("All trades", "Entry / TP / SL tags", options=["All trades", "Live trade only", "Off"], tooltip="Price lines with a tag at the right: BUY/SELL price, TP price and R, SL price and points. A finished trade's tag shows ✓ HIT or ✗ HIT and its result.", group=G_VIS)
+tagMode = input.string("Live trade only", "Entry / TP / SL tags", options=["All trades", "Live trade only", "Off"], tooltip="Price lines with a tag at the right: BUY/SELL price, TP price and R, SL price and points. A finished trade's tag shows ✓ HIT or ✗ HIT and its result.", group=G_VIS)
 tagSz   = input.string("Normal", "Tag size", options=["Small", "Normal", "Large"], group=G_VIS)
-showSkip = input.bool(true, "Show skipped setups (grey ✕)", tooltip="Setups the shown entry didn't trade. Hover the ✕ for the reason.", group=G_VIS)
+showSkip = input.bool(false, "Show skipped setups (grey ✕)", tooltip="Setups the shown entry didn't trade. Hover the ✕ for the reason.", group=G_VIS)
 lblMode = input.string("Compact", "Signal labels", options=["Compact", "Full", "Off"], tooltip="Compact = BUY / SELL and the entry price. Full adds the setup and level. Hover a label for every detail.", group=G_VIS)
 tgtDraw = input.string("Targets only", "Draw target RBs", options=["Targets only", "All untouched", "Off"], tooltip="All untouched draws every untouched target-timeframe RB, so you can compare them with JS RB.", group=G_VIS)
 maxDraw = input.int(40, "Signals kept on the chart", minval=1, maxval=100, group=G_VIS)
@@ -637,7 +637,7 @@ drawSig(Sig s) =>
     if tgtDraw == "Targets only" and not na(t.tz)
         s.tzBx := box.new(math.max(t.tz.formBar, bar_index - MAX_AGE), math.max(t.tz.tip, t.tz.edge), x0, math.min(t.tz.tip, t.tz.edge), border_color=color.new(colTgt, 10), bgcolor=color.new(colTgt, 90), text=tgtTfIn, text_size=size.tiny, text_color=colTgt, text_halign=text.align_right)
     if lblMode != "Off"
-        s.lb := label.new(s.sigBar, s.rb.tip, lblTxt(s, t), style=s.bull ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=TAG_SZ, tooltip=sigTip(s, t))
+        s.lb := label.new(s.sigBar, s.rb.tip, lblTxt(s, t), style=s.bull ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=size.small, tooltip=sigTip(s, t))
     s.drawn := true
     true
 
@@ -712,7 +712,7 @@ finishSig(Sig s) =>
     else
         color rc = r > 0 ? colTp : r < 0 ? colSl : color.gray
         bool atLvl = xp == t.tgt or xp == t.stop or xp == t.entry
-        s.res := label.new(xb, xp, fmtR(r) + (atLvl ? "" : " flattened"), style=label.style_label_left, color=rc, textcolor=color.white, size=TAG_SZ, tooltip=tip)
+        s.res := label.new(xb, xp, fmtR(r) + (atLvl ? "" : " flattened"), style=label.style_label_left, color=rc, textcolor=color.white, size=size.small, tooltip=tip)
     true
 
 // the shown limit never filled

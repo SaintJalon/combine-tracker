@@ -26,7 +26,7 @@ Your two screenshots, as rules:
 
 Zone = body edge to wick tip. CE = 50% of the wick. These are your ST RB rules.
 
-**Key levels** are the ones your KeyLevels indicator draws:
+**Key levels:** by default only the **previous 4H high and low**. The others your KeyLevels indicator draws can each be turned on:
 - previous 4H high/low
 - previous day high/low
 - daily, weekly, monthly, quarterly and yearly opens
@@ -43,7 +43,8 @@ Highs only count for shorts and lows only for longs. Opens and mids count both w
 |---|---|
 | **Entry** | **RB close (market):** the close of the 5m RB candle. **Body-edge limit:** the bottom of the wick zone. **CE limit:** 50% of the wick. Pick one under *Entry shown & alerted*. The table measures all three. |
 | **Stop** | 5m RB tip + 4 ticks (1 NQ point) |
-| **Target** | The near edge (or CE, an input) of the nearest untouched bullish 1H RB below the entry that is at least **1.5R** away. If there is none, the **previous 4H low**, if it is at least 1.5R away. Otherwise a **fixed 3R**. Each kind of target is scored separately in the breakdown, so you can see whether the 1H RB targets really do best. Set *If no target RB is far enough* to **Skip the trade** for the strict 1H-RB-only model. |
+| **Target** | The near edge (or CE, an input) of the nearest untouched bullish 1H RB below the entry that is at least **1.5R** away. No such 1H RB = no trade. *If no target RB is far enough* can instead fall back to the previous 4H low, then a fixed 3R; the breakdown scores each kind of target separately. |
+| **Skipped if** | The stop is wider than **40 points** (input) |
 | **Ends** | At the stop or the target. At **16:00 NY** anything still open closes at the bar's close and unfilled limits are cancelled. No new signals until the 18:00 open. |
 
 On the chart each signal gets:
@@ -59,7 +60,7 @@ Pending limits are dashed (**SELL LIMIT …**) until they fill. When a trade end
 
 A setup the shown entry couldn't trade (no target, or the stop wider than your max) is a grey **SELL ✕**. Hover it for the reason.
 
-*Entry / TP / SL tags* can be shown on every trade (default), on the live trade only, or turned off. *Tag size* sets how big they are.
+*Entry / TP / SL tags* show on the live trade only by default, so the chart stays readable. A finished trade keeps its faint TP / SL zones and a small result. Tags can also be shown on every trade or turned off. *Tag size* sets how big they are.
 
 ## Install
 
@@ -88,13 +89,13 @@ This is how you and I check the model, one day at a time:
 | Input | Default | What it does |
 |---|---|---|
 | Sweep | on | 5m RB off a key level |
-| 4H RB | on | The 5m RB that made the 4H high/low, traded on the retest |
+| 4H RB | off | The 5m RB that made the 4H high/low, traded on the retest |
 | Entry / target RB timeframe | 5m / 1H | The chart timeframe must divide the entry timeframe |
 | Direction | Both | Or longs / shorts only |
 | While a trade is live | One at a time | A new signal is skipped while the shown entry's trade is pending or open. Or skip the same direction only, or take every signal. |
 | Only signal inside (NY) | off, 08:00–16:00 | A time window for new signals |
 
-**2 · Key levels:** each group can be turned off. *4H only* = turn off everything except **Previous 4H high / low**.
+**2 · Key levels:** only **Previous 4H high / low** is on by default. Turn on the day, week, month, Monday, Asia and London levels and the opens to test them; the breakdown scores each group.
 
 | Input | Default | What it does |
 |---|---|---|
@@ -111,9 +112,9 @@ This is how you and I check the model, one day at a time:
 | TP at the target RB's | Near edge | Or its CE |
 | Minimum R:R | 1.5 | A 1H RB closer than this isn't used as the target |
 | If the nearest target RB is closer than that | Use the next one out | Or skip the trade |
-| If no target RB is far enough | Opposite 4H high/low, then fixed R | Or straight to the fixed R, or skip the trade (the strict model) |
+| If no target RB is far enough | Skip the trade | Or the opposite 4H high/low then a fixed R, or straight to the fixed R |
 | Fixed R target | 3R | |
-| Max stop size | off | Points. Skip RBs with a wider stop. |
+| Max stop size | 40 points | Skip RBs with a wider stop. 0 = off. |
 | Sweep limits cancel after | 60 min | 4H RB limits cancel when the next 4H candle closes |
 | TP1 for ½ + breakeven | 1R | Used by the managed result |
 | Results use | Full to target | Or **½ at TP1 + breakeven**: half off at TP1, stop to entry, the rest to the 1H RB |
@@ -155,7 +156,7 @@ You also get alerts when a limit fills and when a trade closes. There are also f
   - every drawing and table mode
 
   A 5m chart gives exactly the same trades as a 1m chart.
-- **Known-answer scenarios** (hand-calculated first, 25 checks, all pass):
+- **Known-answer scenarios** (hand-calculated first, 28 checks, all pass):
 
   | Scenario | Result |
   |---|---|
