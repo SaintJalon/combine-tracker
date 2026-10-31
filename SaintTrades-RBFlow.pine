@@ -3,17 +3,18 @@
 // SaintTrades RB Flow (key level → 5m RB → 1H RB)                     INDICATOR
 // -----------------------------------------------------------------------------
 // The model: price rejects a key level (above all the previous 4H high or low)
-// with a 5-minute rejection block, then runs to the nearest untouched 1-hour
-// rejection block on the other side. Every signal gets an entry, a stop past
+// with a 5-minute rejection block, then runs to the nearest 1-hour rejection
+// block on the other side. Rejection blocks follow JS RB's rules exactly. Every signal gets an entry, a stop past
 // the 5m RB's tip and a target at the 1H RB. Each signal is traded three ways
 // and scored, so the table and the Pine Logs show whether the model paid on
 // this chart, day by day. Non-repainting: everything runs on closed bars only.
 //
 // --------------------------------- RULES -------------------------------------
-//  R1. A rejection block (RB) is a candle whose wick dominates it: at least X%
-//      of the range, at least Y x the body, longer than the other wick, and at
-//      least Z x ATR(14) of its own timeframe. Zone = body edge to wick tip.
-//      CE = 50% of the wick. Same rule as ST RB, used on both timeframes.
+//  R1. Rejection blocks follow JS RB on both timeframes. Every swing high/low
+//      (strictly beyond N candles each side, "Swing strength") is liquidity
+//      until a wick trades through it. The candle whose wick takes it while its
+//      body stays on the near side is an RB. Zone = body edge to wick tip,
+//      CE = 50% of the wick. An RB lasts until a later wick trades past its tip.
 //  R2. Key levels, as SaintTrades KeyLevels draws them: previous 4H high/low,
 //      previous day high/low, daily / weekly / monthly / quarterly / yearly
 //      opens, previous week and month high/low, Monday high/low, Asia high/low,
@@ -27,10 +28,10 @@
 //  R4. Setup "4H RB": the 5m RB that made a 4H candle's high (bearish) or low
 //      (bullish). It is known when that 4H candle closes. Its zone is traded on
 //      the retest while that candle is the previous 4H candle.
-//  R5. Target: the nearest untouched opposing 1H RB beyond the entry. Shorts run
-//      to a bullish 1H RB below, longs to a bearish 1H RB above. TP = its near
-//      edge (first touch) or its CE. A 1H RB stays untouched until price trades
-//      back to its near edge.
+//  R5. Target: the nearest live opposing 1H RB beyond the entry, the boxes JS
+//      RB draws. Shorts run to a bullish 1H RB below, longs to a bearish 1H RB
+//      above. TP = its near edge (first touch) or its CE. By default the 1H RBs
+//      are built on the 1H chart's own full history, as JS RB builds them.
 //  R6. Stop = 5m RB tip + buffer. A trade is taken only when the target is at
 //      least the minimum R:R away.
 //  R7. Entries, all measured on every signal:
@@ -89,8 +90,10 @@ type Agg
     int   t
     int   b
     bool  done = true
-    float pc           // previous candle's close
-    float atr
+    array<float> hb    // highs / lows of the last swing window
+    array<float> lb
+    array<float> hs    // swing highs no wick has taken yet (JS RB's BSL)
+    array<float> ls    // swing lows no wick has taken yet (SSL)
 
 type Lvl
     float  price
@@ -188,7 +191,7 @@ type State
 // =============================== INPUTS ======================================
 G_SET = "1 · Setups"
 G_LV  = "2 · Key levels"
-G_RB  = "3 · Rejection blocks"
+G_RB  = "3 · Rejection blocks (JS RB rules)"
 G_TR  = "4 · Entry, stop & target"
 G_VIS = "5 · Visuals"
 G_ST  = "6 · Stats"
@@ -216,10 +219,9 @@ useMid  = input.bool(false, "Previous week / month mids", group=G_LV)
 tolTk   = input.int(0, "Wick may stop short of a level by (ticks)", minval=0, maxval=40, tooltip="0 = the wick must touch or trade through the level.", group=G_LV)
 oncePer = input.bool(true, "One signal per level per direction", group=G_LV)
 
-minWickPct  = input.float(40.0, "Rejecting wick ≥ % of candle range", minval=0, maxval=100, step=5, group=G_RB)
-minWickBody = input.float(1.0, "Rejecting wick ≥ body ×", minval=0, step=0.25, group=G_RB)
-minWickAtr  = input.float(0.25, "Rejecting wick ≥ ATR(14) ×", minval=0, step=0.05, tooltip="ATR of the RB's own timeframe. 0 = off.", group=G_RB)
-tgtAge      = input.int(10, "Target RBs: max age (days)", minval=1, maxval=60, group=G_RB)
+strengthIn = input.string("Sensitive", "Swing strength", options=["Sensitive", "Normal", "Strict"], tooltip="Set it the same as in JS RB. The swing highs/lows a wick must take out: Sensitive = 1 candle each side, Normal = 2 left / 3 right, Strict = 6 each side.", group=G_RB)
+dirOnly    = input.bool(false, "Only RBs closing in trade direction", tooltip="Set it the same as in JS RB. Bullish RBs need a bullish close, bearish RBs a bearish close.", group=G_RB)
+tgtSrc     = input.string("Full history (like JS RB)", "Target RBs from", options=["Full history (like JS RB)", "Chart history"], tooltip="Full history builds the target RBs on the target timeframe's own history, as JS RB does, so RBs older than the loaded chart still count. Chart history only uses the bars on the chart.", group=G_RB)
 
 entrySel = input.string("RB close (market)", "Entry shown & alerted", options=["RB close (market)", "Body-edge limit", "CE limit"], tooltip="The table measures all three either way (R7).", group=G_TR)
 stopTk   = input.int(4, "Stop buffer past the tip (ticks)", minval=0, maxval=400, tooltip="4 ticks = 1 point on NQ / MNQ.", group=G_TR)
@@ -245,7 +247,7 @@ tagMode = input.string("Live trade only", "Entry / TP / SL tags", options=["All 
 tagSz   = input.string("Normal", "Tag size", options=["Small", "Normal", "Large"], group=G_VIS)
 showSkip = input.bool(false, "Show skipped setups (grey ✕)", tooltip="Setups the shown entry didn't trade. Hover the ✕ for the reason.", group=G_VIS)
 lblMode = input.string("Compact", "Signal labels", options=["Compact", "Full", "Off"], tooltip="Compact = BUY / SELL and the entry price. Full adds the setup and level. Hover a label for every detail.", group=G_VIS)
-tgtDraw = input.string("Targets only", "Draw target RBs", options=["Targets only", "All untouched", "Off"], tooltip="All untouched draws every untouched target-timeframe RB, so you can compare them with JS RB.", group=G_VIS)
+tgtDraw = input.string("Targets only", "Draw target RBs", options=["Targets only", "Off"], tooltip="The white box of each trade's target RB. JS RB draws the others.", group=G_VIS)
 maxDraw = input.int(40, "Signals kept on the chart", minval=1, maxval=100, group=G_VIS)
 
 tblMode  = input.string("Compact", "Stats table", options=["Compact", "Full", "Off"], tooltip="Compact = the three entries compared. Full adds the breakdown and the last 10 trading days.", group=G_ST)
@@ -256,7 +258,6 @@ NY      = "America/New_York"
 TICK    = na(syminfo.mintick) or syminfo.mintick <= 0 ? 0.25 : syminfo.mintick
 PV      = na(syminfo.pointvalue) or syminfo.pointvalue <= 0 ? 1.0 : syminfo.pointvalue
 MAX_AGE = 4500
-DAY_MS  = 86400000
 
 tfOf(string s) =>
     switch s
@@ -283,6 +284,9 @@ selIdx   = entrySel == "RB close (market)" ? 0 : entrySel == "Body-edge limit" ?
 useM     = mgmt == "½ at TP1 + breakeven"
 tpCe     = tpAt == "CE (50%)"
 useNext  = closeTgt == "Use the next one out"
+pivN     = strengthIn == "Normal" ? 3 : strengthIn == "Strict" ? 6 : 1   // candles to the right, as JS RB
+pivL     = strengthIn == "Normal" ? 2 : pivN                              // candles to the left
+tgtFull  = tgtSrc == "Full history (like JS RB)"
 noTgtMode = noTgtIn == "Skip the trade" ? 2 : noTgtIn == "Fixed R target" ? 1 : 0
 TAG_SZ   = tagSz == "Small" ? size.small : tagSz == "Large" ? size.large : size.normal
 tagsOn   = tagMode != "Off"
@@ -291,11 +295,11 @@ fullTbl  = tblMode == "Full"
 
 // ============================== STATE ========================================
 var State       S    = State.new()
-var Agg         aE   = Agg.new()
-var Agg         aT   = Agg.new()
-var Agg         a4   = Agg.new()
+var Agg         aE   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>())
+var Agg         aT   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>())
+var Agg         a4   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>())
 var array<Lvl>  lvls = array.new<Lvl>()
-var array<Zone> pool = array.new<Zone>()   // untouched target-timeframe RBs (R5)
+var array<Zone> pool = array.new<Zone>()   // live target-timeframe RBs (R5)
 var array<Zone> c5   = array.new<Zone>()   // recent entry-timeframe RBs, for the 4H RB setup (R4)
 var array<Sig>  sigs = array.new<Sig>()
 
@@ -375,23 +379,139 @@ aggStep(Agg a, bool isNew, bool isLast) =>
         a.done := true
     [c1, c2]
 
-atrStep(Agg a, Candle k) =>
-    float tr = na(a.pc) ? k.h - k.l : math.max(k.h, a.pc) - math.min(k.l, a.pc)
-    a.atr := na(a.atr) ? tr : a.atr + (tr - a.atr) / 14.0
-    a.pc := k.c
-    true
+// R1, JS RB's rule on one finished candle: confirm the swing high/low that is now
+// pivN candles old, then take every swing level this candle's wick trades through.
+// Returns [bearish RBs, bullish RBs] (one per level taken with the body on the near side).
+jsStep(Agg a, Candle k) =>
+    int w = pivN + pivL + 1
+    a.hb.push(k.h)
+    a.lb.push(k.l)
+    if a.hb.size() > w
+        a.hb.shift()
+        a.lb.shift()
+    if a.hb.size() == w
+        float ph = a.hb.get(pivL)
+        float pl = a.lb.get(pivL)
+        bool isH = true
+        bool isL = true
+        for i = 0 to w - 1
+            if i != pivL
+                if a.hb.get(i) >= ph
+                    isH := false
+                if a.lb.get(i) <= pl
+                    isL := false
+        if isH
+            a.hs.push(ph)
+            if a.hs.size() > 500
+                a.hs.shift()
+        if isL
+            a.ls.push(pl)
+            if a.ls.size() > 500
+                a.ls.shift()
+    float bt = math.max(k.o, k.c)
+    float bb = math.min(k.o, k.c)
+    int nb = 0
+    int nu = 0
+    if a.hs.size() > 0
+        for i = a.hs.size() - 1 to 0
+            float lv = a.hs.get(i)
+            if k.h > lv
+                if bt < lv
+                    nb += 1
+                a.hs.remove(i)
+    if a.ls.size() > 0
+        for i = a.ls.size() - 1 to 0
+            float lv = a.ls.get(i)
+            if k.l < lv
+                if bb > lv
+                    nu += 1
+                a.ls.remove(i)
+    if dirOnly
+        nb := k.c < k.o ? nb : 0
+        nu := k.c > k.o ? nu : 0
+    [nb, nu]
 
-// R1: 1 = bearish RB, -1 = bullish RB, 0 = none
-shapeOf(Candle k, float atrV) =>
-    float bt   = math.max(k.o, k.c)
-    float bb   = math.min(k.o, k.c)
-    float rng  = k.h - k.l
-    float upW  = k.h - bt
-    float dnW  = bb - k.l
-    float body = bt - bb
-    bool bear = rng > 0 and upW >= minWickPct / 100.0 * rng and upW >= minWickBody * body and upW > dnW and (na(atrV) or minWickAtr <= 0 or upW >= minWickAtr * atrV)
-    bool bull = rng > 0 and dnW >= minWickPct / 100.0 * rng and dnW >= minWickBody * body and dnW > upW and (na(atrV) or minWickAtr <= 0 or dnW >= minWickAtr * atrV)
-    bear ? 1 : bull ? -1 : 0
+// R5: JS RB's target-timeframe RBs over that timeframe's own full history (JS RB's
+// htfZoneArrays, run through request.security). Returns the live zones.
+jsZonesHTF() =>
+    var array<float> hs = array.new<float>()
+    var array<float> ls = array.new<float>()
+    var array<float> bT = array.new<float>()
+    var array<float> bB = array.new<float>()
+    var array<int>   bX = array.new<int>()
+    var array<float> uT = array.new<float>()
+    var array<float> uB = array.new<float>()
+    var array<int>   uX = array.new<int>()
+    if bT.size() > 0
+        for i = bT.size() - 1 to 0
+            if high > bT.get(i)
+                bT.remove(i)
+                bB.remove(i)
+                bX.remove(i)
+    if uT.size() > 0
+        for i = uT.size() - 1 to 0
+            if low < uB.get(i)
+                uT.remove(i)
+                uB.remove(i)
+                uX.remove(i)
+    if bar_index >= pivL + pivN
+        float ph = high[pivN]
+        float pl = low[pivN]
+        bool isH = true
+        bool isL = true
+        for k = 0 to pivN + pivL
+            if k != pivN
+                if high[k] >= ph
+                    isH := false
+                if low[k] <= pl
+                    isL := false
+        if isH
+            hs.push(ph)
+            if hs.size() > 500
+                hs.shift()
+        if isL
+            ls.push(pl)
+            if ls.size() > 500
+                ls.shift()
+    float bt = math.max(open, close)
+    float bb = math.min(open, close)
+    int nb = 0
+    int nu = 0
+    if hs.size() > 0
+        for i = hs.size() - 1 to 0
+            float lv = hs.get(i)
+            if high > lv
+                if bt < lv
+                    nb += 1
+                hs.remove(i)
+    if ls.size() > 0
+        for i = ls.size() - 1 to 0
+            float lv = ls.get(i)
+            if low < lv
+                if bb > lv
+                    nu += 1
+                ls.remove(i)
+    if dirOnly
+        nb := close < open ? nb : 0
+        nu := close > open ? nu : 0
+    if barstate.isconfirmed
+        if nb > 0
+            bT.push(high)
+            bB.push(bt)
+            bX.push(time)
+            if bT.size() > 500
+                bT.shift()
+                bB.shift()
+                bX.shift()
+        if nu > 0
+            uT.push(bb)
+            uB.push(low)
+            uX.push(time)
+            if uT.size() > 500
+                uT.shift()
+                uB.shift()
+                uX.shift()
+    [array.copy(bT), array.copy(bB), array.copy(bX), array.copy(uT), array.copy(uB), array.copy(uX)]
 
 zoneOf(Candle k, bool bull) =>
     float tip  = bull ? k.l : k.h
@@ -422,7 +542,7 @@ sweptBy(Candle k, bool bull) =>
     hits
 
 // R5/R6: [target price, target RB, reason when there is none, kind, name].
-// Kind 0 = the nearest untouched opposing target-timeframe RB; when none is far enough,
+// Kind 0 = the nearest live opposing target-timeframe RB; when none is far enough,
 // 1 = the opposite previous-4H high/low, 2 = a fixed R target (input).
 pickTgt(bool bull, float e, float rk) =>
     Zone  best  = na
@@ -446,7 +566,7 @@ pickTgt(bool bull, float e, float rk) =>
         best := na
     else if na(bestP)
         if noTgtMode == 2
-            why := near ? "Every " + tgtTfIn + " RB beyond the entry is closer than " + str.tostring(minRR) + "R" : "No untouched " + tgtTfIn + " RB beyond the entry"
+            why := near ? "Every " + tgtTfIn + " RB beyond the entry is closer than " + str.tostring(minRR) + "R" : "No live " + tgtTfIn + " RB beyond the entry"
         else
             if noTgtMode == 0
                 for lv in lvls
@@ -635,7 +755,7 @@ drawSig(Sig s) =>
         s.tgT := label.new(x0 + 1, t.tgt, tagTxtT(t), style=label.style_label_left, color=colTp, textcolor=color.white, size=TAG_SZ, tooltip=sigTip(s, t))
         s.tgS := label.new(x0 + 1, t.stop, tagTxtS(t), style=label.style_label_left, color=colSl, textcolor=color.white, size=TAG_SZ, tooltip=sigTip(s, t))
     if tgtDraw == "Targets only" and not na(t.tz)
-        s.tzBx := box.new(math.max(t.tz.formBar, bar_index - MAX_AGE), math.max(t.tz.tip, t.tz.edge), x0, math.min(t.tz.tip, t.tz.edge), border_color=color.new(colTgt, 10), bgcolor=color.new(colTgt, 90), text=tgtTfIn, text_size=size.tiny, text_color=colTgt, text_halign=text.align_right)
+        s.tzBx := box.new(t.tz.formT, math.max(t.tz.tip, t.tz.edge), time, math.min(t.tz.tip, t.tz.edge), xloc=xloc.bar_time, border_color=color.new(colTgt, 10), bgcolor=color.new(colTgt, 90), text=tgtTfIn, text_size=size.tiny, text_color=colTgt, text_halign=text.align_right)
     if lblMode != "Off"
         s.lb := label.new(s.sigBar, s.rb.tip, lblTxt(s, t), style=s.bull ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=size.small, tooltip=sigTip(s, t))
     s.drawn := true
@@ -676,7 +796,9 @@ moveEnd(Sig s, int x) =>
     setRight(s.rbBx, x)
     setRight(s.tpBx, x)
     setRight(s.slBx, x)
-    setRight(s.tzBx, x)
+    // the target box is in bar time; x is always the current bar here
+    if not na(s.tzBx)
+        box.set_right(s.tzBx, time)
     if not na(s.lnE)
         line.set_x2(s.lnE, x)
         line.set_x2(s.lnT, x)
@@ -869,6 +991,12 @@ bool inAs     = useAsia and not na(time(timeframe.period, asiaSes, NY))
 bool inLn     = useLon and not na(time(timeframe.period, lonSes, NY))
 bool blocked  = flatNow or quiet or not inWin
 
+// R5: the target-timeframe RBs as JS RB builds them, over that timeframe's full history
+[zbT, zbB, zbX, zuT, zuB, zuX] = if tgtFull
+    request.security(syminfo.tickerid, tgtTf, jsZonesHTF())
+else
+    [array.new<float>(), array.new<float>(), array.new<int>(), array.new<float>(), array.new<float>(), array.new<int>()]
+
 // ============================== ENGINE =======================================
 bool aBuy  = false
 bool aSell = false
@@ -952,14 +1080,25 @@ if barstate.isconfirmed
         addLvl(lnL, "London Low", -1, 3, time)
     wasLn := inLn
 
-    // ---- target RBs this bar touched stop being targets (R5)
+    // ---- full history: refresh the target RBs whenever a target-timeframe candle closes (R5)
+    if tgtFull and (tNew or tLast or array.size(pool) == 0) and not na(zbT)
+        array.clear(pool)
+        if zbT.size() > 0
+            for i = 0 to zbT.size() - 1
+                float hi = zbT.get(i)
+                float bt = zbB.get(i)
+                array.push(pool, Zone.new(bull=false, tip=hi, edge=bt, ce=(hi + bt) / 2, formT=zbX.get(i)))
+        if zuT.size() > 0
+            for i = 0 to zuT.size() - 1
+                float bb = zuT.get(i)
+                float lo = zuB.get(i)
+                array.push(pool, Zone.new(bull=true, tip=lo, edge=bb, ce=(lo + bb) / 2, formT=zuX.get(i)))
+
+    // ---- a target RB ends once a wick trades past its tip (R1, as JS RB)
     if array.size(pool) > 0
         for i = array.size(pool) - 1 to 0
             Zone z = array.get(pool, i)
-            bool touched = bar_index > z.endBar and (z.bull ? low <= z.edge : high >= z.edge)
-            if touched or time - z.formT > tgtAge * DAY_MS
-                z.fresh := false
-                box.delete(z.bx)
+            if (na(z.endBar) or bar_index > z.endBar) and (z.bull ? low < z.tip : high > z.tip)
                 array.remove(pool, i)
 
     // ---- every live signal through this bar (A3-A6)
@@ -995,64 +1134,62 @@ if barstate.isconfirmed
                 else if s.drawn and isLive(selT(s))
                     extendSig(s)
 
-    // ---- target-timeframe RBs (R1, R5)
+    // ---- chart history: target-timeframe RBs built from the chart's bars (R1, R5)
     [h1, h2] = aggStep(aT, tNew, tLast)
     for k = 0 to 1
         Candle ck = k == 0 ? h1 : h2
-        if not na(ck)
-            int sh = shapeOf(ck, aT.atr)
-            atrStep(aT, ck)
-            if sh != 0
-                Zone z = zoneOf(ck, sh < 0)
-                bool gone = ck.late and (z.bull ? low <= z.edge : high >= z.edge)
-                if not gone
-                    if tgtDraw == "All untouched"
-                        z.bx := box.new(math.max(z.formBar, bar_index - MAX_AGE), math.max(z.tip, z.edge), bar_index, math.min(z.tip, z.edge), border_color=color.new(colTgt, 30), bgcolor=color.new(colTgt, 92), text=tgtTfIn, text_size=size.tiny, text_color=colTgt, text_halign=text.align_right)
-                    array.push(pool, z)
-                    if array.size(pool) > 80
-                        Zone old = array.shift(pool)
-                        box.delete(old.bx)
+        if not na(ck) and not tgtFull
+            [nb, nu] = jsStep(aT, ck)
+            for j = 0 to 1
+                bool bull = j == 1
+                if (bull ? nu : nb) > 0
+                    Zone z = zoneOf(ck, bull)
+                    bool gone = ck.late and (bull ? low < z.tip : high > z.tip)
+                    if not gone
+                        array.push(pool, z)
+                        if array.size(pool) > 500
+                            array.shift(pool)
 
     // ---- entry-timeframe candles: Sweep signals (R1, R3)
     [e1, e2] = aggStep(aE, eNew, eLast)
     for k = 0 to 1
         Candle ck = k == 0 ? e1 : e2
         if not na(ck)
-            int sh = shapeOf(ck, aE.atr)
-            atrStep(aE, ck)
-            if sh != 0
-                bool bull = sh < 0
-                Zone z = zoneOf(ck, bull)
-                // A1: a late RB is dropped if this bar already traded past its tip
-                bool gone = ck.late and (bull ? low < z.tip : high > z.tip)
-                if not gone
-                    array.push(c5, z)
-                    if array.size(c5) > 300
-                        array.shift(c5)
-                    if useSweep
-                        array<Lvl> hits = sweptBy(ck, bull)
-                        if array.size(hits) > 0 and canSignal(bull, blocked)
-                            string names = ""
-                            int grp = 9
-                            for lv in hits
-                                names := names == "" ? lv.name : names + " + " + lv.name
-                                grp := math.min(grp, lv.grp)
-                                if bull
-                                    lv.usedBull := true
-                                else
-                                    lv.usedBear := true
-                            z.swept := true
-                            Sig s = mkSig(z, bull, "Sweep", names, grp, ck.late ? close : ck.c)
-                            if not selT(s).valid and showSkip
-                                drawSkip(s)
-                            if selT(s).valid
-                                drawSig(s)
-                                Trade t = selT(s)
-                                if bull
-                                    aBuy := true
-                                else
-                                    aSell := true
-                                alert(dirTxt(s) + " " + syminfo.ticker + " · " + setupTxt(s) + "\n" + entryName(s, selIdx) + " " + px(t.entry) + "  SL " + px(t.stop) + "  TP " + px(t.tgt) + "  R:R " + str.tostring(t.rr, "0.0") + ctsTxt(t), alert.freq_once_per_bar_close)
+            [nb, nu] = jsStep(aE, ck)
+            for j = 0 to 1
+                bool bull = j == 1
+                if (bull ? nu : nb) > 0
+                    Zone z = zoneOf(ck, bull)
+                    // A1: a late RB is dropped if this bar already traded past its tip
+                    bool gone = ck.late and (bull ? low < z.tip : high > z.tip)
+                    if not gone
+                        array.push(c5, z)
+                        if array.size(c5) > 300
+                            array.shift(c5)
+                        if useSweep
+                            array<Lvl> hits = sweptBy(ck, bull)
+                            if array.size(hits) > 0 and canSignal(bull, blocked)
+                                string names = ""
+                                int grp = 9
+                                for lv in hits
+                                    names := names == "" ? lv.name : names + " + " + lv.name
+                                    grp := math.min(grp, lv.grp)
+                                    if bull
+                                        lv.usedBull := true
+                                    else
+                                        lv.usedBear := true
+                                z.swept := true
+                                Sig s = mkSig(z, bull, "Sweep", names, grp, ck.late ? close : ck.c)
+                                if not selT(s).valid and showSkip
+                                    drawSkip(s)
+                                if selT(s).valid
+                                    drawSig(s)
+                                    Trade t = selT(s)
+                                    if bull
+                                        aBuy := true
+                                    else
+                                        aSell := true
+                                    alert(dirTxt(s) + " " + syminfo.ticker + " · " + setupTxt(s) + "\n" + entryName(s, selIdx) + " " + px(t.entry) + "  SL " + px(t.stop) + "  TP " + px(t.tgt) + "  R:R " + str.tostring(t.rr, "0.0") + ctsTxt(t), alert.freq_once_per_bar_close)
             // R3: a high or low a 5m candle closed beyond is broken
             for lv in lvls
                 if lv.side != 0 and not lv.broken and lv.bornT <= ck.t
@@ -1102,11 +1239,6 @@ if barstate.isconfirmed
             Lvl lv = array.get(lvls, i)
             if not na(lv.deadT) or lv.broken
                 array.remove(lvls, i)
-
-    // ---- untouched target RBs keep extending
-    if tgtDraw == "All untouched" and array.size(pool) > 0
-        for z in pool
-            setRight(z.bx, bar_index)
 
     // ---- only the newest maxDraw signals keep their drawings; finished, undrawn ones go
     int kept = 0

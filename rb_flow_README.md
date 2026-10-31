@@ -2,7 +2,7 @@
 
 `SaintTrades-RBFlow.pine` turns your model into buy and sell signals with an entry, a stop and a target:
 
-> Price rejects a key level (above all the previous 4H high or low) with a **5-minute rejection block**, then runs to the nearest untouched **1-hour rejection block** on the other side.
+> Price rejects a key level (above all the previous 4H high or low) with a **5-minute rejection block**, then runs to the nearest **1-hour rejection block** on the other side. The rejection blocks are exactly the ones your **JS RB** indicator draws.
 
 It finds every setup on your chart's history, takes each one three ways (market at the RB close, body-edge limit, CE limit), and scores them. You get the answer from your own chart: does this make money, on which entry, at which levels, at what time of day, and day by day.
 
@@ -16,15 +16,18 @@ Your two screenshots, as rules:
 |---|---|---|
 | Oct 30, 10:00 | The 5m candle runs above the 4H high, closes back below with a long upper wick (the red **M5** box under "Prev 4H High"), and price falls 600 points | **Sweep:** a 5m RB whose wick reaches a key level while its body stays on the near side |
 | Oct 30, 10:00 | That same 5m RB *is* the high of the 4H candle, so it sits at "Prev 4H High" afterwards | **4H RB:** the 5m RB that made a 4H candle's high or low, traded on the retest during the next 4H candle |
-| Oct 29, 20:00 | M5 RBs on the way down, price heading for the white **H1** box below | **Target:** the nearest untouched opposing 1H RB. Shorts run to a bullish 1H RB below, longs to a bearish 1H RB above |
+| Oct 29, 20:00 | M5 RBs on the way down, price heading for the white **H1** box below | **Target:** the nearest opposing 1H RB, one of JS RB's H1 boxes. Shorts run to a bullish 1H RB below, longs to a bearish 1H RB above |
 
-**Rejection block** (both timeframes): a candle whose wick dominates it:
-- the wick is at least 40% of the range
-- the wick is at least 1× the body
-- the wick is longer than the other wick
-- the wick is at least 0.25 × ATR(14) of that timeframe
+**Rejection block** (both timeframes): JS RB's rule, copied from its code.
+- Every swing high and swing low is liquidity: a candle whose high (low) is strictly beyond the candles on each side. With the default *Swing strength* = Sensitive, that's 1 candle each side.
+- The first candle whose wick trades through a swing level takes it. If that candle's **body stays on the near side**, it is a rejection block.
+- Zone = body edge to wick tip. CE = 50% of the wick.
+- An RB lasts until a later wick trades **past its tip**. Touching it doesn't end it.
+- No minimum wick size.
 
-Zone = body edge to wick tip. CE = 50% of the wick. These are your ST RB rules.
+Checked against your JS RB code itself on 5,520 random 5m candles at every swing strength, with and without its direction filter: **0 differences** in about 2,000 RBs.
+
+The 1H target boxes are built on the 1H chart's own full history, the same way JS RB builds its H1 boxes. So a 1H RB from weeks before your chart's first bar still counts, like your 27,150 box.
 
 **Key levels:** by default only the **previous 4H high and low**. The others your KeyLevels indicator draws can each be turned on:
 - previous 4H high/low
@@ -43,7 +46,7 @@ Highs only count for shorts and lows only for longs. Opens and mids count both w
 |---|---|
 | **Entry** | **RB close (market):** the close of the 5m RB candle. **Body-edge limit:** the bottom of the wick zone. **CE limit:** 50% of the wick. Pick one under *Entry shown & alerted*. The table measures all three. |
 | **Stop** | 5m RB tip + 4 ticks (1 NQ point) |
-| **Target** | The near edge (or CE, an input) of the nearest untouched bullish 1H RB below the entry that is at least **1.5R** away. No such 1H RB = no trade. *If no target RB is far enough* can instead fall back to the previous 4H low, then a fixed 3R; the breakdown scores each kind of target separately. |
+| **Target** | The near edge (or CE, an input) of the nearest bullish 1H RB (a JS RB H1 box) below the entry that is at least **1.5R** away. No such 1H RB = no trade. *If no target RB is far enough* can instead fall back to the previous 4H low, then a fixed 3R; the breakdown scores each kind of target separately. |
 | **Skipped if** | The stop is wider than **40 points** (input) |
 | **Ends** | At the stop or the target. At **16:00 NY** anything still open closes at the bar's close and unfilled limits are cancelled. No new signals until the 18:00 open. |
 
@@ -102,7 +105,13 @@ This is how you and I check the model, one day at a time:
 | Wick may stop short of a level by | 0 ticks | 0 = touch or trade through |
 | One signal per level per direction | on | Stops repeat signals off the same level |
 
-**3 · Rejection blocks:** the wick rules above (40% / 1× body / 0.25 ATR) and how long a 1H RB stays a target (10 days).
+**3 · Rejection blocks (JS RB rules)** — set the first two the same as in JS RB:
+
+| Input | Default | What it does |
+|---|---|---|
+| Swing strength | Sensitive | Sensitive = 1 candle each side, Normal = 2 left / 3 right, Strict = 6 |
+| Only RBs closing in trade direction | off | Bullish RBs need a green close, bearish a red close |
+| Target RBs from | Full history (like JS RB) | Or *Chart history*: only the bars loaded on the chart |
 
 **4 · Entry, stop & target**
 | Input | Default | What it does |
@@ -156,37 +165,40 @@ You also get alerts when a limit fills and when a trade closes. There are also f
   - every drawing and table mode
 
   A 5m chart gives exactly the same trades as a 1m chart.
-- **Known-answer scenarios** (hand-calculated first, 28 checks, all pass):
+- **Same RBs as JS RB:** your JS RB `detect()` code, unchanged, ran next to this indicator's on 5,520 random 5m candles at Sensitive, Normal and Strict, with and without the direction filter: **0 differences** across about 2,000 rejection blocks.
+- **Known-answer scenarios** (hand-calculated first, 29 checks, all pass). The 1H target is a bullish JS RB at 990–1012: the 19:00 hour wicks to 990 through the 16:00 swing low at 1002 and closes at 1014.
 
   | Scenario | Result |
   |---|---|
-  | 5m RB sweeps the previous 4H high at 1105 (wick 1110, close 1098), bullish 1H RB at 990–1010 below | SELL at 1098, SL 1111, TP 1010 → **+6.77R**; managed **+3.88R** |
-  | Same, body-edge limit | Filled at 1100 on the retrace → **+8.18R** |
+  | A 5m candle wicks to 1110 through the 1105 swing high (also the previous 4H high) and closes 1098 | SELL at 1098, SL 1111, TP 1012 → **+6.62R**; managed **+3.81R** |
+  | Same, but the 1105 high isn't a strict swing high | Not a JS RB → no trade |
+  | Same, body-edge limit | Filled at 1100 on the retrace → **+8.0R** |
   | Same, CE limit at 1105 | Price never came back that high → no trade |
-  | TP at the 1H RB's CE (1000) | **+7.54R**. If price stops at 1005 instead, it is flattened at 16:00 for +7.15R. |
-  | Minimum R:R 7 (the 1H RB is only 6.77R away) | Falls back to a fixed 3R at 1059 and hits. With "skip": no trade. |
-  | Bullish mirror image | BUY at 1002, SL 989, TP 1090 → same R |
-  | 4H RB: the 5m RB that made the 4H high, retested next 4H candle | Limit at 1100.5, SL 1109 → **+10.65R**. Off with the setup turned off. |
+  | TP at the 1H RB's CE (1001) | **+7.46R**. If price stops at 1005 instead, it is flattened at 16:00 for +7.15R. |
+  | Minimum R:R 7 (the 1H RB is only 6.62R away) | No trade by default. With the fallback: a fixed 3R at 1059, hit. |
+  | Bullish mirror image | BUY at 1002, SL 989, TP 1088 → same R |
+  | 4H RB: the 5m RB that made the 4H high, retested next 4H candle | Limit at 1100.5, SL 1109 → **+10.41R**. No trade with the setup off (the default). |
   | Price runs through the stop | −1R on all three entries |
   | Still open at 16:00 | Closed at the 15:59 close: (1098 − close) / 13 R, managed 0.5 + half of that |
-  | No 1H RB below, previous 4H low too close | Fixed 3R target at 1059, hit. With "skip": no trade. |
+  | No 1H RB below, previous 4H low too close | No trade by default. With the fallback: a fixed 3R at 1059, hit. |
   | No 1H RB below, previous 4H low 48 points down | TP at the 4H low 1050 → **+3.69R**; the mirror image aims for the 4H high |
   | Longs only | The short is skipped |
 
-- **Random-data check:** random prices have no edge, so results should average about 0R. A strongly positive number would mean the code was peeking at future bars. Three seeded random walks of 15 trading days each on 1m bars, all levels on, taking every signal:
+- **Random-data check:** random prices have no edge, so results should average 0R or a little below. A strongly positive number would mean the code was peeking at future bars. Three seeded random walks of 15 trading days each on 1m bars, default settings:
 
   | Entry | Trades | Full to target | ½ at 1R + BE |
   |---|---|---|---|
-  | RB close | 243 | −0.19R avg, 13% win | +0.02R avg, 53% win |
-  | Body edge | 232 | −0.25R avg, 12% win | +0.01R avg, 53% win |
-  | CE limit | 198 | −0.32R avg, 8% win | −0.31R avg, 41% win |
+  | RB close | 63 | −0.36R avg, 13% win | −0.32R avg, 40% win |
+  | Body edge | 57 | −0.61R avg, 5% win | −0.35R avg, 35% win |
+  | CE limit | 54 | −0.65R avg, 6% win | −0.47R avg, 26% win |
 
-  Slightly below zero is what conservative fills should give: the stop wins same-bar ties, and the 16:00 flatten cuts winners short. Seeds swing from +0.11R to −0.83R, so a few dozen trades prove nothing either way.
+  Below zero is what conservative fills should give: the stop wins same-bar ties, and the 16:00 flatten cuts winners short. A few dozen trades prove nothing either way.
 
 ## Limitations
 
 - **Not compiled in TradingView yet.** It has not run on a real NQ chart here: TradingView and every market-data site (Yahoo, Dukascopy, Databento, Massive) were blocked in this environment. PineTS is not TradingView's compiler. If the Pine editor shows an error, send me the message and line number.
 - **Not yet confirmed on real NQ data.** The scenarios prove the code does what the rules say. They say nothing about whether the rules make money. Your chart's table and Pine Logs are the first real test.
-- **JS RB isn't in this repo**, so the 5m and 1H RBs use your ST RB wick rules. If JS RB draws boxes this doesn't, or the other way round, paste me JS RB's code and I'll match it. Set **Draw target RBs = All untouched** to compare the 1H RBs side by side.
+- **The full-history 1H targets can't run in PineTS.** That test runtime can't evaluate `request.security` on test data, so the tests use *Target RBs from = Chart history*, which uses the identical rule. The full-history path is JS RB's own `htfZoneArrays` code, run the same way JS RB runs it.
+- **5m swing levels come from the loaded chart.** A 5m wick that takes a swing high/low from before the chart's first bar won't count here, though JS RB (which reaches further back) would show it. This only matters in the first day or so of the chart.
 - **Bar order inside a candle is unknown**, so the scoring is conservative. A stop and a target in the same 1m bar counts as the stop. A limit can't take profit on its fill bar.
 - **4H candles** follow TradingView's 4H bars for the symbol: 18:00, 22:00, 02:00, 06:00, 10:00 and 14:00 NY on CME.
