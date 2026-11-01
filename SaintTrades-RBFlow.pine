@@ -26,8 +26,9 @@
 //      beyond is broken and stops counting. A level gives at most one signal
 //      per direction (input).
 //  R4. Setup "4H RB": the 5m RB that made a 4H candle's high (bearish) or low
-//      (bullish). It is known when that 4H candle closes. Its zone is traded on
-//      the retest while that candle is the previous 4H candle.
+//      (bullish), e.g. the last 5m candle before 10:00 wicking out the 4H high.
+//      It is known when that 4H candle closes: the market entry is that close;
+//      the limit entries wait for a retest during the next 4H candle.
 //  R5. Target: the nearest live opposing 1H RB beyond the entry, the boxes JS
 //      RB draws. Shorts run to a bullish 1H RB below, longs to a bearish 1H RB
 //      above. TP = its near edge (first touch) or its CE. By default the 1H RBs
@@ -35,11 +36,11 @@
 //  R6. Stop = 5m RB tip + buffer. A trade is taken only when the target is at
 //      least the minimum R:R away.
 //  R7. Entries, all measured on every signal:
-//        RB close (market)  - at the 5m RB's close. A 4H RB is only known at the
-//                             4H close, so for it this is the body-edge limit.
+//        RB close (market)  - at the 5m RB's close; for a 4H RB, at the close
+//                             of the 4H candle it made the high / low of.
 //        Body-edge limit    - at the near edge of the 5m zone.
 //        CE limit           - at 50% of the 5m wick.
-//        Confirmation close - (Sweep only) wait for a 5m candle to close back
+//        Confirmation close - wait for a 5m candle to close back
 //                             through the CISD level, the open of the run of
 //                             candles that pushed into the RB, and enter at that
 //                             close. The stop stays past the RB's tip.
@@ -66,9 +67,10 @@
 //  A6. "Full to target" = the whole position to the 1H RB, same stop.
 //      "½ at TP1 + breakeven" = half off at TP1, the stop moves to the entry
 //      from the next bar, the rest runs to the 1H RB. Results are in R.
-//  A7. While a trade is live (input): with "One at a time", a new signal is
-//      skipped while the shown entry's trade is pending or open. All three
-//      entries are measured on the same signals.
+//  A7. While a trade is live (input): by default a new signal is skipped while
+//      the shown entry's trade in the same direction is pending or open ("One at
+//      a time" skips both directions). All four entries are measured on the
+//      same signals.
 //  A8. Trading day = 18:00 NY to 18:00 NY. A signal's result is booked on the
 //      day it signalled.
 // =============================================================================
@@ -209,11 +211,11 @@ G_VIS = "5 · Visuals"
 G_ST  = "6 · Stats"
 
 useSweep = input.bool(true, "Sweep: a 5m RB off a key level", tooltip="The 5m wick reaches a key level and the body closes back on the near side (R3).", group=G_SET)
-use4hRb  = input.bool(false, "4H RB: the 5m RB that made the 4H high / low", tooltip="Known when the 4H candle closes. Traded on the retest of its zone during the next 4H candle (R4).", group=G_SET)
+use4hRb  = input.bool(true, "4H RB: the 5m RB that made the 4H high / low", tooltip="Known when the 4H candle closes: the market entry is taken at that close, the limit entries on a retest during the next 4H candle (R4).", group=G_SET)
 entTfIn  = input.string("5m", "Entry RB timeframe", options=["1m", "3m", "5m", "15m"], group=G_SET)
 tgtTfIn  = input.string("1H", "Target RB timeframe", options=["15m", "30m", "1H", "2H", "4H"], group=G_SET)
 dirIn    = input.string("Both", "Direction", options=["Both", "Longs only", "Shorts only"], group=G_SET)
-overlap  = input.string("One at a time", "While a trade is live", options=["One at a time", "Skip same direction", "Take every signal"], tooltip="One at a time: a new signal is skipped while the shown entry's trade is pending or open (A7).", group=G_SET)
+overlap  = input.string("Skip same direction", "While a trade is live", options=["Skip same direction", "One at a time", "Take every signal"], tooltip="Skip same direction: a new signal is skipped while the shown entry's trade in the same direction is pending or open; an opposite signal still shows. One at a time skips both (A7).", group=G_SET)
 reqPd    = input.bool(false, "Only shorts above / longs below the daily open", tooltip="Premium / discount: a short only when the 5m RB's CE is above the 18:00 daily open, a long only when it is below. The breakdown scores it either way.", group=G_SET)
 useWin   = input.bool(false, "Only signal inside (NY)", inline="win", group=G_SET)
 winSess  = input.session("0800-1600", "", inline="win", group=G_SET)
@@ -782,7 +784,7 @@ tgtTxt(Trade t) =>
     t.kind == 0 and not na(t.tz) ? px(t.tgt) + " (" + tgtTfIn + " RB " + px(math.min(t.tz.tip, t.tz.edge)) + " – " + px(math.max(t.tz.tip, t.tz.edge)) + ")" : px(t.tgt) + " (" + t.tgtName + ")"
 
 entryName(Sig s, int m) =>
-    m == 0 ? (s.setup == "Sweep" ? "RB close (market)" : "Body-edge limit (4H RB)") : m == 1 ? "Body-edge limit" : m == 2 ? "CE limit" : "Confirmation close"
+    m == 0 ? (s.setup == "Sweep" ? "RB close (market)" : "4H close (market)") : m == 1 ? "Body-edge limit" : m == 2 ? "CE limit" : "Confirmation close"
 
 lblTxt(Sig s, Trade t) =>
     string base = t.wait ? dirTxt(s) + " · wait" : tagsOn ? dirTxt(s) + (t.mkt ? "" : " LMT") : dirTxt(s) + (t.mkt ? " " : " LMT ") + px(t.entry)
@@ -947,16 +949,12 @@ canSignal(bool bull, bool blk) =>
 
 mkSig(Zone z, bool bull, string setup, string names, int grp, float mktPx) =>
     float stop = bull ? z.tip - stopTk * TICK : z.tip + stopTk * TICK
-    bool  sw = setup == "Sweep"
-    Trade t0 = mkTrade(bull, sw ? mktPx : z.edge, stop, sw)
+    Trade t0 = mkTrade(bull, mktPx, stop, true)
     Trade t1 = mkTrade(bull, z.edge, stop, false)
     Trade t2 = mkTrade(bull, z.ce, stop, false)
     // R7: the confirmation entry waits for a close through the CISD level, unless the RB candle already closed there
     Trade t3 = Trade.new(stop=stop, mkt=true)
-    if not sw
-        t3.why := "The confirmation entry is for Sweep setups"
-        t3.cancelled := true
-    else if bull ? mktPx > z.cisd : mktPx < z.cisd
+    if bull ? mktPx > z.cisd : mktPx < z.cisd
         arm(t3, bull, mktPx)
     else
         t3.wait := true
@@ -1337,7 +1335,7 @@ if barstate.isconfirmed
                         bool bull = z.bull
                         if canSignal(bull, blocked) and (not reqPd or pdOf(bull, z))
                             z.swept := true
-                            Sig s = mkSig(z, bull, "4H RB", bull ? "4H Low RB" : "4H High RB", 0, na)
+                            Sig s = mkSig(z, bull, "4H RB", bull ? "4H Low RB" : "4H High RB", 0, close)
                             if not selT(s).valid and showSkip
                                 drawSkip(s)
                             if selT(s).valid

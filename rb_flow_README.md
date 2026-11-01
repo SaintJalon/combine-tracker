@@ -15,7 +15,7 @@ Your two screenshots, as rules:
 | Screenshot | What happened | Rule |
 |---|---|---|
 | Oct 30, 10:00 | The 5m candle runs above the 4H high, closes back below with a long upper wick (the red **M5** box under "Prev 4H High"), and price falls 600 points | **Sweep:** a 5m RB whose wick reaches a key level while its body stays on the near side |
-| Oct 30, 10:00 | That same 5m RB *is* the high of the 4H candle, so it sits at "Prev 4H High" afterwards | **4H RB:** the 5m RB that made a 4H candle's high or low, traded on the retest during the next 4H candle |
+| Oct 30, 10:00 | That same 5m RB *is* the high of the 4H candle, so it sits at "Prev 4H High" afterwards | **4H RB:** the 5m RB that made a 4H candle's high or low. Sold (or bought) at the **4H close**, as at 10:00 here; the limit entries wait for a retest during the next 4H candle |
 | Oct 29, 20:00 | M5 RBs on the way down, price heading for the white **H1** box below | **Target:** the nearest opposing 1H RB, one of JS RB's H1 boxes. Shorts run to a bullish 1H RB below, longs to a bearish 1H RB above |
 
 **Rejection block** (both timeframes): JS RB's rule, copied from its code.
@@ -44,7 +44,7 @@ Highs only count for shorts and lows only for longs. Opens and mids count both w
 
 | | Short (long is the mirror image) |
 |---|---|
-| **Entry** | **RB close (market):** the close of the 5m RB candle. **Body-edge limit:** the bottom of the wick zone. **CE limit:** 50% of the wick. **Confirmation close:** wait for a 5m candle to close back through the CISD level (the open of the run of candles that pushed into the RB), then enter at that close; cancelled if price trades through the stop first or no close comes within 6 candles. Pick one under *Entry shown & alerted*. The table measures all four. |
+| **Entry** | **RB close (market):** the close of the 5m RB candle (for a 4H RB, the 4H candle's close). **Body-edge limit:** the bottom of the wick zone. **CE limit:** 50% of the wick. **Confirmation close:** wait for a 5m candle to close back through the CISD level (the open of the run of candles that pushed into the RB), then enter at that close; cancelled if price trades through the stop first or no close comes within 6 candles. Pick one under *Entry shown & alerted*. The table measures all four. |
 | **Stop** | 5m RB tip + 4 ticks (1 NQ point) |
 | **Target** | The near edge (or CE, an input) of the nearest bullish 1H RB (a JS RB H1 box) below the entry that is at least **1.5R** away. No such 1H RB = no trade. *If no target RB is far enough* can instead fall back to the previous 4H low, then a fixed 3R; the breakdown scores each kind of target separately. |
 | **Skipped if** | The stop is wider than **40 points** (input) |
@@ -92,10 +92,10 @@ This is how you and I check the model, one day at a time:
 | Input | Default | What it does |
 |---|---|---|
 | Sweep | on | 5m RB off a key level |
-| 4H RB | off | The 5m RB that made the 4H high/low, traded on the retest |
+| 4H RB | on | The 5m RB that made the 4H high/low: market entry at the 4H close, limits on the retest |
 | Entry / target RB timeframe | 5m / 1H | The chart timeframe must divide the entry timeframe |
 | Direction | Both | Or longs / shorts only |
-| While a trade is live | One at a time | A new signal is skipped while the shown entry's trade is pending or open. Or skip the same direction only, or take every signal. |
+| While a trade is live | Skip same direction | A new signal is skipped while the shown entry's trade in the same direction is pending or open; an opposite signal still shows. Or one at a time (both directions), or take every signal. |
 | Only shorts above / longs below the daily open | off | Premium / discount against the 18:00 open, judged on the 5m RB's CE |
 | Only signal inside (NY) | off, 08:00–16:00 | A time window for new signals |
 
@@ -117,7 +117,7 @@ This is how you and I check the model, one day at a time:
 **4 · Entry, stop & target**
 | Input | Default | What it does |
 |---|---|---|
-| Entry shown & alerted | RB close (market) | Body-edge limit and CE limit are the others. A 4H RB is only known at the 4H close, so its "market" entry is the body-edge limit. |
+| Entry shown & alerted | RB close (market) | Or body-edge limit, CE limit, confirmation close. A 4H RB is only known at the 4H close, so its market entry is that close. |
 | Stop buffer | 4 ticks | Past the tip |
 | TP at the target RB's | Near edge | Or its CE |
 | Minimum R:R | 1.5 | A 1H RB closer than this isn't used as the target |
@@ -176,7 +176,7 @@ You also get alerts when a limit fills and when a trade closes. There are also f
 
   A 5m chart gives exactly the same trades as a 1m chart.
 - **Same RBs as JS RB:** your JS RB `detect()` code, unchanged, ran next to this indicator's on 5,520 random 5m candles at Sensitive, Normal and Strict, with and without the direction filter: **0 differences** across about 2,000 rejection blocks.
-- **Known-answer scenarios** (hand-calculated first, 37 checks, all pass). The 1H target is a bullish JS RB at 990–1012: the 19:00 hour wicks to 990 through the 16:00 swing low at 1002 and closes at 1014.
+- **Known-answer scenarios** (hand-calculated first, 42 checks, all pass). The 1H target is a bullish JS RB at 990–1012: the 19:00 hour wicks to 990 through the 16:00 swing low at 1002 and closes at 1014.
 
   | Scenario | Result |
   |---|---|
@@ -187,7 +187,8 @@ You also get alerts when a limit fills and when a trade closes. There are also f
   | TP at the 1H RB's CE (1001) | **+7.46R**. If price stops at 1005 instead, it is flattened at 16:00 for +7.15R. |
   | Minimum R:R 7 (the 1H RB is only 6.62R away) | No trade by default. With the fallback: a fixed 3R at 1059, hit. |
   | Bullish mirror image | BUY at 1002, SL 989, TP 1088 → same R |
-  | 4H RB: the 5m RB that made the 4H high, retested next 4H candle | Limit at 1100.5, SL 1109 → **+10.41R**. No trade with the setup off (the default). |
+  | 4H RB: a 5m RB at 05:00 made the 04:00–08:00 high | Market at the 4H close 1097, SL 1109 → **+7.08R**. Body-edge limit filled at 1100.5 on the retest → **+10.41R**. No trade with the setup off. |
+  | Your Oct 30 10:00 trade: the last 5m candle of the 4H wicks out the 4H high, closes down at 1099, price drops with no retest | SELL at the 4H close 1099, SL 1109 → **+8.7R**. A retest-only limit would have missed it. Confirmation close at 1095 → **+5.93R**. Mirror image: BUY at 1001, same R. |
   | Price runs through the stop | −1R on all three entries |
   | Still open at 16:00 | Closed at the 15:59 close: (1098 − close) / 13 R, managed 0.5 + half of that |
   | No 1H RB below, previous 4H low too close | No trade by default. With the fallback: a fixed 3R at 1059, hit. |
