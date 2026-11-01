@@ -44,7 +44,7 @@ Highs only count for shorts and lows only for longs. Opens and mids count both w
 
 | | Short (long is the mirror image) |
 |---|---|
-| **Entry** | **RB close (market):** the close of the 5m RB candle. **Body-edge limit:** the bottom of the wick zone. **CE limit:** 50% of the wick. Pick one under *Entry shown & alerted*. The table measures all three. |
+| **Entry** | **RB close (market):** the close of the 5m RB candle. **Body-edge limit:** the bottom of the wick zone. **CE limit:** 50% of the wick. **Confirmation close:** wait for a 5m candle to close back through the CISD level (the open of the run of candles that pushed into the RB), then enter at that close; cancelled if price trades through the stop first or no close comes within 6 candles. Pick one under *Entry shown & alerted*. The table measures all four. |
 | **Stop** | 5m RB tip + 4 ticks (1 NQ point) |
 | **Target** | The near edge (or CE, an input) of the nearest bullish 1H RB (a JS RB H1 box) below the entry that is at least **1.5R** away. No such 1H RB = no trade. *If no target RB is far enough* can instead fall back to the previous 4H low, then a fixed 3R; the breakdown scores each kind of target separately. |
 | **Skipped if** | The stop is wider than **40 points** (input) |
@@ -77,7 +77,7 @@ After any code change, remove it from the chart and add it again.
 
 This is how you and I check the model, one day at a time:
 
-1. **Table → Full.** The bottom section lists the last 10 trading days: trades, wins–losses, net R.
+1. **Stats table → Days** lists the last 10 trading days: trades, wins–losses, net R. **Stats table → Breakdown** shows where the edge is (see below).
 2. **Pine Logs** (the `{}` icon / "Pine Logs" in the editor) list **every** trade, one line each, oldest first:
    `2026-10-30 · SELL · Sweep of Prev 4H High · RB close (market) 28845.00 · SL 28863.00 · TP 28300.00 · +21.8R (full +21.8R, ½+BE +11.4R)`
 3. **Scroll back day by day** with JS RB and KeyLevels on the same chart. Every signal and its result is drawn (the newest 40 by default; raise *Signals kept on the chart* to see more). For each one, ask:
@@ -96,6 +96,7 @@ This is how you and I check the model, one day at a time:
 | Entry / target RB timeframe | 5m / 1H | The chart timeframe must divide the entry timeframe |
 | Direction | Both | Or longs / shorts only |
 | While a trade is live | One at a time | A new signal is skipped while the shown entry's trade is pending or open. Or skip the same direction only, or take every signal. |
+| Only shorts above / longs below the daily open | off | Premium / discount against the 18:00 open, judged on the 5m RB's CE |
 | Only signal inside (NY) | off, 08:00–16:00 | A time window for new signals |
 
 **2 · Key levels:** only **Previous 4H high / low** is on by default. Turn on the day, week, month, Monday, Asia and London levels and the opens to test them; the breakdown scores each group.
@@ -124,6 +125,8 @@ This is how you and I check the model, one day at a time:
 | If no target RB is far enough | Skip the trade | Or the opposite 4H high/low then a fixed R, or straight to the fixed R |
 | Fixed R target | 3R | |
 | Max stop size | 40 points | Skip RBs with a wider stop. 0 = off. |
+| Confirmation: 5m candles allowed | 6 | How long the confirmation close may take |
+| Skip targets further than | off | In R. Far targets are rarely reached before the stop. |
 | Sweep limits cancel after | 60 min | 4H RB limits cancel when the next 4H candle closes |
 | TP1 for ½ + breakeven | 1R | Used by the managed result |
 | Results use | Full to target | Or **½ at TP1 + breakeven**: half off at TP1, stop to entry, the rest to the 1H RB |
@@ -137,8 +140,15 @@ This is how you and I check the model, one day at a time:
 | Setups / Skipped / days | Signals found, setups the shown entry couldn't trade (grey ✕), trading days on the chart |
 | **Entry rows** | For each entry: trades filled / trades with a valid target, **Hit 1H** = share that reached the 1H RB before the stop, **Avg R** and **Net R** with the whole position to the target, and **½ + BE** = average R and win % when managed |
 | ▶ row | For the shown entry: max drawdown in R, longest losing run, share of green days, net R |
-| **Breakdown** (Full) | The shown entry split by setup, side, the level swept (4H / day / week+ / session), the time of the signal (Asia, London, NY AM, NY PM) and the kind of target (1H RB / 4H level / fixed R) |
-| **Days** (Full) | The last 10 trading days |
+| **Breakdown** | The shown entry's trades split by setup, side, the level swept, the time of the signal (Asia, London, NY AM, NY PM), the kind of target, with/against the daily open, whether the RB candle closed with the trade, the target's distance (<5R, 5–10R, >10R) and the stop size (≤15 / >15 pts) |
+| **Days** | The last 10 trading days |
+
+### Making it more accurate
+
+1. Set **Stats table → Breakdown** on a 5-minute chart with as many days as you can load.
+2. Compare each row's **Avg R** with the ▶ row. A row that is clearly better on **about 100 trades or more** is a real filter. Smaller rows are mostly luck.
+3. Turn that filter on (session window, direction, premium/discount, max target distance, max stop size, or JS RB's "only RBs closing in trade direction"), or switch the entry to the one with the best Avg R.
+4. Check it on **different days** than you chose it on, by scrolling to an older stretch or waiting a couple of weeks. A filter that only works on the days you picked it from will fail live.
 
 Judge it by **average R on at least ~100 trades**, not by win rate. A 1H target is often 4–10R away, so a 25% hit rate can still make money, and a 60% win rate can still lose. Then check it on a different date range than the one you tuned on.
 
@@ -166,7 +176,7 @@ You also get alerts when a limit fills and when a trade closes. There are also f
 
   A 5m chart gives exactly the same trades as a 1m chart.
 - **Same RBs as JS RB:** your JS RB `detect()` code, unchanged, ran next to this indicator's on 5,520 random 5m candles at Sensitive, Normal and Strict, with and without the direction filter: **0 differences** across about 2,000 rejection blocks.
-- **Known-answer scenarios** (hand-calculated first, 29 checks, all pass). The 1H target is a bullish JS RB at 990–1012: the 19:00 hour wicks to 990 through the 16:00 swing low at 1002 and closes at 1014.
+- **Known-answer scenarios** (hand-calculated first, 37 checks, all pass). The 1H target is a bullish JS RB at 990–1012: the 19:00 hour wicks to 990 through the 16:00 swing low at 1002 and closes at 1014.
 
   | Scenario | Result |
   |---|---|
@@ -183,6 +193,9 @@ You also get alerts when a limit fills and when a trade closes. There are also f
   | No 1H RB below, previous 4H low too close | No trade by default. With the fallback: a fixed 3R at 1059, hit. |
   | No 1H RB below, previous 4H low 48 points down | TP at the 4H low 1050 → **+3.69R**; the mirror image aims for the 4H high |
   | Longs only | The short is skipped |
+  | Confirmation close: the push into the RB started at 1095; the 4th 5m candle after it closes at 1093.75 | SELL at 1093.75, SL 1111, TP 1012 → **+4.74R**. No trade with a 3-candle window, or when price runs through the stop first. Mirror image: BUY at 1006.25, same R. |
+  | Targets capped at 5R (the 1H RB is 6.6R away) | Skipped |
+  | Premium/discount filter on, short above the daily open | Kept |
 
 - **Random-data check:** random prices have no edge, so results should average 0R or a little below. A strongly positive number would mean the code was peeking at future bars. Three seeded random walks of 15 trading days each on 1m bars, default settings:
 

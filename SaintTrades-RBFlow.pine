@@ -35,10 +35,14 @@
 //  R6. Stop = 5m RB tip + buffer. A trade is taken only when the target is at
 //      least the minimum R:R away.
 //  R7. Entries, all measured on every signal:
-//        RB close (market) - at the 5m RB's close. A 4H RB is only known at the
-//                            4H close, so for it this is the body-edge limit.
-//        Body-edge limit   - at the near edge of the 5m zone.
-//        CE limit          - at 50% of the 5m wick.
+//        RB close (market)  - at the 5m RB's close. A 4H RB is only known at the
+//                             4H close, so for it this is the body-edge limit.
+//        Body-edge limit    - at the near edge of the 5m zone.
+//        CE limit           - at 50% of the 5m wick.
+//        Confirmation close - (Sweep only) wait for a 5m candle to close back
+//                             through the CISD level, the open of the run of
+//                             candles that pushed into the RB, and enter at that
+//                             close. The stop stays past the RB's tip.
 //
 // ------------------------------- ASSUMPTIONS ---------------------------------
 //  A1. 5m, 1H and 4H candles are built from chart bars and finalized on their
@@ -94,6 +98,8 @@ type Agg
     array<float> lb
     array<float> hs    // swing highs no wick has taken yet (JS RB's BSL)
     array<float> ls    // swing lows no wick has taken yet (SSL)
+    array<float> ho    // opens / closes of the last candles, for the CISD level
+    array<float> hc
 
 type Lvl
     float  price
@@ -117,7 +123,8 @@ type Zone
     float cls
     bool  fresh = true
     bool  swept = false
-    box   bx
+    float cisd         // the confirmation level (R7)
+    bool  dirC = false // the RB candle closed in the trade's direction
 
 type Trade
     float  entry
@@ -130,6 +137,9 @@ type Trade
     int    kind      = 0       // target: 0 = target-timeframe RB, 1 = opposite 4H level, 2 = fixed R
     string tgtName   = ""
     bool   mkt       = false
+    bool   wait      = false   // confirmation entry still waiting for its close
+    float  cisd
+    int    waitN     = 0
     bool   valid     = false
     string why       = ""
     bool   filled    = false
@@ -162,6 +172,8 @@ type Sig
     Trade  t0
     Trade  t1
     Trade  t2
+    Trade  t3
+    bool   fPd      = false     // shorts above / longs below the daily open
     bool   resolved = false
     bool   drawn    = false
     box    rbBx
@@ -202,6 +214,7 @@ entTfIn  = input.string("5m", "Entry RB timeframe", options=["1m", "3m", "5m", "
 tgtTfIn  = input.string("1H", "Target RB timeframe", options=["15m", "30m", "1H", "2H", "4H"], group=G_SET)
 dirIn    = input.string("Both", "Direction", options=["Both", "Longs only", "Shorts only"], group=G_SET)
 overlap  = input.string("One at a time", "While a trade is live", options=["One at a time", "Skip same direction", "Take every signal"], tooltip="One at a time: a new signal is skipped while the shown entry's trade is pending or open (A7).", group=G_SET)
+reqPd    = input.bool(false, "Only shorts above / longs below the daily open", tooltip="Premium / discount: a short only when the 5m RB's CE is above the 18:00 daily open, a long only when it is below. The breakdown scores it either way.", group=G_SET)
 useWin   = input.bool(false, "Only signal inside (NY)", inline="win", group=G_SET)
 winSess  = input.session("0800-1600", "", inline="win", group=G_SET)
 
@@ -223,7 +236,7 @@ strengthIn = input.string("Sensitive", "Swing strength", options=["Sensitive", "
 dirOnly    = input.bool(false, "Only RBs closing in trade direction", tooltip="Set it the same as in JS RB. Bullish RBs need a bullish close, bearish RBs a bearish close.", group=G_RB)
 tgtSrc     = input.string("Full history (like JS RB)", "Target RBs from", options=["Full history (like JS RB)", "Chart history"], tooltip="Full history builds the target RBs on the target timeframe's own history, as JS RB does, so RBs older than the loaded chart still count. Chart history only uses the bars on the chart.", group=G_RB)
 
-entrySel = input.string("RB close (market)", "Entry shown & alerted", options=["RB close (market)", "Body-edge limit", "CE limit"], tooltip="The table measures all three either way (R7).", group=G_TR)
+entrySel = input.string("RB close (market)", "Entry shown & alerted", options=["RB close (market)", "Body-edge limit", "CE limit", "Confirmation close"], tooltip="The table measures all four either way (R7). Confirmation close waits for a 5m close back through the open of the push into the RB, then enters at that close.", group=G_TR)
 stopTk   = input.int(4, "Stop buffer past the tip (ticks)", minval=0, maxval=400, tooltip="4 ticks = 1 point on NQ / MNQ.", group=G_TR)
 tpAt     = input.string("Near edge", "TP at the target RB's", options=["Near edge", "CE (50%)"], group=G_TR)
 minRR    = input.float(1.5, "Minimum R:R to take a trade", minval=0, step=0.25, group=G_TR)
@@ -231,6 +244,8 @@ closeTgt = input.string("Use the next one out", "If the nearest target RB is clo
 noTgtIn  = input.string("Skip the trade", "If no target RB is far enough", options=["Opposite 4H high/low, then fixed R", "Fixed R target", "Skip the trade"], tooltip="Shorts aim for the previous 4H low and longs for the previous 4H high, when it is at least the minimum R:R away. Otherwise the fixed R target. The breakdown table scores each kind of target separately.", group=G_TR)
 fixR     = input.float(3.0, "Fixed R target", minval=0.5, step=0.5, group=G_TR)
 maxRisk  = input.float(40.0, "Max stop size (points, 0 = off)", minval=0, step=1, group=G_TR)
+confWin  = input.int(6, "Confirmation: 5m candles allowed", minval=1, maxval=48, tooltip="How many entry-timeframe candles after the RB the confirmation close may take. It is also cancelled if price trades through the stop first.", group=G_TR)
+maxRRin  = input.float(0.0, "Skip targets further than (R, 0 = off)", minval=0, step=1, tooltip="A target this many R away or more is rarely reached before the stop. The breakdown shows results by target distance.", group=G_TR)
 limMin   = input.int(60, "Sweep limits cancel after (minutes)", minval=1, maxval=1440, group=G_TR)
 tp1R     = input.float(1.0, "TP1 for ½ + breakeven (R)", minval=0.25, step=0.25, group=G_TR)
 mgmt     = input.string("Full to target", "Results use", options=["Full to target", "½ at TP1 + breakeven"], tooltip="Which result the chart labels, breakdown, daily log and alerts use (A6). The entry rows show both.", group=G_TR)
@@ -250,7 +265,7 @@ lblMode = input.string("Compact", "Signal labels", options=["Compact", "Full", "
 tgtDraw = input.string("Targets only", "Draw target RBs", options=["Targets only", "Off"], tooltip="The white box of each trade's target RB. JS RB draws the others.", group=G_VIS)
 maxDraw = input.int(40, "Signals kept on the chart", minval=1, maxval=100, group=G_VIS)
 
-tblMode  = input.string("Compact", "Stats table", options=["Compact", "Full", "Off"], tooltip="Compact = the three entries compared. Full adds the breakdown and the last 10 trading days.", group=G_ST)
+tblMode  = input.string("Compact", "Stats table", options=["Compact", "Breakdown", "Days", "Off"], tooltip="Compact = the four entries compared. Breakdown splits the shown entry's trades by setup, side, level, session, target and more. Days = the last 10 trading days.", group=G_ST)
 statsPos = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Middle Right"], group=G_ST)
 
 // ============================= CONSTANTS =====================================
@@ -280,7 +295,7 @@ if barstate.isfirst
     if timeframe.in_seconds(tgtTf) <= timeframe.in_seconds(entTf)
         runtime.error("The target RB timeframe must be above the entry RB timeframe.")
 
-selIdx   = entrySel == "RB close (market)" ? 0 : entrySel == "Body-edge limit" ? 1 : 2
+selIdx   = entrySel == "RB close (market)" ? 0 : entrySel == "Body-edge limit" ? 1 : entrySel == "CE limit" ? 2 : 3
 useM     = mgmt == "½ at TP1 + breakeven"
 tpCe     = tpAt == "CE (50%)"
 useNext  = closeTgt == "Use the next one out"
@@ -291,27 +306,28 @@ noTgtMode = noTgtIn == "Skip the trade" ? 2 : noTgtIn == "Fixed R target" ? 1 : 
 TAG_SZ   = tagSz == "Small" ? size.small : tagSz == "Large" ? size.large : size.normal
 tagsOn   = tagMode != "Off"
 limBars  = math.max(1, math.round(limMin * 60.0 / timeframe.in_seconds()))
-fullTbl  = tblMode == "Full"
+bkTbl    = tblMode == "Breakdown"
+dayTbl   = tblMode == "Days"
 
 // ============================== STATE ========================================
 var State       S    = State.new()
-var Agg         aE   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>())
-var Agg         aT   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>())
-var Agg         a4   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>())
+var Agg         aE   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>(), ho=array.new<float>(), hc=array.new<float>())
+var Agg         aT   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>(), ho=array.new<float>(), hc=array.new<float>())
+var Agg         a4   = Agg.new(hb=array.new<float>(), lb=array.new<float>(), hs=array.new<float>(), ls=array.new<float>(), ho=array.new<float>(), hc=array.new<float>())
 var array<Lvl>  lvls = array.new<Lvl>()
 var array<Zone> pool = array.new<Zone>()   // live target-timeframe RBs (R5)
 var array<Zone> c5   = array.new<Zone>()   // recent entry-timeframe RBs, for the 4H RB setup (R4)
 var array<Sig>  sigs = array.new<Sig>()
 
 // per entry (0 market, 1 edge, 2 CE): valid trades, fills, target hits, full / managed R
-var array<int>   eValid = array.new<int>(3, 0)
-var array<int>   eFill  = array.new<int>(3, 0)
-var array<int>   eHit   = array.new<int>(3, 0)
-var array<float> eSumF  = array.new<float>(3, 0.0)
-var array<float> eSumM  = array.new<float>(3, 0.0)
-var array<int>   eWinM  = array.new<int>(3, 0)
+var array<int>   eValid = array.new<int>(4, 0)
+var array<int>   eFill  = array.new<int>(4, 0)
+var array<int>   eHit   = array.new<int>(4, 0)
+var array<float> eSumF  = array.new<float>(4, 0.0)
+var array<float> eSumM  = array.new<float>(4, 0.0)
+var array<int>   eWinM  = array.new<int>(4, 0)
 // breakdown of the shown entry
-BK_N = 15
+BK_N = 24
 var array<int>   bN   = array.new<int>(BK_N, 0)
 var array<int>   bW   = array.new<int>(BK_N, 0)
 var array<float> bSum = array.new<float>(BK_N, 0.0)
@@ -327,6 +343,7 @@ var int    koDay   = 0
 var string dayName = ""
 var bool   sawEve  = false
 var float  dH      = na
+var float  dOpen   = na      // the daily (18:00) open, for premium / discount
 var float  dL      = na
 var int    dCnt    = -99     // trading days into the week; 1 = Monday's
 var bool   dOk     = false   // a full day / week / month has been seen
@@ -516,7 +533,38 @@ jsZonesHTF() =>
 zoneOf(Candle k, bool bull) =>
     float tip  = bull ? k.l : k.h
     float edge = bull ? math.min(k.o, k.c) : math.max(k.o, k.c)
-    Zone.new(bull=bull, tip=tip, edge=edge, ce=(tip + edge) / 2, formT=k.t, formBar=k.b, endBar=k.e, cls=k.c)
+    Zone.new(bull=bull, tip=tip, edge=edge, ce=(tip + edge) / 2, formT=k.t, formBar=k.b, endBar=k.e, cls=k.c, dirC=bull ? k.c > k.o : k.c < k.o)
+
+// keep the last candles' opens and closes for the CISD level
+remember(Agg a, Candle k) =>
+    a.ho.push(k.o)
+    a.hc.push(k.c)
+    if a.ho.size() > 12
+        a.ho.shift()
+        a.hc.shift()
+    true
+
+// R7: CISD level = open of the first candle in the unbroken run of candles that closed
+// toward the wick and pushed into the RB (the RB candle included when it closed that
+// way). With no such run, the RB candle's far extreme.
+cisdOf(Agg a, Candle k, bool bull) =>
+    float runOpen = (bull ? k.c < k.o : k.c > k.o) ? k.o : na
+    int j = a.ho.size() - 1
+    int steps = 0
+    while j >= 0 and steps < 10
+        float oj = a.ho.get(j)
+        float cj = a.hc.get(j)
+        if bull ? cj < oj : cj > oj
+            runOpen := oj
+            j -= 1
+            steps += 1
+        else
+            break
+    na(runOpen) ? (bull ? k.h : k.l) : runOpen
+
+// premium / discount against the daily open
+pdOf(bool bull, Zone z) =>
+    not na(dOpen) and (bull ? z.ce < dOpen : z.ce > dOpen)
 
 // R2: a level is born; an older level of the same name is replaced
 addLvl(float p, string n, int side, int grp, int bt) =>
@@ -580,9 +628,12 @@ pickTgt(bool bull, float e, float rk) =>
                 name := "fixed " + str.tostring(fixR) + "R"
     [bestP, best, why, kind, name]
 
-mkTrade(bool bull, float e, float stop, bool mkt) =>
-    Trade t = Trade.new(entry=e, stop=stop, mkt=mkt)
-    float rk = bull ? e - stop : stop - e
+// set a trade's entry, risk and target; a market trade fills now
+arm(Trade t, bool bull, float e) =>
+    t.entry := e
+    t.wait := false
+    t.valid := false
+    float rk = bull ? e - t.stop : t.stop - e
     t.risk := rk
     if rk <= 0
         t.why := "No room for a stop"
@@ -592,6 +643,8 @@ mkTrade(bool bull, float e, float stop, bool mkt) =>
         [p, z, why, kind, name] = pickTgt(bull, e, rk)
         if na(p)
             t.why := why
+        else if maxRRin > 0 and math.abs(p - e) / rk > maxRRin
+            t.why := "Target " + str.tostring(math.abs(p - e) / rk, "0.0") + "R away > max " + str.tostring(maxRRin) + "R"
         else
             t.valid := true
             t.tgt := p
@@ -600,18 +653,21 @@ mkTrade(bool bull, float e, float stop, bool mkt) =>
             t.tgtName := name
             t.rr := math.abs(p - e) / rk
             t.tp1 := bull ? e + tp1R * rk : e - tp1R * rk
-            if mkt
+            if t.mkt
                 t.filled := true
                 t.fillBar := bar_index
     if not t.valid
         t.cancelled := true
     t
 
+mkTrade(bool bull, float e, float stop, bool mkt) =>
+    arm(Trade.new(stop=stop, mkt=mkt), bull, e)
+
 selT(Sig s) =>
-    selIdx == 0 ? s.t0 : selIdx == 1 ? s.t1 : s.t2
+    selIdx == 0 ? s.t0 : selIdx == 1 ? s.t1 : selIdx == 2 ? s.t2 : s.t3
 
 tradeAt(Sig s, int m) =>
-    m == 0 ? s.t0 : m == 1 ? s.t1 : s.t2
+    m == 0 ? s.t0 : m == 1 ? s.t1 : m == 2 ? s.t2 : s.t3
 
 isOver(Trade t) =>
     t.cancelled or (t.doneF and t.doneM)
@@ -625,7 +681,13 @@ stepTrade(Trade t, bool bull, bool expireNow, bool flat) =>
     bool fNow = false
     bool dNow = false
     bool cNow = false
-    if t.valid and not isOver(t)
+    if t.wait
+        if flat or (bull ? low <= t.stop : high >= t.stop)
+            t.wait := false
+            t.cancelled := true
+            t.why := flat ? "Flatten time before the confirmation" : "Price traded through the stop before the confirmation"
+            cNow := true
+    else if t.valid and not isOver(t)
         if not t.filled
             if expireNow or flat
                 t.cancelled := true
@@ -720,10 +782,10 @@ tgtTxt(Trade t) =>
     t.kind == 0 and not na(t.tz) ? px(t.tgt) + " (" + tgtTfIn + " RB " + px(math.min(t.tz.tip, t.tz.edge)) + " – " + px(math.max(t.tz.tip, t.tz.edge)) + ")" : px(t.tgt) + " (" + t.tgtName + ")"
 
 entryName(Sig s, int m) =>
-    m == 0 ? (s.setup == "Sweep" ? "RB close (market)" : "Body-edge limit (4H RB)") : m == 1 ? "Body-edge limit" : "CE limit"
+    m == 0 ? (s.setup == "Sweep" ? "RB close (market)" : "Body-edge limit (4H RB)") : m == 1 ? "Body-edge limit" : m == 2 ? "CE limit" : "Confirmation close"
 
 lblTxt(Sig s, Trade t) =>
-    string base = tagsOn ? dirTxt(s) + (t.mkt ? "" : " LMT") : dirTxt(s) + (t.mkt ? " " : " LMT ") + px(t.entry)
+    string base = t.wait ? dirTxt(s) + " · wait" : tagsOn ? dirTxt(s) + (t.mkt ? "" : " LMT") : dirTxt(s) + (t.mkt ? " " : " LMT ") + px(t.entry)
     lblMode == "Full" ? base + "\n" + setupTxt(s) : base
 
 tagTxtE(Sig s, Trade t) =>
@@ -736,14 +798,13 @@ tagTxtS(Trade t) =>
     "SL " + px(t.stop) + "   −1R · " + str.tostring(t.risk, "0.00") + " pts"
 
 sigTip(Sig s, Trade t) =>
-    dirTxt(s) + " · " + setupTxt(s) + "\n" + entryName(s, selIdx) + ": " + px(t.entry) + "\nStop: " + px(t.stop) + " (" + str.tostring(t.risk, "0.00") + " pts)\nTarget: " + tgtTxt(t) + "\nR:R " + str.tostring(t.rr, "0.0") + ctsTxt(t) + "\n5m RB: " + px(math.min(s.rb.tip, s.rb.edge)) + " – " + px(math.max(s.rb.tip, s.rb.edge)) + " · CE " + px(s.rb.ce) + (t.why != "" ? "\n" + t.why : "")
+    t.wait ? dirTxt(s) + " · " + setupTxt(s) + "\nWaiting for a 5m close " + (s.bull ? "above " : "below ") + px(t.cisd) + " (CISD), then enter at that close\nStop: " + px(t.stop) + "\n5m RB: " + px(math.min(s.rb.tip, s.rb.edge)) + " – " + px(math.max(s.rb.tip, s.rb.edge)) : dirTxt(s) + " · " + setupTxt(s) + "\n" + entryName(s, selIdx) + ": " + px(t.entry) + "\nStop: " + px(t.stop) + " (" + str.tostring(t.risk, "0.00") + " pts)\nTarget: " + tgtTxt(t) + "\nR:R " + str.tostring(t.rr, "0.0") + ctsTxt(t) + "\n5m RB: " + px(math.min(s.rb.tip, s.rb.edge)) + " – " + px(math.max(s.rb.tip, s.rb.edge)) + " · CE " + px(s.rb.ce) + (t.why != "" ? "\n" + t.why : "")
 
 // ---- drawing ----
-drawSig(Sig s) =>
+// the shown trade's TP / SL zones, price lines and tags, and its target box
+drawPos(Sig s) =>
     Trade t = selT(s)
-    color c = s.bull ? colBull : colBear
     int x0 = bar_index
-    s.rbBx := box.new(math.max(s.rb.formBar, bar_index - MAX_AGE), math.max(s.rb.tip, s.rb.edge), x0, math.min(s.rb.tip, s.rb.edge), border_color=color.new(c, 20), bgcolor=color.new(c, 80))
     s.tpBx := box.new(x0, math.max(t.entry, t.tgt), x0 + 1, math.min(t.entry, t.tgt), border_color=color.new(colTp, 100), bgcolor=color.new(colTp, 85))
     s.slBx := box.new(x0, math.max(t.entry, t.stop), x0 + 1, math.min(t.entry, t.stop), border_color=color.new(colSl, 100), bgcolor=color.new(colSl, 85))
     if tagsOn
@@ -756,6 +817,14 @@ drawSig(Sig s) =>
         s.tgS := label.new(x0 + 1, t.stop, tagTxtS(t), style=label.style_label_left, color=colSl, textcolor=color.white, size=TAG_SZ, tooltip=sigTip(s, t))
     if tgtDraw == "Targets only" and not na(t.tz)
         s.tzBx := box.new(t.tz.formT, math.max(t.tz.tip, t.tz.edge), time, math.min(t.tz.tip, t.tz.edge), xloc=xloc.bar_time, border_color=color.new(colTgt, 10), bgcolor=color.new(colTgt, 90), text=tgtTfIn, text_size=size.tiny, text_color=colTgt, text_halign=text.align_right)
+    true
+
+drawSig(Sig s) =>
+    Trade t = selT(s)
+    color c = s.bull ? colBull : colBear
+    s.rbBx := box.new(math.max(s.rb.formBar, bar_index - MAX_AGE), math.max(s.rb.tip, s.rb.edge), bar_index, math.min(s.rb.tip, s.rb.edge), border_color=color.new(c, 20), bgcolor=color.new(c, 80))
+    if not t.wait
+        drawPos(s)
     if lblMode != "Off"
         s.lb := label.new(s.sigBar, s.rb.tip, lblTxt(s, t), style=s.bull ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=size.small, tooltip=sigTip(s, t))
     s.drawn := true
@@ -882,9 +951,20 @@ mkSig(Zone z, bool bull, string setup, string names, int grp, float mktPx) =>
     Trade t0 = mkTrade(bull, sw ? mktPx : z.edge, stop, sw)
     Trade t1 = mkTrade(bull, z.edge, stop, false)
     Trade t2 = mkTrade(bull, z.ce, stop, false)
+    // R7: the confirmation entry waits for a close through the CISD level, unless the RB candle already closed there
+    Trade t3 = Trade.new(stop=stop, mkt=true)
+    if not sw
+        t3.why := "The confirmation entry is for Sweep setups"
+        t3.cancelled := true
+    else if bull ? mktPx > z.cisd : mktPx < z.cisd
+        arm(t3, bull, mktPx)
+    else
+        t3.wait := true
+        t3.valid := true
+        t3.cisd := z.cisd
     int m = nyMin(time)
     int tb = m >= 1080 or m < 120 ? 0 : m < 510 ? 1 : m < 720 ? 2 : 3
-    Sig s = Sig.new(bull=bull, setup=setup, names=names, grp=grp, tb=tb, rb=z, sigBar=bar_index, sigT=time, day=koDay, dayName=dayName, n4hAt=S.n4h, t0=t0, t1=t1, t2=t2)
+    Sig s = Sig.new(bull=bull, setup=setup, names=names, grp=grp, tb=tb, rb=z, sigBar=bar_index, sigT=time, day=koDay, dayName=dayName, n4hAt=S.n4h, t0=t0, t1=t1, t2=t2, t3=t3, fPd=pdOf(bull, z))
     array.push(sigs, s)
     S.setups += 1
     if not selT(s).valid
@@ -893,7 +973,7 @@ mkSig(Zone z, bool bull, string setup, string names, int grp, float mktPx) =>
 
 // A6/A8: add a finished signal to the stats and the daily log
 countSig(Sig s) =>
-    for m = 0 to 2
+    for m = 0 to 3
         Trade t = tradeAt(s, m)
         if t.valid
             array.set(eValid, m, array.get(eValid, m) + 1)
@@ -922,7 +1002,16 @@ countSig(Sig s) =>
                 11 => s.tb == 3
                 12 => ts.kind == 0
                 13 => ts.kind == 1
-                => ts.kind == 2
+                14 => ts.kind == 2
+                15 => s.fPd
+                16 => not s.fPd
+                17 => s.rb.dirC
+                18 => not s.rb.dirC
+                19 => ts.rr < 5
+                20 => ts.rr >= 5 and ts.rr <= 10
+                21 => ts.rr > 10
+                22 => ts.risk <= 15
+                => ts.risk > 15
             if inRow
                 array.set(bN, k, array.get(bN, k) + 1)
                 array.set(bW, k, array.get(bW, k) + (r > 0 ? 1 : 0))
@@ -1028,6 +1117,7 @@ if barstate.isconfirmed
             addLvl(open, "Daily Open", 0, 1, time)
         dH := high
         dL := low
+        dOpen := open
     else
         dH := na(dH) ? high : math.max(dH, high)
         dL := na(dL) ? low : math.min(dL, low)
@@ -1106,7 +1196,7 @@ if barstate.isconfirmed
         for s in sigs
             if not s.resolved
                 bool expS = s.setup == "Sweep" ? bar_index - s.sigBar > limBars : S.n4h > s.n4hAt
-                for m = 0 to 2
+                for m = 0 to 3
                     Trade t = tradeAt(s, m)
                     [gotFill, gotDone, gotCancel] = stepTrade(t, s.bull, expS and not t.mkt, flatNow)
                     if m == selIdx and t.valid
@@ -1128,7 +1218,7 @@ if barstate.isconfirmed
                                 finishSig(s)
                         if gotCancel and s.drawn
                             cancelSig(s)
-                if isOver(s.t0) and isOver(s.t1) and isOver(s.t2)
+                if isOver(s.t0) and isOver(s.t1) and isOver(s.t2) and isOver(s.t3)
                     s.resolved := true
                     countSig(s)
                 else if s.drawn and isLive(selT(s))
@@ -1155,11 +1245,36 @@ if barstate.isconfirmed
     for k = 0 to 1
         Candle ck = k == 0 ? e1 : e2
         if not na(ck)
+            // R7: confirmation entries waiting on this candle's close
+            for s in sigs
+                Trade w = s.t3
+                if not s.resolved and w.wait and ck.t > s.rb.formT
+                    w.waitN += 1
+                    if s.bull ? ck.c > w.cisd : ck.c < w.cisd
+                        arm(w, s.bull, ck.late ? close : ck.c)
+                        if selIdx == 3
+                            if w.valid
+                                aFill := true
+                                if s.drawn
+                                    drawPos(s)
+                                    if not na(s.lb)
+                                        label.set_text(s.lb, lblTxt(s, w))
+                                        label.set_tooltip(s.lb, sigTip(s, w))
+                                alert(dirTxt(s) + " " + syminfo.ticker + " CONFIRMED · enter now " + px(w.entry) + "  SL " + px(w.stop) + "  TP " + px(w.tgt) + "  R:R " + str.tostring(w.rr, "0.0") + ctsTxt(w), alert.freq_once_per_bar_close)
+                            else if s.drawn
+                                cancelSig(s)
+                    else if w.waitN >= confWin
+                        w.wait := false
+                        w.cancelled := true
+                        w.why := "No confirmation within " + str.tostring(confWin) + " candles"
+                        if selIdx == 3 and s.drawn
+                            cancelSig(s)
             [nb, nu] = jsStep(aE, ck)
             for j = 0 to 1
                 bool bull = j == 1
                 if (bull ? nu : nb) > 0
                     Zone z = zoneOf(ck, bull)
+                    z.cisd := cisdOf(aE, ck, bull)
                     // A1: a late RB is dropped if this bar already traded past its tip
                     bool gone = ck.late and (bull ? low < z.tip : high > z.tip)
                     if not gone
@@ -1168,7 +1283,7 @@ if barstate.isconfirmed
                             array.shift(c5)
                         if useSweep
                             array<Lvl> hits = sweptBy(ck, bull)
-                            if array.size(hits) > 0 and canSignal(bull, blocked)
+                            if array.size(hits) > 0 and canSignal(bull, blocked) and (not reqPd or pdOf(bull, z))
                                 string names = ""
                                 int grp = 9
                                 for lv in hits
@@ -1190,6 +1305,7 @@ if barstate.isconfirmed
                                     else
                                         aSell := true
                                     alert(dirTxt(s) + " " + syminfo.ticker + " · " + setupTxt(s) + "\n" + entryName(s, selIdx) + " " + px(t.entry) + "  SL " + px(t.stop) + "  TP " + px(t.tgt) + "  R:R " + str.tostring(t.rr, "0.0") + ctsTxt(t), alert.freq_once_per_bar_close)
+            remember(aE, ck)
             // R3: a high or low a 5m candle closed beyond is broken
             for lv in lvls
                 if lv.side != 0 and not lv.broken and lv.bornT <= ck.t
@@ -1219,7 +1335,7 @@ if barstate.isconfirmed
                     Zone z = j == 0 ? zHi : zLo
                     if not na(z) and not z.swept
                         bool bull = z.bull
-                        if canSignal(bull, blocked)
+                        if canSignal(bull, blocked) and (not reqPd or pdOf(bull, z))
                             z.swept := true
                             Sig s = mkSig(z, bull, "4H RB", bull ? "4H Low RB" : "4H High RB", 0, na)
                             if not selT(s).valid and showSkip
@@ -1275,13 +1391,13 @@ if barstate.islast and tblMode != "Off"
         "Middle Right" => position.middle_right
         => position.top_right
     if na(stat)
-        stat := table.new(tblPos, 6, 34, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+        stat := table.new(tblPos, 6, 32, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
     else
         table.set_position(stat, tblPos)
     color hdr = color.new(color.gray, 20)
     color row = color.new(color.black, 55)
     color txt = color.white
-    table.clear(stat, 0, 0, 5, 33)
+    table.clear(stat, 0, 0, 5, 31)
     int live = 0
     for s in sigs
         if not s.resolved
@@ -1301,12 +1417,12 @@ if barstate.islast and tblMode != "Off"
     tc(stat, 3, 1, "Avg R", txt, hdr, tipF)
     tc(stat, 4, 1, "Net R", txt, hdr, tipF)
     tc(stat, 5, 1, "½ + BE", txt, hdr, "Half off at " + str.tostring(tp1R) + "R, stop to breakeven, the rest to the target. Average R · win %.")
-    array<string> eNames = array.from("RB close", "Body edge", "CE 50%")
-    for m = 0 to 2
+    array<string> eNames = array.from("RB close", "Body edge", "CE 50%", "Confirm")
+    for m = 0 to 3
         int   n  = array.get(eFill, m)
         float sF = array.get(eSumF, m)
         float sM = array.get(eSumM, m)
-        tc(stat, 0, 2 + m, (m == selIdx ? "▶ " : "") + array.get(eNames, m), txt, row, "")
+        tc(stat, 0, 2 + m, (m == selIdx ? "▶ " : "") + array.get(eNames, m), txt, row, m == 3 ? "Waits for a 5m close back through the CISD level, then enters at that close." : "")
         tc(stat, 1, 2 + m, str.tostring(n) + " / " + str.tostring(array.get(eValid, m)), txt, row, "")
         tc(stat, 2, 2 + m, f_pct(array.get(eHit, m), n), txt, row, "")
         tc(stat, 3, 2 + m, n > 0 ? fmtR(sF / n) : "-", rColor(sF, n, txt), row, "")
@@ -1317,36 +1433,37 @@ if barstate.islast and tblMode != "Off"
     for v in dR
         if v > 0
             greens += 1
-    tc(stat, 0, 5, "▶ " + (useM ? "½ + BE" : "Full"), txt, hdr, "The shown entry and result mode, used below, on the chart and in alerts.")
-    tc(stat, 1, 5, "Max DD " + str.tostring(S.maxDD, "0.0") + "R", txt, hdr, "Largest drop from a peak, in R, trade by trade.")
-    tc(stat, 2, 5, "Lose run " + str.tostring(S.maxLose), txt, hdr, "Longest run of losing trades.")
-    tc(stat, 3, 5, "Green days", txt, hdr, "")
-    tc(stat, 4, 5, f_pct(greens, array.size(dR)), txt, hdr, str.tostring(greens) + " of " + str.tostring(array.size(dR)) + " days with a trade")
-    tc(stat, 5, 5, "Net " + fmtR(S.eq), rColor(S.eq, 1, txt), hdr, "")
+    tc(stat, 0, 6, "▶ " + (useM ? "½ + BE" : "Full"), txt, hdr, "The shown entry and result mode, used below, on the chart and in alerts.")
+    tc(stat, 1, 6, "Max DD " + str.tostring(S.maxDD, "0.0") + "R", txt, hdr, "Largest drop from a peak, in R, trade by trade.")
+    tc(stat, 2, 6, "Lose run " + str.tostring(S.maxLose), txt, hdr, "Longest run of losing trades.")
+    tc(stat, 3, 6, "Green days", txt, hdr, "")
+    tc(stat, 4, 6, f_pct(greens, array.size(dR)), txt, hdr, str.tostring(greens) + " of " + str.tostring(array.size(dR)) + " days with a trade")
+    tc(stat, 5, 6, "Net " + fmtR(S.eq), rColor(S.eq, 1, txt), hdr, "")
 
-    if fullTbl
-        tc(stat, 0, 6, "Breakdown ▶", txt, hdr, "Trades of the shown entry, split by setup, side, the level swept and the time of the signal (NY).")
-        tc(stat, 1, 6, "N", txt, hdr, "")
-        tc(stat, 2, 6, "Win%", txt, hdr, "")
-        tc(stat, 3, 6, "Avg R", txt, hdr, "")
-        tc(stat, 4, 6, "Net R", txt, hdr, "")
-        tc(stat, 5, 6, "", txt, hdr, "")
-        array<string> bNames = array.from("Sweep", "4H RB", "Longs", "Shorts", "Level: 4H H/L", "Level: day", "Level: week+", "Level: session", "Asia 18–02", "London 02–08:30", "NY AM 08:30–12", "NY PM 12–18", "Target: " + tgtTfIn + " RB", "Target: 4H level", "Target: fixed R")
+    if bkTbl
+        tc(stat, 0, 7, "Breakdown ▶", txt, hdr, "Trades of the shown entry, split several ways. Compare each row with the ▶ row above. Trust a row only with about 100 trades or more.")
+        tc(stat, 1, 7, "N", txt, hdr, "")
+        tc(stat, 2, 7, "Win%", txt, hdr, "")
+        tc(stat, 3, 7, "Avg R", txt, hdr, "")
+        tc(stat, 4, 7, "Net R", txt, hdr, "")
+        tc(stat, 5, 7, "", txt, hdr, "")
+        array<string> bNames = array.from("Sweep", "4H RB", "Longs", "Shorts", "Level: 4H H/L", "Level: day", "Level: week+", "Level: session", "Asia 18–02", "London 02–08:30", "NY AM 08:30–12", "NY PM 12–18", "Target: " + tgtTfIn + " RB", "Target: 4H level", "Target: fixed R", "With the daily open (P/D)", "Against the daily open", "RB closed with the trade", "RB closed against it", "Target < 5R", "Target 5–10R", "Target > 10R", "Stop ≤ 15 pts", "Stop > 15 pts")
         for k = 0 to BK_N - 1
             int   n = array.get(bN, k)
             float v = array.get(bSum, k)
-            tc(stat, 0, 7 + k, array.get(bNames, k), txt, row, "")
-            tc(stat, 1, 7 + k, str.tostring(n), txt, row, "")
-            tc(stat, 2, 7 + k, f_pct(array.get(bW, k), n), txt, row, "")
-            tc(stat, 3, 7 + k, n > 0 ? fmtR(v / n) : "-", rColor(v, n, txt), row, "")
-            tc(stat, 4, 7 + k, n > 0 ? fmtR(v) : "-", rColor(v, n, txt), row, "")
-            tc(stat, 5, 7 + k, "", txt, row, "")
-        tc(stat, 0, 22, "Day (newest)", txt, hdr, "Every trade is also in the Pine Logs.")
-        tc(stat, 1, 22, "Trades", txt, hdr, "")
-        tc(stat, 2, 22, "W–L", txt, hdr, "")
-        tc(stat, 3, 22, "Net R", txt, hdr, "")
-        tc(stat, 4, 22, "", txt, hdr, "")
-        tc(stat, 5, 22, "", txt, hdr, "")
+            tc(stat, 0, 8 + k, array.get(bNames, k), txt, row, "")
+            tc(stat, 1, 8 + k, str.tostring(n), txt, row, "")
+            tc(stat, 2, 8 + k, f_pct(array.get(bW, k), n), txt, row, "")
+            tc(stat, 3, 8 + k, n > 0 ? fmtR(v / n) : "-", rColor(v, n, txt), row, "")
+            tc(stat, 4, 8 + k, n > 0 ? fmtR(v) : "-", rColor(v, n, txt), row, "")
+            tc(stat, 5, 8 + k, "", txt, row, "")
+    if dayTbl
+        tc(stat, 0, 7, "Day (newest)", txt, hdr, "Every trade is also in the Pine Logs.")
+        tc(stat, 1, 7, "Trades", txt, hdr, "")
+        tc(stat, 2, 7, "W–L", txt, hdr, "")
+        tc(stat, 3, 7, "Net R", txt, hdr, "")
+        tc(stat, 4, 7, "", txt, hdr, "")
+        tc(stat, 5, 7, "", txt, hdr, "")
         int nD = array.size(dKey)
         for j = 0 to 9
             int i = nD - 1 - j
@@ -1354,9 +1471,9 @@ if barstate.islast and tblMode != "Off"
                 int   n = array.get(dN, i)
                 int   w = array.get(dW, i)
                 float v = array.get(dR, i)
-                tc(stat, 0, 23 + j, array.get(dName, i), txt, row, "")
-                tc(stat, 1, 23 + j, str.tostring(n), txt, row, "")
-                tc(stat, 2, 23 + j, str.tostring(w) + "–" + str.tostring(n - w), txt, row, "")
-                tc(stat, 3, 23 + j, fmtR(v), rColor(v, n, txt), row, "")
-                tc(stat, 4, 23 + j, "", txt, row, "")
-                tc(stat, 5, 23 + j, "", txt, row, "")
+                tc(stat, 0, 8 + j, array.get(dName, i), txt, row, "")
+                tc(stat, 1, 8 + j, str.tostring(n), txt, row, "")
+                tc(stat, 2, 8 + j, str.tostring(w) + "–" + str.tostring(n - w), txt, row, "")
+                tc(stat, 3, 8 + j, fmtR(v), rColor(v, n, txt), row, "")
+                tc(stat, 4, 8 + j, "", txt, row, "")
+                tc(stat, 5, 8 + j, "", txt, row, "")
