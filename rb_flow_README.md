@@ -204,6 +204,9 @@ You also get alerts when a limit fills and when a trade closes. There are also f
   | RB close | 63 | −0.36R avg, 13% win | −0.32R avg, 40% win |
   | Body edge | 57 | −0.61R avg, 5% win | −0.35R avg, 35% win |
   | CE limit | 54 | −0.65R avg, 6% win | −0.47R avg, 26% win |
+  | Confirmation close | 8 | +0.26R avg, 25% win | −0.24R avg, 38% win |
+
+  Random prices rarely produce a confirming close in time, so the confirmation entry has only 8 trades: two winners, too few to mean anything. It enters at a close that has already happened, so it can't see the future.
 
   Below zero is what conservative fills should give: the stop wins same-bar ties, and the 16:00 flatten cuts winners short. A few dozen trades prove nothing either way.
 
