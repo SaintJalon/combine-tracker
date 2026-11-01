@@ -238,7 +238,7 @@ strengthIn = input.string("Sensitive", "Swing strength", options=["Sensitive", "
 dirOnly    = input.bool(false, "Only RBs closing in trade direction", tooltip="Set it the same as in JS RB. Bullish RBs need a bullish close, bearish RBs a bearish close.", group=G_RB)
 tgtSrc     = input.string("Full history (like JS RB)", "Target RBs from", options=["Full history (like JS RB)", "Chart history"], tooltip="Full history builds the target RBs on the target timeframe's own history, as JS RB does, so RBs older than the loaded chart still count. Chart history only uses the bars on the chart.", group=G_RB)
 
-entrySel = input.string("RB close (market)", "Entry shown & alerted", options=["RB close (market)", "Body-edge limit", "CE limit", "Confirmation close"], tooltip="The table measures all four either way (R7). Confirmation close waits for a 5m close back through the open of the push into the RB, then enters at that close.", group=G_TR)
+entrySel = input.string("Confirmation close", "Entry shown & alerted", options=["RB close (market)", "Body-edge limit", "CE limit", "Confirmation close"], tooltip="The table measures all four either way (R7). Confirmation close waits for a 5m close back through the open of the push into the RB, then enters at that close.", group=G_TR)
 stopTk   = input.int(4, "Stop buffer past the tip (ticks)", minval=0, maxval=400, tooltip="4 ticks = 1 point on NQ / MNQ.", group=G_TR)
 tpAt     = input.string("Near edge", "TP at the target RB's", options=["Near edge", "CE (50%)"], group=G_TR)
 minRR    = input.float(1.5, "Minimum R:R to take a trade", minval=0, step=0.25, group=G_TR)

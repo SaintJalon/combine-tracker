@@ -117,7 +117,7 @@ This is how you and I check the model, one day at a time:
 **4 · Entry, stop & target**
 | Input | Default | What it does |
 |---|---|---|
-| Entry shown & alerted | RB close (market) | Or body-edge limit, CE limit, confirmation close. A 4H RB is only known at the 4H close, so its market entry is that close. |
+| Entry shown & alerted | Confirmation close | Or RB close (market), body-edge limit, CE limit. A 4H RB is only known at the 4H close, so its market entry is that close. |
 | Stop buffer | 4 ticks | Past the tip |
 | TP at the target RB's | Near edge | Or its CE |
 | Minimum R:R | 1.5 | A 1H RB closer than this isn't used as the target |
