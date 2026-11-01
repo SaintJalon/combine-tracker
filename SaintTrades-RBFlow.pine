@@ -75,7 +75,7 @@
 //      day it signalled.
 // =============================================================================
 
-indicator("SaintTrades RB Flow (Key level → 5m RB → 1H RB)", "ST RB Flow", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+indicator("SaintTrades RB Flow v6 (Key level → 5m RB → 1H RB)", "ST RB Flow v6", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 // ============================== TYPES ========================================
 type Candle
@@ -1401,7 +1401,7 @@ if barstate.islast and tblMode != "Off"
         if not s.resolved
             live += 1
 
-    tc(stat, 0, 0, "RB Flow " + entTfIn + " → " + tgtTfIn, txt, hdr, "")
+    tc(stat, 0, 0, "RB Flow v6 · " + entTfIn + " → " + tgtTfIn, txt, hdr, "")
     tc(stat, 1, 0, "Setups", txt, hdr, "Signals that met a setup.")
     tc(stat, 2, 0, str.tostring(S.setups), txt, hdr, "")
     tc(stat, 3, 0, "Skipped", txt, hdr, "Setups the shown entry didn't trade (no target far enough, or the stop too wide). Grey ✕ on the chart. " + str.tostring(live) + " signals are live now.")
