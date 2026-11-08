@@ -14,6 +14,29 @@ No indicator catches every top and bottom. What this one does:
 
 It sits beside `SaintTrades-RejectionBlock.pine`, which stays as it was. That one is built around Powell's key opens and CISD. This one adds the higher-timeframe gaps, the Gann box, the front-run limit and the confluence grade.
 
+## What you see (Clean style, the default)
+
+- A **red ▼** on the wick high of each short and a **blue ▲** on the wick low of each long.
+- A **position box** like TradingView's long/short tool. It starts at that wick: green runs from the entry to the target, red from the entry to the stop. A small gray dot marks where the limit actually filled. When the trade exits, the entry tag turns into the result, e.g. `+2.96R` or `-1.00R`.
+- Hover the arrow for the grade, the factors that held, the stop and the targets.
+- Nothing else is drawn by default: no gap boxes, key-open lines, RB boxes or table. **Style = Detailed** brings back the RB boxes, Gann lines and TOP / BOT labels, and **Stats table** brings back the numbers.
+
+Only the trades you would actually take get an arrow. A trade must:
+- come off a wick that is the high or low of the last 8 RB candles (2 hours on the 15m)
+- fill inside the New York session (08:30–16:00)
+- grade B or better
+- fit Powell's plan: one trade at a time, at most 2 a day, and stop after a win
+
+## Results on real NQ (be honest with yourself)
+
+Tested on 50 trading days of real NQ futures 5m data (Aug 28 – Nov 6, 2026) with the defaults:
+- The plan took **41 trades**, won 22% of them at TP2, and finished **+4.1R** in total (+0.19R a day).
+- Over 268 fills, every fill of the 0.5 CE entry, at any grade, came out about −0.1R per trade.
+
+I also tested rejection-block rules on their own: swing lookbacks of 2–6 hours, with or without a liquidity sweep, 0.5 or 0.25 entries, 2R or 3R targets, and three session windows. I picked rules on the first ~33 days and checked them on the last ~17. **None was profitable in both halves.**
+
+So treat this as a clean way to mark and manage the setups the videos teach, not as a proven edge. Arrows that sit exactly on every top and bottom, like in marketing screenshots, are drawn after the fact. A live indicator only knows a high was *the* high once price has left it.
+
 ## Where the rules come from
 
 | Rule | Source |
@@ -102,6 +125,7 @@ To add SMT on NQ, set **SMT symbol** to `CME_MINI:ES1!`. On ES, use `CME_MINI:NQ
 | Input | Default | What it does |
 |---|---|---|
 | RB timeframe | 15m | The candle whose wick is the RB. A timeframe below the chart's falls back to the chart. |
+| Tip must be the high / low of the last N RB candles | 8 | Only swing-extreme wicks count, so arrows sit on real tops and bottoms. 0 = off. |
 | Zone runs from | Body edge | **Body edge** = the wick only (GS). **Close** = from the close to the tip. |
 | Wick ≥ % of range / ≥ body × / ≥ ATR × | 40 / 1.0 / 0.25 | How dominant the wick must be. |
 | Wick ≤ ATR × | 0 (off) | ICT: very long news wicks tend to get filled completely. |
@@ -116,8 +140,9 @@ To add SMT on NQ, set **SMT symbol** to `CME_MINI:ES1!`. On ES, use `CME_MINI:NQ
 | HTF gaps · timeframe A / B | 1H / 4H | The gap timeframes. Timeframe A also sets order flow. |
 | HTF gap minimum size / kept | 4 ticks / 6 per timeframe and side | Smaller gaps are ignored. Older ones are dropped first. |
 | Key opens | 18:00, 00:00, 09:30, 10:00, 13:00 on; 02:00, 08:30, 13:30 off | Powell. Two-sided levels: a touch is enough. |
-| Previous day / week, sessions, previous HTF candle, RB swings | on | Liquidity a wick can sweep. |
-| Previous RB candle high / low | on | Shinobi's weakest trigger. It doesn't earn the liquidity point. |
+| Previous day / week, sessions, previous HTF candle | on | Liquidity a wick can sweep. |
+| RB swings | off | Swing highs/lows on the RB timeframe as liquidity. |
+| Previous RB candle high / low | off | Shinobi's weakest trigger. It doesn't earn the liquidity point. |
 | Liquidity sweep: min ticks through | 1 | How far past a high or low the wick must trade. |
 | SMT symbol / lookback | blank / 10 RB candles | A correlated symbol for SMT. Blank = off. |
 
@@ -146,15 +171,17 @@ To add SMT on NQ, set **SMT symbol** to `CME_MINI:ES1!`. On ES, use `CME_MINI:NQ
 | LTF gap minimum size | 2 ticks | Chart-timeframe gaps. |
 | OTE | 0.62–0.79 | The retracement band. |
 | Session | 0830-1600 | New York time, HHMM-HHMM. |
+| Only take trades that fill inside the session | on | Fills outside it get no arrow. |
 
-**5 · Daily risk plan** — on; at most 3 trades a day; plan trades exit at TP2.
+**5 · Daily risk plan**: on, so only the trades the plan takes are drawn. At most 2 trades a day. Trades (and their boxes) exit at TP2.
 
-**6 · Visuals / 7 · Stats** — the defaults keep the chart clean:
-- live HTF gaps are drawn as gray boxes
-- the 0.25 and 0.5 Gann lines show inside each RB box
-- the newest 8 RBs and the last 150 TOP/BOT markers are kept
-- entry/stop/TP lines show for the newest live RB
-- the stats table is Compact; Full adds the filter lab
+**6 · Visuals / 7 · Stats**:
+- Style is Clean.
+- The arrow colors are red (tops) and blue (bottoms).
+- The last 150 trades are kept.
+- HTF gaps, key opens and entry lines are off.
+- The stats table is off. Set it to Compact or Full to see the numbers.
+- In Detailed style, the 0.25 / 0.5 Gann lines, RB boxes and TOP / BOT labels come back.
 
 ## Reading the stats table
 
@@ -178,7 +205,7 @@ Judge by **average R**, not win rate. The filter lab only means something with a
    - **0.25** gets the better R and fills less.
    - **1 (body edge)** fills almost every time.
    - **CISD** waits for confirmation.
-5. Repaint check: leave it running through a live session, screenshot, reload and compare. Finished RBs and TOP/BOT markers must not move.
+5. Repaint check: leave it running through a live session, screenshot, reload and compare. Arrows and trade boxes must not move. (An arrow appears when its limit fills, then stays put.)
 
 ## What was checked
 
@@ -212,7 +239,9 @@ Judge by **average R**, not win rate. The filter lab only means something with a
   Filter-lab rows swing by up to about ±0.15R between two sets of 6 seeds. "Key level / liquidity" read +0.16R on one set and −0.04R on the other, for example. That is why step 2 above asks for about 100 fills. No look-ahead is inflating the numbers.
 - **Syntax** passes the `pynescript` parser.
 
-Not checked here: compiling in TradingView itself (PineTS and pynescript stand in for it), and real NQ data. Run the repaint check above on a live chart before you rely on it.
+- **Real NQ data**: 50 days of 5m NQ futures run end to end, and the arrows and boxes were drawn out and checked by eye (see the results section above).
+
+Not checked here: compiling in TradingView itself (PineTS and pynescript stand in for it). Run the repaint check above on a live chart before you rely on it.
 
 ## Limitations
 
