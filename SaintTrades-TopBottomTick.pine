@@ -1,0 +1,1636 @@
+//@version=6
+// =============================================================================
+// SaintTrades Top/Bottom Tick                                         INDICATOR
+// -----------------------------------------------------------------------------
+// Rejection-block top and bottom ticks. The rules come from:
+//   GS    GSTRADES, "How To Top/Bottom Tick With REJECTION BLOCKS (FULL GUIDE)"
+//   SH    Shinobi Signals, "My 1 Minute Top Tick Scalping Strategy"
+//   PW    Powell (Dumb Money Concepts): wick CE model, key opens, CISD,
+//         PXH/PXL daily bias, risk plan
+//   ICT   ICT rejection block material: order flow, A+ criteria, SMT,
+//         equal highs/lows
+// Each rejection block (RB) gets a Gann box. A limit rests at its CE, and the
+// chart prints TOP / BOT where that limit fills. Every fill is scored on 11
+// confluences (12 with SMT), and the stats table measures the results.
+// Non-repainting: everything runs on closed bars only.
+//
+// --------------------------------- RULES -------------------------------------
+//  R1. An RB is the WICK of a candle on the RB timeframe that traded into a
+//      higher-timeframe PD array or ran liquidity, then closed back away from
+//      it. Bearish: the upper wick reaches the level and the body stays below
+//      it. Bullish is the mirror image. (GS, SH, ICT)
+//  R2. PD arrays are fair value gaps on two higher timeframes (1H and 4H by
+//      default). The wick must reach the gap, and the body must not close past
+//      its far edge. A gap dies when a chart bar closes through it. (GS, SH)
+//  R3. Liquidity: previous day/week high and low, Asia / London / NY AM session
+//      highs and lows, the previous 1H / 4H candle's high and low, swing points
+//      on the RB timeframe, and the previous RB candle's high and low (SH; the
+//      weakest). Key opens (18:00, 00:00, 09:30, 10:00, 13:00; optionally
+//      02:00, 08:30, 13:30 New York) are two-sided, and a touch is enough. (PW)
+//  R4. Gann box on the wick: 0 = tip, 0.25, 0.5 = CE, 1 = body edge. (GS)
+//  R5. Entries. All four are measured on every RB:
+//        0.5 CE       limit N ticks in front of the CE (SH 2-3, PW 2)
+//        0.25         the deeper limit, also N ticks in front (GS)
+//        1 body edge  fills on the first touch
+//        CISD         after the first touch, enter on the first close back
+//                     through the open of the push into the zone (PW)
+//  R6. Stop: past the tip plus a buffer (GS, PW "stop above the wick"), or a
+//      fixed size in points (PW 5/10-point stops). The RB is invalid once a
+//      wick trades past 0. (GS)
+//  R7. Targets: TP1 = fixed R. TP2 = fixed R, the nearest untaken opposing
+//      liquidity (GS), or the midnight / true day open (PW).
+//  R8. Score. Setup factors, known when the RB candle closes:
+//        PD array    the wick traded into an HTF fair value gap (SH: higher
+//                    odds than a plain sweep)
+//        Liquidity   the wick ran key liquidity or a key open
+//        P/D         shorts above / longs below the midnight and 18:00 opens
+//                    (GS, SH, PW)
+//        Bias        Powell's PXH/PXL daily bias agrees
+//        Order flow  the last swing broken on the PD-array timeframe agrees.
+//                    ICT: trade RBs with order flow.
+//        Clean tip   the tip makes no equal highs/lows (wick theory)
+//        SMT         the comparison symbol failed to make the same new high/low
+//      Entry factors, known when the limit fills:
+//        Engineered liquidity  a swing formed after the RB between the body
+//                    edge (less a quarter wick) and the entry, and the move
+//                    into the entry ran it (PW: liquidity right below the CE)
+//        LTF gap     the entry sits inside an unfilled chart-timeframe gap (SH)
+//        OTE         the entry is a 62-79% retracement of the leg from the
+//                    tip to the extreme made after the RB, once that leg
+//                    runs past the RB candle's own range (SH)
+//        Displaced   a CISD close (PW), or an inverted chart-timeframe gap
+//                    from the leg into the tip (GS), printed before the fill
+//        Session     the fill came inside the New York session (GS)
+//      Grade = score / max: A+ at 75% or more, A at 62%, B at 50%, else C.
+//  R9. Daily risk plan (PW): the first trade is full size, and a win ends the
+//      day. After a loss the next trade is half size, then a quarter. The day
+//      ends after the last allowed trade.
+//
+// ------------------------------- ASSUMPTIONS ---------------------------------
+//  A1. RB-timeframe and gap-timeframe candles are built from chart bars. A
+//      candle is finalized on its last chart bar. If that bar can't be detected
+//      (a session break), it is finalized on the next bar instead. Such an RB
+//      can't fill on that bar, and it is dropped if that bar already took its
+//      tip.
+//  A2. A level or gap counts only if it existed before the RB candle opened. A
+//      one-sided level also must not have been traded through before then. A
+//      gap closed through during the RB candle still counts for that candle.
+//  A3. Key opens need a chart bar that opens at that exact minute. They expire
+//      when the New York trading day rolls at 18:00.
+//  A4. One RB per zone: a wick inside a live RB of the same direction is a
+//      retest of that RB, not a new one.
+//  A5. Fills are conservative. A limit fills from the bar after the RB is
+//      known. Its targets count from the bar after the fill, and a stop on the
+//      fill bar counts. A limit is cancelled if the RB is invalidated or
+//      expires, or if price reaches its TP2 before it fills. A CISD entry fills
+//      at the trigger close.
+//  A6. Entry factors use only what was known before the fill bar: swings
+//      confirmed and gaps formed on earlier bars, and the leg extreme up to
+//      the previous bar.
+//  A7. Stats count RBs whose four entries have all resolved. "→TP1" holds the
+//      whole position to TP1 and "→TP2" to TP2, with the same stop and no
+//      breakeven. A win is R > 0, and avg R is per filled trade.
+//  A8. Daily bias (PW PXH/PXL), from the last completed daily candle against
+//      the one before it:
+//        close above that day's high                   bullish
+//        close below its low                           bearish
+//        took only its high and closed back inside     bearish
+//        took only its low and closed back inside      bullish
+//        inside or outside day                         the candle's color
+//      Order flow = the direction of the last close through a 3-candle swing
+//      on gap timeframe A (B if A is off).
+//  A9. The daily plan uses the selected entry's fills at or above the minimum
+//      grade, one trade at a time, on the New York trading day (rolls at
+//      18:00). A trade's result belongs to the day it was taken.
+// =============================================================================
+
+indicator("SaintTrades Top/Bottom Tick", "ST TBT", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ============================== TYPES ========================================
+type Lvl
+    float  price
+    string name
+    int    kind            // 0 = key open (two-sided), 1 = high-side liquidity, -1 = low-side liquidity
+    int    tier            // 3 = day/week, 2 = key open / session / HTF candle, 1 = swing
+    int    bornT           // earliest RB-candle open time that may use this level (A2)
+    int    takenT          // first chart bar that traded through it (one-sided only)
+    int    deadT           // replaced by a newer level of the same name at this time
+    int    dayId
+    int    bornBar
+    line   ln
+    label  lb
+
+type Gap
+    bool   bull
+    float  top
+    float  bot
+    string name
+    int    bornT           // earliest RB-candle open time that may use this gap (A2)
+    int    left
+    int    invT            // chart bar that closed through it
+    box    bx
+
+type Agg
+    float o
+    float h
+    float l
+    float c
+    int   bar
+    bool  done = true
+    array<float> H
+    array<float> L
+    array<int>   B
+
+type Trade
+    float entry
+    float stop
+    float tp1
+    float tp2
+    float risk
+    bool  tapped    = false
+    int   tapBar
+    float ext
+    int   extBar
+    float cisd
+    bool  filled    = false
+    int   fillBar
+    bool  cancelled = false
+    bool  done1     = false
+    bool  done2     = false
+    float r1        = 0.0
+    float r2        = 0.0
+    int   score     = 0
+    bool  fEl       = false
+    bool  fLtf      = false
+    bool  fOte      = false
+    bool  fDisp     = false
+    bool  fNy       = false
+    float size      = 0.0
+
+type RB
+    bool   bull
+    float  tip
+    float  edge
+    float  ce
+    float  q25
+    string names
+    int    formT
+    int    formBar
+    int    legBar
+    int    trackFrom
+    int    fillFrom
+    int    age       = 0
+    float  cisdLvl
+    int    dispCount = 0
+    bool   disp      = false
+    string dispBy    = ""
+    bool   tapped    = false
+    bool   invalid   = false
+    bool   expired   = false
+    bool   resolved  = false
+    bool   zoneDone  = false
+    float  far             // the RB candle's opposite extreme
+    float  ext             // the leg's extreme since the RB closed (OTE)
+    int    sScore    = 0
+    bool   fPda      = false
+    bool   fLiq      = false
+    bool   fPd       = false
+    bool   fBias     = false
+    bool   fOf       = false
+    bool   fClean    = false
+    bool   fSmt      = false
+    Trade  t0
+    Trade  t1
+    Trade  t2
+    Trade  t3
+    box    bx
+    line   ceLn
+    line   qLn
+    label  tag
+    line   lnE
+    line   lnS
+    line   lnT1
+    line   lnT2
+    label  lbE
+    label  lbS
+    label  lbT1
+    label  lbT2
+
+type State
+    float atr
+    int   ofDir = 0
+    float swH
+    float swL
+
+// =============================== INPUTS ======================================
+G_RB  = "1 · Rejection block"
+G_PD  = "2 · Where RBs form"
+G_TR  = "3 · Entry, stop & targets"
+G_CF  = "4 · Score & filters"
+G_PL  = "5 · Daily risk plan (Powell)"
+G_VIS = "6 · Visuals"
+G_ST  = "7 · Stats"
+
+rbTfIn      = input.string("15m", "RB timeframe", options=["Chart", "1m", "3m", "5m", "15m", "30m", "1H", "4H"], tooltip="The candle whose wick is the rejection block. GS reads it on the 5m/15m, Shinobi on the 15m and up (1H/4H preferred), Powell on the 4H/1H/15m. A timeframe below the chart's falls back to the chart.", group=G_RB)
+zoneFrom    = input.string("Body edge", "Zone runs from", options=["Body edge", "Close"], tooltip="Body edge = the wick only (GS: mark the wick, not the body). Close = from the close to the tip.", group=G_RB)
+minWickPct  = input.float(40.0, "Rejecting wick ≥ % of candle range", minval=0, maxval=100, step=5, group=G_RB)
+minWickBody = input.float(1.0, "Rejecting wick ≥ body ×", minval=0, step=0.25, group=G_RB)
+minWickAtr  = input.float(0.25, "Rejecting wick ≥ ATR(14) ×", minval=0, step=0.05, tooltip="ATR of the RB timeframe. Ignores small wicks. 0 = off.", group=G_RB)
+maxWickAtr  = input.float(0.0, "Rejecting wick ≤ ATR(14) × (0 = off)", minval=0, step=0.5, tooltip="ICT: very long wicks (news spikes) tend to get filled completely instead of holding.", group=G_RB)
+invMode     = input.string("Wick past tip", "Invalidate when", options=["Wick past tip", "Close past tip"], tooltip="GS: once the tip at 0 is run, the RB is invalid.", group=G_RB)
+rbLife      = input.int(12, "RB life (RB candles, 0 = no limit)", minval=0, maxval=500, tooltip="ICT: recent RBs that get tapped quickly hold best. Unfilled entries are cancelled after this many RB-timeframe candles.", group=G_RB)
+dispWin     = input.int(6, "CISD displacement window (RB candles)", minval=1, maxval=50, tooltip="How many RB candles after the RB may close through the open of the push into it and still count as displacement.", group=G_RB)
+
+pdaAIn   = input.string("1H", "HTF gaps · timeframe A", options=["Off", "30m", "1H", "2H", "4H", "D"], tooltip="GS: the wick must trade into a 1H-or-higher PD array, mostly fair value gaps. Shinobi: 4H/1H gaps. Timeframe A also sets order flow.", group=G_PD)
+pdaBIn   = input.string("4H", "HTF gaps · timeframe B", options=["Off", "30m", "1H", "2H", "4H", "D"], group=G_PD)
+fvgMinTk = input.int(4, "HTF gap minimum size (ticks)", minval=1, maxval=4000, group=G_PD)
+fvgKeep  = input.int(6, "HTF gaps kept per timeframe & side", minval=1, maxval=30, group=G_PD)
+useKO    = input.bool(true, "Powell key opens (New York time)", group=G_PD)
+ko1800   = input.bool(true, "18:00", inline="ko1", group=G_PD)
+ko0000   = input.bool(true, "00:00", inline="ko1", group=G_PD)
+ko0200   = input.bool(false, "02:00", inline="ko1", group=G_PD)
+ko0830   = input.bool(false, "08:30", inline="ko1", tooltip="Powell: 08:30 matters only on news days. 13:00 starts the PM session.", group=G_PD)
+ko0930   = input.bool(true, "09:30", inline="ko2", group=G_PD)
+ko1000   = input.bool(true, "10:00", inline="ko2", group=G_PD)
+ko1300   = input.bool(true, "13:00", inline="ko2", group=G_PD)
+ko1330   = input.bool(false, "13:30", inline="ko2", group=G_PD)
+usePD    = input.bool(true, "Previous day high / low", group=G_PD)
+usePW    = input.bool(true, "Previous week high / low", group=G_PD)
+useSes   = input.bool(true, "Session highs / lows: Asia 20-00, London 02-05, NY AM 09:30-12", group=G_PD)
+useHtfC  = input.bool(true, "Previous HTF candle high / low (timeframes A and B)", tooltip="Powell: the 4H wick swept the previous 4H high.", group=G_PD)
+useSw    = input.bool(true, "Swing highs / lows on the RB timeframe", group=G_PD)
+swLen    = input.int(3, "Swing strength (candles each side)", minval=1, maxval=10, group=G_PD)
+swKeep   = input.int(10, "Swing levels kept per side", minval=1, maxval=30, group=G_PD)
+usePrev  = input.bool(true, "Previous RB candle high / low (Shinobi)", tooltip="A wick that sweeps the candle before it and closes back. The weakest trigger: it doesn't earn the liquidity point.", group=G_PD)
+sweepTk  = input.int(1, "Liquidity sweep: min ticks through", minval=0, maxval=100, tooltip="How far a wick must trade past a high or low to count as a sweep. Key opens and gaps only need a touch.", group=G_PD)
+smtSym   = input.string("", "SMT symbol (blank = off)", tooltip="A correlated symbol, e.g. CME_MINI:ES1! on an NQ chart or CME_MINI:NQ1! on ES. SMT holds when this chart's RB candle makes a new high (low) over the lookback and the other symbol's candle doesn't.", group=G_PD)
+smtLook  = input.int(10, "SMT lookback (RB candles)", minval=2, maxval=50, group=G_PD)
+
+entrySel = input.string("0.5 CE", "Entry shown & alerted", options=["0.5 CE", "0.25", "1 body edge", "CISD after tap"], tooltip="0.5 CE = limit at the wick's 50% (GS, Shinobi, Powell). 0.25 = the deeper limit near the tip, better price but fewer fills (GS). 1 = first touch of the body edge. CISD = market entry on the first close back through the open of the push into the zone. The stats table measures all four either way.", group=G_TR)
+frontTk  = input.int(2, "Front-run the limit by (ticks)", minval=0, maxval=40, tooltip="Shinobi: set the limit 2-3 ticks in front of the CE so it fills when price stops just short. Powell allows 2 ticks for spread. Applies to the 0.5 and 0.25 limits.", group=G_TR)
+stopMode = input.string("Past the tip", "Stop", options=["Past the tip", "Fixed points"], group=G_TR)
+stopTk   = input.int(4, "Stop buffer past the tip (ticks)", minval=0, maxval=400, tooltip="GS: a little past the high, not exactly at it, because the market likes to run it. 4 ticks = 1 NQ point.", group=G_TR)
+stopPts  = input.float(10.0, "Fixed stop (points)", minval=0.25, step=0.25, tooltip="Powell: 5 or 10-point stops on the wick CE (10 preferred).", group=G_TR)
+maxStop  = input.float(0.0, "Skip RBs whose 0.5 stop is wider than (points, 0 = off)", minval=0, step=0.25, tooltip="For prop accounts. GS runs about 50 ticks (12.5 NQ points); Shinobi about 10 points.", group=G_TR)
+tp1R     = input.float(1.0, "TP1 (R)", minval=0.25, step=0.25, group=G_TR)
+tp2Mode  = input.string("Opposing liquidity", "TP2", options=["Fixed R", "Opposing liquidity", "Midnight open"], tooltip="Opposing liquidity = the nearest untaken high (longs) or low (shorts) beyond TP1 (GS). Midnight open = true day open (Powell), when it lies beyond TP1. Both fall back to the fixed R.", group=G_TR)
+tp2R     = input.float(3.0, "TP2 (R)", minval=0.5, step=0.25, group=G_TR)
+cisdWin  = input.int(12, "CISD entry: bars allowed after the tap", minval=1, maxval=300, group=G_TR)
+flat16   = input.bool(true, "16:00 NY: cancel unfilled entries, close trades, expire RBs", group=G_TR)
+
+minGrade = input.string("B", "TOP / BOT, alerts & stats from grade", options=["A+", "A", "B", "C"], tooltip="Grade = score / max score: A+ ≥ 75%, A ≥ 62%, B ≥ 50%, C below. Fills under this grade get no marker or alert, and they are left out of the entry rows and the daily plan. The filter lab still measures every fill.", group=G_CF)
+minSetup = input.int(0, "Hide RBs with a setup score below", minval=0, maxval=7, group=G_CF)
+reqPda   = input.bool(false, "Require an HTF gap (PD array)", group=G_CF)
+reqLiq   = input.bool(false, "Require key level / liquidity", group=G_CF)
+reqPd    = input.bool(false, "Require premium (shorts) / discount (longs)", group=G_CF)
+reqBias  = input.bool(false, "Require daily bias", group=G_CF)
+reqOf    = input.bool(false, "Require order flow", group=G_CF)
+reqClean = input.bool(false, "Require clean tip", group=G_CF)
+pdMode   = input.string("Midnight + 18:00 open", "Premium / discount vs", options=["Midnight + 18:00 open", "Midnight open"], tooltip="GS buys under both the midnight and the 18:00 open. Shinobi and Powell use the midnight (true day) open. Before midnight, the 18:00 open stands in.", group=G_CF)
+eqTk     = input.int(4, "Clean tip: equal high/low tolerance (ticks)", minval=0, maxval=400, group=G_CF)
+eqLook   = input.int(20, "Clean tip: lookback (RB candles)", minval=2, maxval=50, group=G_CF)
+elStr    = input.int(2, "Engineered liquidity: swing strength (chart bars)", minval=1, maxval=10, tooltip="Powell: liquidity engineered just below the CE, then run into it. A chart-timeframe swing that formed after the RB, between the body edge (less a quarter of the wick) and the entry.", group=G_CF)
+ltfMinTk = input.int(2, "LTF gap minimum size (ticks)", minval=1, maxval=400, group=G_CF)
+oteLo    = input.float(0.62, "OTE from", minval=0, maxval=1, step=0.01, inline="ote", group=G_CF)
+oteHi    = input.float(0.79, "to", minval=0, maxval=1, step=0.01, inline="ote", group=G_CF)
+nySess   = input.string("0830-1600", "Session (New York, HHMM-HHMM)", tooltip="GS: rejection blocks work best in the New York session.", group=G_CF)
+
+planOn   = input.bool(true, "Track the daily risk plan", tooltip="Powell: trade 1 full size; a win ends the day. After a loss, trade 2 at half size; after another, trade 3 at a quarter. Then the day is over. Uses the selected entry's fills at or above the minimum grade, one trade at a time.", group=G_PL)
+planMax  = input.int(3, "Max trades per day", minval=1, maxval=5, group=G_PL)
+planTgt  = input.string("TP2", "Plan trades exit at", options=["TP1", "TP2"], group=G_PL)
+
+colBull  = input.color(#26a69a, "Bullish", inline="c1", group=G_VIS)
+colBear  = input.color(#ef5350, "Bearish", inline="c1", group=G_VIS)
+colFvg   = input.color(#9598a1, "HTF gaps", inline="c2", group=G_VIS)
+colKO    = input.color(#b2b5be, "Key opens", inline="c2", group=G_VIS)
+colLiq   = input.color(#787b86, "Liquidity", inline="c2", group=G_VIS)
+colEnt   = input.color(#2962ff, "Entry", inline="c3", group=G_VIS)
+colSl    = input.color(#ef5350, "Stop", inline="c3", group=G_VIS)
+colTp    = input.color(#26a69a, "Targets", inline="c3", group=G_VIS)
+showFvg  = input.bool(true, "Draw live HTF gaps", group=G_VIS)
+showGann = input.bool(true, "Gann levels 0.25 and 0.5 (CE)", group=G_VIS)
+drawKO   = input.bool(true, "Draw today's key opens", group=G_VIS)
+drawLiq  = input.bool(false, "Draw untaken liquidity", group=G_VIS)
+lblMode  = input.string("Compact", "RB labels", options=["Compact", "Full", "Off"], tooltip="Compact = direction, setup score and ✓ once displaced, e.g. ▼ 4/6 ✓. Full also lists what the wick ran. Hover a label for the Gann levels and the factors.", group=G_VIS)
+keepLbl  = input.bool(false, "Keep labels on finished RBs", group=G_VIS)
+maxKeep  = input.int(8, "RBs kept on the chart", minval=1, maxval=100, group=G_VIS)
+markKeep = input.int(150, "TOP / BOT markers kept", minval=1, maxval=400, group=G_VIS)
+lvlN     = input.int(1, "Entry / stop / TP lines for the newest N live RBs", minval=0, maxval=5, group=G_VIS)
+
+tblMode  = input.string("Compact", "Stats table", options=["Compact", "Full", "Off"], tooltip="Compact = context, the four entries and the daily plan. Full adds the filter lab.", group=G_ST)
+statsPos = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Middle Right"], group=G_ST)
+
+// ============================= CONSTANTS =====================================
+NY      = "America/New_York"
+TICK    = syminfo.mintick
+MAX_AGE = 4500      // TradingView refuses drawings anchored ~10,000 bars back
+
+tfOf(string s) =>
+    switch s
+        "1m"  => "1"
+        "3m"  => "3"
+        "5m"  => "5"
+        "15m" => "15"
+        "30m" => "30"
+        "1H"  => "60"
+        "2H"  => "120"
+        "4H"  => "240"
+        "D"   => "D"
+        => timeframe.period
+
+tfName(string tf) =>
+    int s = timeframe.in_seconds(tf)
+    s >= 86400 ? str.tostring(math.round(s / 86400.0)) + "D" : s >= 3600 ? str.tostring(math.round(s / 3600.0)) + "H" : s >= 60 ? str.tostring(math.round(s / 60.0)) + "m" : str.tostring(s) + "s"
+
+sessMin(string s, int k) =>
+    int(str.tonumber(str.substring(s, k, k + 2))) * 60 + int(str.tonumber(str.substring(s, k + 2, k + 4)))
+
+rbTfSel = tfOf(rbTfIn)
+rbTf    = rbTfIn != "Chart" and rbTfSel != timeframe.period and timeframe.in_seconds(rbTfSel) > timeframe.in_seconds() ? rbTfSel : timeframe.period
+onA     = pdaAIn != "Off"
+onB     = pdaBIn != "Off"
+tfA     = onA ? tfOf(pdaAIn) : timeframe.period
+tfB     = onB ? tfOf(pdaBIn) : timeframe.period
+rbName  = tfName(rbTf)
+nameA   = tfName(tfA)
+nameB   = tfName(tfB)
+smtOn   = smtSym != ""
+smtTk   = smtOn ? smtSym : syminfo.tickerid
+nyS     = sessMin(nySess, 0)
+nyE     = sessMin(nySess, 5)
+selIdx  = entrySel == "0.5 CE" ? 0 : entrySel == "0.25" ? 1 : entrySel == "1 body edge" ? 2 : 3
+invWick = invMode == "Wick past tip"
+fixStop = stopMode == "Fixed points"
+SETUPMAX = smtOn ? 7 : 6
+MAXS     = SETUPMAX + 5
+showStats = tblMode != "Off"
+fullTbl   = tblMode == "Full"
+var ENTRY_NAMES = array.from("0.5 CE", "0.25", "1 body edge", "CISD after tap")
+
+// ============================== STATE ========================================
+var State      S    = State.new()
+var array<Lvl> lvls = array.new<Lvl>()
+var array<RB>  rbs  = array.new<RB>()
+var array<Gap> gaps = array.new<Gap>()
+var Agg        AA   = Agg.new(H=array.new<float>(), L=array.new<float>(), B=array.new<int>())
+var Agg        AB   = Agg.new(H=array.new<float>(), L=array.new<float>(), B=array.new<int>())
+
+// closed RB-timeframe candles, oldest first (hSH / hSL = the SMT symbol's candle)
+var array<float> hO  = array.new<float>()
+var array<float> hH  = array.new<float>()
+var array<float> hL  = array.new<float>()
+var array<float> hC  = array.new<float>()
+var array<int>   hB  = array.new<int>()
+var array<float> hSH = array.new<float>()
+var array<float> hSL = array.new<float>()
+
+// chart-timeframe gaps and confirmed swings (entry factors, A6)
+var array<bool>  lgBull = array.new<bool>()
+var array<float> lgTop  = array.new<float>()
+var array<float> lgBot  = array.new<float>()
+var array<int>   lgBar  = array.new<int>()
+var array<float> pvH    = array.new<float>()
+var array<int>   pvHB   = array.new<int>()
+var array<float> pvL    = array.new<float>()
+var array<int>   pvLB   = array.new<int>()
+
+// stats per entry (0 = 0.5 CE, 1 = 0.25, 2 = body edge, 3 = CISD) and filter-lab rows
+var array<int>   eFill = array.new<int>(4, 0)
+var array<float> eS1   = array.new<float>(4, 0.0)
+var array<int>   eW1   = array.new<int>(4, 0)
+var array<float> eS2   = array.new<float>(4, 0.0)
+var array<int>   eW2   = array.new<int>(4, 0)
+LAB_N = 17
+var array<int>   lN  = array.new<int>(LAB_N, 0)
+var array<float> lS1 = array.new<float>(LAB_N, 0.0)
+var array<int>   lW1 = array.new<int>(LAB_N, 0)
+var array<float> lS2 = array.new<float>(LAB_N, 0.0)
+var array<int>   lW2 = array.new<int>(LAB_N, 0)
+var int setups = 0
+var array<label> marks = array.new<label>()
+
+// day / week / session context
+var float dO       = na
+var float dH       = na
+var float dL       = na
+var float pdH      = na
+var float pdL      = na
+var int   bias     = 0
+var float wH       = na
+var float wL       = na
+var float mOpen    = na
+var int   mOpenDay = -1
+var int   koDay    = 0      // New York trading day, rolls at 18:00 (A3)
+var float koOpen   = na     // the 18:00 open
+var bool  sawEve   = false  // the symbol trades at/after 18:00 NY
+var float asH = na
+var float asL = na
+var float lnH = na
+var float lnL = na
+var float nyH = na
+var float nyL = na
+var bool  inAs = false
+var bool  inLn = false
+var bool  inNy = false
+
+// chart-bar runs for the CISD trigger: open of the first bar of the current up/down-close run
+var float upRun = na
+var float dnRun = na
+
+// RB-timeframe candle being built (aSH / aSL = SMT symbol)
+var float aO    = na
+var float aH    = na
+var float aL    = na
+var float aC    = na
+var float aSH   = na
+var float aSL   = na
+var int   aT    = na
+var int   aBar  = na
+var bool  aDone = true
+
+// daily risk plan (R9, A9)
+var int   planDay   = -1
+var int   dayTrades = 0
+var bool  dayDone   = false
+var float dayR      = 0.0
+var Trade planT     = na
+var int   planDays  = 0
+var int   planWinD  = 0
+var float planR     = 0.0
+var int   planN     = 0
+var int   planW     = 0
+
+// ============================ PER-BAR SERIES =================================
+// Called on every bar so their history stays consistent; used on confirmed bars only.
+nyMin(int t) =>
+    hour(t, NY) * 60 + minute(t, NY)
+
+bool chgRb     = timeframe.change(rbTf)
+int  tcRb      = time_close(rbTf)
+bool newRbBar  = rbTf == timeframe.period or chgRb
+bool lastRbBar = rbTf == timeframe.period or (not na(tcRb) and time_close == tcRb)
+bool useA      = tfA != timeframe.period and timeframe.in_seconds(tfA) > timeframe.in_seconds()
+bool chgA      = timeframe.change(tfA)
+int  tcA       = time_close(tfA)
+bool newABar   = not useA or chgA
+bool lastABar  = not useA or (not na(tcA) and time_close == tcA)
+bool useB      = tfB != timeframe.period and timeframe.in_seconds(tfB) > timeframe.in_seconds()
+bool chgB      = timeframe.change(tfB)
+int  tcB       = time_close(tfB)
+bool newBBar   = not useB or chgB
+bool lastBBar  = not useB or (not na(tcB) and time_close == tcB)
+bool newDay    = timeframe.change("D")
+bool newWeek   = timeframe.change("W")
+int  mNow      = nyMin(time)
+int  mCls      = na(time_close) ? na : nyMin(time_close)
+int  nyDom     = dayofmonth(time, NY)
+bool newNyDate = na(nyDom[1]) or nyDom != nyDom[1]
+int  mPrv      = mNow[1]
+bool cross18   = not na(mPrv) and mNow >= 1080 and (mPrv < 1080 or time - time[1] >= 43200000)
+bool flatNow   = flat16 and not na(mCls) and mNow < 960 and mCls >= 960
+float pvhNow   = ta.pivothigh(high, elStr, elStr)
+float pvlNow   = ta.pivotlow(low, elStr, elStr)
+[smtH, smtL]   = request.security(smtTk, timeframe.period, [high, low])
+
+// ============================== HELPERS ======================================
+gradeOf(int s, int mx) =>
+    float p = mx > 0 ? float(s) / mx : 0.0
+    p >= 0.75 ? "A+" : p >= 0.62 ? "A" : p >= 0.5 ? "B" : "C"
+
+gRank(string g) =>
+    g == "A+" ? 3 : g == "A" ? 2 : g == "B" ? 1 : 0
+
+gRankMin = gRank(minGrade)
+
+passes(Trade t) =>
+    gRank(gradeOf(t.score, MAXS)) >= gRankMin
+
+f_pct(int a, int b) =>
+    b > 0 ? str.tostring(math.round(100.0 * a / b)) + "%" : "-"
+
+// average R and win rate, e.g. "+0.42R · 55%"
+fR(float sum, int wins, int n) =>
+    n > 0 ? (sum / n >= 0 ? "+" : "") + str.tostring(sum / n, "0.00") + "R · " + str.tostring(math.round(100.0 * wins / n)) + "%" : "-"
+
+fRs(float r) =>
+    (r >= 0 ? "+" : "") + str.tostring(r, "0.00") + "R"
+
+isDone(Trade t) =>
+    t.cancelled or (t.filled and t.done1 and t.done2)
+
+trd(RB r, int m) =>
+    m == 0 ? r.t0 : m == 1 ? r.t1 : m == 2 ? r.t2 : r.t3
+
+yes(bool b) =>
+    b ? "✓" : "✗"
+
+px(float p) =>
+    str.tostring(p, format.mintick)
+
+// A level is born (R3). Key opens are dotted, liquidity dashed.
+addLvl(float p, string n, int k, int tier, int bt, int d) =>
+    Lvl lv = Lvl.new(price=p, name=n, kind=k, tier=tier, bornT=bt, dayId=d, bornBar=bar_index)
+    if k == 0 ? drawKO : drawLiq
+        color c = k == 0 ? colKO : colLiq
+        lv.ln := line.new(bar_index, p, bar_index + 1, p, color=color.new(c, 30), style=k == 0 ? line.style_dotted : line.style_dashed, width=1)
+        lv.lb := label.new(bar_index, p, n, color=color.new(color.black, 100), style=label.style_label_lower_left, textcolor=c, size=size.tiny)
+    array.push(lvls, lv)
+    true
+
+dropLvl(int i) =>
+    Lvl lv = array.get(lvls, i)
+    line.delete(lv.ln)
+    label.delete(lv.lb)
+    array.remove(lvls, i)
+    true
+
+// A new level replaces the previous one of the same name. The old one stays
+// usable for a candle that opened before now and is removed after this bar.
+killName(string n) =>
+    if array.size(lvls) > 0
+        for i = 0 to array.size(lvls) - 1
+            Lvl lv = array.get(lvls, i)
+            if lv.name == n and na(lv.deadT)
+                lv.deadT := time
+    true
+
+// keep only the newest swKeep swing levels per side
+trimSwings(int k) =>
+    int cnt = 0
+    if array.size(lvls) > 0
+        for i = array.size(lvls) - 1 to 0
+            Lvl lv = array.get(lvls, i)
+            if lv.tier == 1 and lv.kind == k
+                cnt += 1
+                if cnt > swKeep
+                    dropLvl(i)
+    true
+
+// R8 premium / discount: shorts above, longs below the midnight open, and the
+// 18:00 open unless "Midnight open" is chosen. Before midnight the 18:00 open stands in.
+pdOk(bool bull, float p) =>
+    float mo = mOpenDay == koDay ? mOpen : na
+    bool useE = pdMode != "Midnight open" or na(mo)
+    bool have = not na(mo) or (useE and not na(koOpen))
+    bool okM = na(mo) or (bull ? p < mo : p > mo)
+    bool okE = not useE or na(koOpen) or (bull ? p < koOpen : p > koOpen)
+    have and okM and okE
+
+// R7: TP2 at a fixed R, the nearest untaken opposing liquidity, or the midnight open
+tp2For(bool bull, float e, float rk) =>
+    float res = bull ? e + tp2R * rk : e - tp2R * rk
+    float t1  = bull ? e + tp1R * rk : e - tp1R * rk
+    if tp2Mode == "Opposing liquidity" and array.size(lvls) > 0
+        float best = na
+        for i = 0 to array.size(lvls) - 1
+            Lvl lv = array.get(lvls, i)
+            if na(lv.takenT) and na(lv.deadT) and (bull ? lv.kind == 1 and lv.price > t1 : lv.kind == -1 and lv.price < t1)
+                if na(best) or (bull ? lv.price < best : lv.price > best)
+                    best := lv.price
+        if not na(best)
+            res := best
+    else if tp2Mode == "Midnight open"
+        float mo = mOpenDay == koDay ? mOpen : koOpen
+        if not na(mo) and (bull ? mo > t1 : mo < t1)
+            res := mo
+    res
+
+// R6
+stopFor(bool bull, float e, float tip) =>
+    fixStop ? (bull ? e - stopPts : e + stopPts) : (bull ? tip - stopTk * TICK : tip + stopTk * TICK)
+
+mkTrade(bool bull, float e, float tip) =>
+    float st = stopFor(bull, e, tip)
+    float rk = math.abs(e - st)
+    Trade.new(entry=e, stop=st, risk=rk, tp1=bull ? e + tp1R * rk : e - tp1R * rk, tp2=tp2For(bull, e, rk))
+
+// A5: one bar of a resting limit. Returns true when it fills on this bar.
+stepLimit(Trade t, bool bull, bool canFill, bool deadBefore, bool deadNow) =>
+    bool filledNow = false
+    if not t.filled and not t.cancelled
+        if deadBefore
+            t.cancelled := true
+        else if canFill and (bull ? low <= t.entry : high >= t.entry)
+            t.filled := true
+            t.fillBar := bar_index
+            filledNow := true
+        else if deadNow or (bull ? high >= t.tp2 : low <= t.tp2)
+            t.cancelled := true
+    filledNow
+
+// R5 CISD after tap. The first touch arms it; each new extreme resets the CISD
+// level to the open of the run that made it; the entry is the first close back
+// through that level. Returns true when it fills on this bar.
+stepCisd(Trade t, RB r, bool canFill, bool deadBefore, bool deadNow, float cisdHere, bool flat) =>
+    bool filledNow = false
+    bool bull = r.bull
+    if not t.filled and not t.cancelled
+        if deadBefore
+            t.cancelled := true
+        else if not t.tapped
+            if canFill and (bull ? low <= r.edge : high >= r.edge)
+                t.tapped := true
+                t.tapBar := bar_index
+                t.ext := bull ? low : high
+                t.extBar := bar_index
+                t.cisd := cisdHere
+            else if deadNow or (bull ? high >= r.t0.tp2 : low <= r.t0.tp2)
+                t.cancelled := true
+        else
+            if bull ? low <= t.ext : high >= t.ext
+                t.ext := bull ? low : high
+                t.extBar := bar_index
+                t.cisd := cisdHere
+            else if not flat and not deadNow and not na(t.cisd) and bar_index > t.extBar and (bull ? close > t.cisd : close < t.cisd)
+                float st = fixStop ? (bull ? close - stopPts : close + stopPts) : t.stop
+                float rk = bull ? close - st : st - close
+                if rk > 0
+                    t.entry := close
+                    t.stop := st
+                    t.risk := rk
+                    t.tp1 := bull ? close + tp1R * rk : close - tp1R * rk
+                    t.tp2 := tp2For(bull, close, rk)
+                    t.filled := true
+                    t.fillBar := bar_index
+                    filledNow := true
+            if not t.filled and (deadNow or bar_index - t.tapBar >= cisdWin)
+                t.cancelled := true
+    filledNow
+
+// A5: one bar of an open position. Stop first (conservative); targets from the
+// bar after the fill. A limit can stop out on its fill bar; a CISD (market) entry
+// is taken at the close, so its first bar is the next one.
+stepOpen(Trade t, bool bull, bool mkt, bool flat) =>
+    if t.filled and not (t.done1 and t.done2)
+        bool after = bar_index > t.fillBar
+        bool stopHit = (after or not mkt) and (bull ? low <= t.stop : high >= t.stop)
+        if stopHit
+            if not t.done1
+                t.r1 := -1.0
+                t.done1 := true
+            if not t.done2
+                t.r2 := -1.0
+                t.done2 := true
+        else if after
+            if not t.done1 and (bull ? high >= t.tp1 : low <= t.tp1)
+                t.r1 := math.abs(t.tp1 - t.entry) / t.risk
+                t.done1 := true
+            if not t.done2 and (bull ? high >= t.tp2 : low <= t.tp2)
+                t.r2 := math.abs(t.tp2 - t.entry) / t.risk
+                t.done2 := true
+        if flat and not (t.done1 and t.done2)
+            float rNow = (bull ? close - t.entry : t.entry - close) / t.risk
+            if not t.done1
+                t.r1 := rNow
+                t.done1 := true
+            if not t.done2
+                t.r2 := rNow
+                t.done2 := true
+    true
+
+// R8 entry factors at the fill, from what was known before this bar (A6)
+entryFactors(RB r, Trade t) =>
+    bool bull = r.bull
+    float e = t.entry
+    float wl = math.abs(r.edge - r.tip)
+    bool el = false
+    int np = bull ? array.size(pvL) : array.size(pvH)
+    if np > 0
+        for i = 0 to np - 1
+            float p = bull ? array.get(pvL, i) : array.get(pvH, i)
+            int   b = bull ? array.get(pvLB, i) : array.get(pvHB, i)
+            if b >= r.trackFrom and (bull ? p > e and p <= r.edge + 0.25 * wl : p < e and p >= r.edge - 0.25 * wl)
+                el := true
+    bool lt = false
+    int ng = array.size(lgTop)
+    if ng > 0
+        float tol = frontTk * TICK
+        for i = 0 to ng - 1
+            if array.get(lgBull, i) == bull and array.get(lgBar, i) < bar_index and e >= array.get(lgBot, i) - tol and e <= array.get(lgTop, i) + tol
+                lt := true
+    // the leg runs from the tip to the extreme made after the RB, beyond its own candle
+    bool legOk = bull ? r.ext > r.far : r.ext < r.far
+    float leg = bull ? r.ext - r.tip : r.tip - r.ext
+    float rt  = legOk and leg > 0 ? (bull ? r.ext - e : e - r.ext) / leg : na
+    bool ote = not na(rt) and rt >= oteLo and rt <= oteHi
+    bool ny = false
+    if not na(nyS) and not na(nyE)
+        int m = nyMin(time)
+        ny := nyS <= nyE ? m >= nyS and m < nyE : m >= nyS or m < nyE
+    t.fEl   := el
+    t.fLtf  := lt
+    t.fOte  := ote
+    t.fDisp := r.disp
+    t.fNy   := ny
+    t.score := r.sScore + (el ? 1 : 0) + (lt ? 1 : 0) + (ote ? 1 : 0) + (r.disp ? 1 : 0) + (ny ? 1 : 0)
+    true
+
+// ---- drawing ----
+upLine(line ln, int x1, float y, color c) =>
+    line res = ln
+    if na(y)
+        line.delete(ln)
+        res := na
+    else if na(ln)
+        res := line.new(x1, y, bar_index, y, color=c, style=line.style_dashed, width=1)
+    else
+        line.set_xy1(ln, x1, y)
+        line.set_xy2(ln, bar_index, y)
+    res
+
+upLab(label lb, float y, color c, string txt) =>
+    label res = lb
+    if na(y)
+        label.delete(lb)
+        res := na
+    else if na(lb)
+        res := label.new(bar_index, y, txt, color=color.new(color.black, 100), style=label.style_label_left, textcolor=c, size=size.tiny)
+    else
+        label.set_xy(lb, bar_index, y)
+        label.set_text(lb, txt)
+    res
+
+clearTrade(RB r) =>
+    line.delete(r.lnE)
+    line.delete(r.lnS)
+    line.delete(r.lnT1)
+    line.delete(r.lnT2)
+    label.delete(r.lbE)
+    label.delete(r.lbS)
+    label.delete(r.lbT1)
+    label.delete(r.lbT2)
+    r.lnE := na
+    r.lnS := na
+    r.lnT1 := na
+    r.lnT2 := na
+    r.lbE := na
+    r.lbS := na
+    r.lbT1 := na
+    r.lbT2 := na
+    true
+
+// entry / stop / TP lines for the selected entry of a live RB
+drawTrade(RB r) =>
+    Trade t = trd(r, selIdx)
+    bool waitC = selIdx == 3 and not t.filled
+    float yE  = waitC ? r.edge : t.entry
+    float yS  = waitC and fixStop ? na : t.stop
+    float yT1 = waitC ? na : t.tp1
+    float yT2 = waitC ? na : t.tp2
+    string eTxt = waitC ? "Tap → wait for CISD" : (t.filled ? "Filled " : "Limit ") + array.get(ENTRY_NAMES, selIdx) + " " + px(yE)
+    int x1 = math.max(r.formBar, bar_index - MAX_AGE)
+    r.lnE := upLine(r.lnE, x1, yE, colEnt)
+    r.lbE := upLab(r.lbE, yE, colEnt, eTxt)
+    r.lnS := upLine(r.lnS, x1, yS, colSl)
+    r.lbS := upLab(r.lbS, yS, colSl, "SL " + px(yS))
+    r.lnT1 := upLine(r.lnT1, x1, yT1, colTp)
+    r.lbT1 := upLab(r.lbT1, yT1, colTp, "TP1 " + px(yT1))
+    r.lnT2 := upLine(r.lnT2, x1, yT2, colTp)
+    r.lbT2 := upLab(r.lbT2, yT2, colTp, "TP2 " + px(yT2))
+    true
+
+deleteDrawings(RB r) =>
+    box.delete(r.bx)
+    line.delete(r.ceLn)
+    line.delete(r.qLn)
+    label.delete(r.tag)
+    r.bx := na
+    r.ceLn := na
+    r.qLn := na
+    r.tag := na
+    clearTrade(r)
+    true
+
+setupText(RB r) =>
+    "PD array " + yes(r.fPda) + " · Liquidity " + yes(r.fLiq) + " · P/D " + yes(r.fPd) + " · Bias " + yes(r.fBias) + " · Order flow " + yes(r.fOf) + " · Clean tip " + yes(r.fClean) + (smtOn ? " · SMT " + yes(r.fSmt) : "")
+
+tagText(RB r) =>
+    string t = (r.bull ? "▲ " : "▼ ") + str.tostring(r.sScore) + "/" + str.tostring(SETUPMAX) + (r.disp ? " ✓" : "")
+    lblMode == "Full" ? t + " · " + r.names : t
+
+tagTip(RB r) =>
+    (r.bull ? "Bullish" : "Bearish") + " rejection block (" + rbName + ")\nRan: " + r.names + "\nGann  0 tip " + px(r.tip) + " · .25 " + px(r.q25) + " · .5 CE " + px(r.ce) + " · 1 edge " + px(r.edge) + "\nLimits  .5 @ " + px(r.t0.entry) + " · .25 @ " + px(r.t1.entry) + "   SL " + px(r.t0.stop) + "\nSetup " + str.tostring(r.sScore) + "/" + str.tostring(SETUPMAX) + ": " + setupText(r) + "\nDisplacement: " + (r.disp ? "printed (" + r.dispBy + ")" : "waiting, CISD at " + px(r.cisdLvl))
+
+refreshTag(RB r) =>
+    if not na(r.bx)
+        box.set_border_style(r.bx, r.disp ? line.style_solid : line.style_dashed)
+    if not na(r.tag)
+        label.set_text(r.tag, tagText(r))
+        label.set_tooltip(r.tag, tagTip(r))
+    true
+
+drawNew(RB r) =>
+    color c = r.bull ? colBull : colBear
+    r.bx := box.new(left=r.formBar, top=math.max(r.tip, r.edge), right=bar_index, bottom=math.min(r.tip, r.edge), border_color=color.new(c, 30), border_style=r.disp ? line.style_solid : line.style_dashed, bgcolor=color.new(c, 85))
+    if showGann
+        r.ceLn := line.new(r.formBar, r.ce, bar_index, r.ce, color=color.new(c, 10), style=line.style_dotted, width=1)
+        r.qLn  := line.new(r.formBar, r.q25, bar_index, r.q25, color=color.new(c, 55), style=line.style_dotted, width=1)
+    if lblMode != "Off"
+        r.tag := label.new(r.formBar, r.tip, tagText(r), color=color.new(color.black, 100), style=r.bull ? label.style_label_up : label.style_label_down, textcolor=c, size=size.tiny, tooltip=tagTip(r))
+    true
+
+// the zone has stopped being live: freeze and dim its drawings
+endZone(RB r) =>
+    r.zoneDone := true
+    color c = r.bull ? colBull : colBear
+    if not keepLbl
+        label.delete(r.tag)
+        r.tag := na
+    if not na(r.bx)
+        box.set_right(r.bx, bar_index)
+        box.set_bgcolor(r.bx, color.new(c, 94))
+        box.set_border_color(r.bx, color.new(c, 70))
+    if not na(r.ceLn)
+        line.set_x2(r.ceLn, bar_index)
+        line.set_color(r.ceLn, color.new(c, 70))
+    if not na(r.qLn)
+        line.set_x2(r.qLn, bar_index)
+        line.set_color(r.qLn, color.new(c, 85))
+    true
+
+sizeTxt(float s) =>
+    s >= 1 ? "×1" : s >= 0.5 ? "×½" : s >= 0.25 ? "×¼" : "×" + str.tostring(s, "0.###")
+
+markTip(RB r, Trade t) =>
+    (r.bull ? "Bottom tick · long @ " : "Top tick · short @ ") + px(t.entry) + " (" + array.get(ENTRY_NAMES, selIdx) + ")\nGrade " + gradeOf(t.score, MAXS) + " · score " + str.tostring(t.score) + "/" + str.tostring(MAXS) + "\nSL " + px(t.stop) + "  TP1 " + px(t.tp1) + "  TP2 " + px(t.tp2) + "\nRB " + rbName + " off " + r.names + "\nSetup: " + setupText(r) + "\nEntry: Engineered liquidity " + yes(t.fEl) + " · LTF gap " + yes(t.fLtf) + " · OTE " + yes(t.fOte) + " · Displaced " + yes(t.fDisp) + " · Session " + yes(t.fNy) + (t.size > 0 ? "\nDaily plan trade, size " + sizeTxt(t.size) : "")
+
+// TOP / BOT marker where the selected entry filled
+addMark(RB r, Trade t) =>
+    color c = r.bull ? colBull : colBear
+    string txt = (r.bull ? "BOT " : "TOP ") + gradeOf(t.score, MAXS) + (t.size > 0 ? " " + sizeTxt(t.size) : "")
+    label lb = label.new(bar_index, t.entry, txt, color=color.new(c, 10), style=r.bull ? label.style_label_up : label.style_label_down, textcolor=color.white, size=size.small, tooltip=markTip(r, t))
+    array.push(marks, lb)
+    if array.size(marks) > markKeep
+        label.delete(array.shift(marks))
+    true
+
+// A7: add a resolved RB to the stats
+countRB(RB r) =>
+    for m = 0 to 3
+        Trade t = trd(r, m)
+        if t.filled and passes(t)
+            array.set(eFill, m, array.get(eFill, m) + 1)
+            array.set(eS1, m, array.get(eS1, m) + t.r1)
+            array.set(eW1, m, array.get(eW1, m) + (t.r1 > 0 ? 1 : 0))
+            array.set(eS2, m, array.get(eS2, m) + t.r2)
+            array.set(eW2, m, array.get(eW2, m) + (t.r2 > 0 ? 1 : 0))
+    Trade ts = trd(r, selIdx)
+    if ts.filled
+        string g = gradeOf(ts.score, MAXS)
+        for k = 0 to LAB_N - 1
+            bool inRow = switch k
+                0  => true
+                1  => r.fPda
+                2  => r.fLiq
+                3  => r.fPd
+                4  => r.fBias
+                5  => r.fOf
+                6  => r.fClean
+                7  => r.fSmt
+                8  => ts.fEl
+                9  => ts.fLtf
+                10 => ts.fOte
+                11 => ts.fDisp
+                12 => ts.fNy
+                13 => g == "A+"
+                14 => g == "A"
+                15 => g == "B"
+                => g == "C"
+            if inRow
+                array.set(lN, k, array.get(lN, k) + 1)
+                array.set(lS1, k, array.get(lS1, k) + ts.r1)
+                array.set(lW1, k, array.get(lW1, k) + (ts.r1 > 0 ? 1 : 0))
+                array.set(lS2, k, array.get(lS2, k) + ts.r2)
+                array.set(lW2, k, array.get(lW2, k) + (ts.r2 > 0 ? 1 : 0))
+    true
+
+// ---- HTF gaps (R2) ----
+addGap(bool bull, float top, float bot, string nm, int bt, int left) =>
+    int lft = math.max(left, bar_index - MAX_AGE)
+    Gap g = Gap.new(bull=bull, top=top, bot=bot, name=nm, bornT=bt, left=lft)
+    if showFvg
+        g.bx := box.new(left=lft, top=top, right=bar_index, bottom=bot, border_color=color.new(colFvg, 55), bgcolor=color.new(colFvg, 88), text=nm, text_size=size.tiny, text_color=color.new(colFvg, 20), text_halign=text.align_right, text_valign=bull ? text.align_bottom : text.align_top)
+    array.push(gaps, g)
+    // keep the newest fvgKeep per timeframe and side
+    int cnt = 0
+    for i = array.size(gaps) - 1 to 0
+        Gap q = array.get(gaps, i)
+        if q.name == nm and q.bull == bull
+            cnt += 1
+            if cnt > fvgKeep
+                box.delete(q.bx)
+                array.remove(gaps, i)
+    true
+
+// One closed gap-timeframe candle: fair value gaps (R2), order flow from its
+// 3-candle swings (A8), and its high/low as liquidity (R3).
+pdaClose(Agg a, string nm, bool late, bool isOf) =>
+    array.push(a.H, a.h)
+    array.push(a.L, a.l)
+    array.push(a.B, a.bar)
+    if array.size(a.H) > 5
+        array.shift(a.H)
+        array.shift(a.L)
+        array.shift(a.B)
+    int n = array.size(a.H)
+    int bt = late ? time : time_close
+    if isOf
+        if not na(S.swH) and a.c > S.swH
+            S.ofDir := 1
+            S.swH := na
+        if not na(S.swL) and a.c < S.swL
+            S.ofDir := -1
+            S.swL := na
+    if n >= 3
+        float h1 = array.get(a.H, n - 3)
+        float l1 = array.get(a.L, n - 3)
+        float h2 = array.get(a.H, n - 2)
+        float l2 = array.get(a.L, n - 2)
+        float h3 = array.get(a.H, n - 1)
+        float l3 = array.get(a.L, n - 1)
+        int left = array.get(a.B, n - 3)
+        if l3 - h1 >= fvgMinTk * TICK
+            addGap(true, l3, h1, nm + " FVG", bt, left)
+        if l1 - h3 >= fvgMinTk * TICK
+            addGap(false, l1, h3, nm + " FVG", bt, left)
+        if isOf
+            if h2 > h1 and h2 > h3
+                S.swH := h2
+            if l2 < l1 and l2 < l3
+                S.swL := l2
+    if useHtfC
+        killName(nm + " H")
+        killName(nm + " L")
+        addLvl(a.h, nm + " H", 1, 2, bt, koDay)
+        addLvl(a.l, nm + " L", -1, 2, bt, koDay)
+    true
+
+// build a gap-timeframe candle from chart bars; finalize it on its last bar (A1)
+pdaStep(Agg a, string nm, bool newBar, bool lastBar, bool isOf) =>
+    if newBar
+        if not a.done and not na(a.o)
+            pdaClose(a, nm, true, isOf)
+        a.o := open
+        a.h := high
+        a.l := low
+        a.c := close
+        a.bar := bar_index
+        a.done := false
+    else if not na(a.o)
+        a.h := math.max(a.h, high)
+        a.l := math.min(a.l, low)
+        a.c := close
+    if lastBar and not a.done and not na(a.o)
+        pdaClose(a, nm, false, isOf)
+        a.done := true
+    true
+
+// Finalize one closed RB-timeframe candle: age and displacement for live RBs,
+// then look for a new RB (R1-R4) against the gaps and levels as they stood
+// before it (A2), then store the candle, confirm swings, drop spent liquidity.
+// late = finalized on the first bar of the next candle (A1). sh/sl = SMT symbol.
+finalize(float o, float h, float l, float c, int cT, int b0, bool late, float sh, float sl) =>
+    if array.size(rbs) > 0
+        for i = 0 to array.size(rbs) - 1
+            RB r = array.get(rbs, i)
+            if not r.resolved and not r.zoneDone and r.formT < cT
+                r.age := r.age + 1
+                if not r.disp and r.dispCount < dispWin
+                    r.dispCount := r.dispCount + 1
+                    if r.bull ? c > r.cisdLvl : c < r.cisdLvl
+                        r.disp := true
+                        r.dispBy := "CISD"
+                        refreshTag(r)
+
+    float bodyTop = math.max(o, c)
+    float bodyBot = math.min(o, c)
+    float rng  = h - l
+    float upW  = h - bodyTop
+    float dnW  = bodyBot - l
+    float body = bodyTop - bodyBot
+    float atrV = S.atr
+    bool capUp = maxWickAtr <= 0 or na(atrV) or upW <= maxWickAtr * atrV
+    bool capDn = maxWickAtr <= 0 or na(atrV) or dnW <= maxWickAtr * atrV
+    bool bearShape = rng > 0 and upW >= minWickPct / 100.0 * rng and upW >= minWickBody * body and upW > dnW and (na(atrV) or minWickAtr <= 0 or upW >= minWickAtr * atrV) and capUp
+    bool bullShape = rng > 0 and dnW >= minWickPct / 100.0 * rng and dnW >= minWickBody * body and dnW > upW and (na(atrV) or minWickAtr <= 0 or dnW >= minWickAtr * atrV) and capDn
+    int nh = array.size(hH)
+    RB rbNew = na
+    if bearShape or bullShape
+        bool bull = bullShape
+        array<string> nmG = array.new<string>()
+        array<string> nm3 = array.new<string>()
+        array<string> nm2 = array.new<string>()
+        array<string> nm1 = array.new<string>()
+        array<string> nm0 = array.new<string>()
+        bool hitG = false
+        int bestTier = -1
+        // R2: the wick reaches an HTF gap and the body stays on this side of its far edge
+        if array.size(gaps) > 0
+            for i = 0 to array.size(gaps) - 1
+                Gap g = array.get(gaps, i)
+                if g.bull == bull and g.bornT <= cT and (na(g.invT) or g.invT >= cT)
+                    if bull ? l <= g.top and bodyBot > g.bot : h >= g.bot and bodyTop < g.top
+                        hitG := true
+                        if not array.includes(nmG, g.name)
+                            array.push(nmG, g.name)
+        // R3: liquidity and key opens
+        if array.size(lvls) > 0
+            for i = 0 to array.size(lvls) - 1
+                Lvl lv = array.get(lvls, i)
+                if lv.bornT <= cT and (na(lv.deadT) or cT < lv.deadT)
+                    bool untaken = na(lv.takenT) or lv.takenT >= cT
+                    bool hit = false
+                    if lv.kind == 0
+                        hit := bull ? l <= lv.price and bodyBot > lv.price : h >= lv.price and bodyTop < lv.price
+                    else if bull and lv.kind == -1 and untaken
+                        hit := l <= lv.price - sweepTk * TICK and bodyBot > lv.price
+                    else if not bull and lv.kind == 1 and untaken
+                        hit := h >= lv.price + sweepTk * TICK and bodyTop < lv.price
+                    if hit
+                        array.push(lv.tier == 3 ? nm3 : lv.tier == 2 ? nm2 : nm1, lv.name)
+                        bestTier := math.max(bestTier, lv.tier)
+        // R3: the previous RB candle (Shinobi), the weakest trigger
+        if usePrev and nh > 0
+            float ph = array.get(hH, nh - 1)
+            float pl = array.get(hL, nh - 1)
+            if bull ? l <= pl - sweepTk * TICK and bodyBot > pl : h >= ph + sweepTk * TICK and bodyTop < ph
+                array.push(nm0, bull ? "Prev L" : "Prev H")
+                bestTier := math.max(bestTier, 0)
+        if hitG or bestTier >= 0
+            // label names, gaps and key levels first, at most three
+            array<string> nmAll = array.concat(array.concat(array.concat(array.concat(nmG, nm3), nm2), nm1), nm0)
+            string names = array.join(array.slice(nmAll, 0, math.min(3, array.size(nmAll))), "+") + (array.size(nmAll) > 3 ? "+" + str.tostring(array.size(nmAll) - 3) : "")
+            // R4: Gann box on the wick
+            float tip  = bull ? l : h
+            float edge = zoneFrom == "Close" ? c : bull ? bodyBot : bodyTop
+            float ce   = (tip + edge) / 2
+            float q25  = tip + 0.25 * (edge - tip)
+            // A4: a wick inside a live RB of the same direction is a retest of it
+            bool dup = false
+            if array.size(rbs) > 0
+                for i = 0 to array.size(rbs) - 1
+                    RB q = array.get(rbs, i)
+                    if q.bull == bull and not q.zoneDone and not q.resolved
+                        if bull ? tip >= q.tip and tip <= q.edge : tip <= q.tip and tip >= q.edge
+                            dup := true
+            // R8 setup factors
+            bool fPda  = hitG
+            bool fLiq  = bestTier >= 1
+            bool fPd   = pdOk(bull, ce)
+            bool fBias = bias == (bull ? 1 : -1)
+            bool fOf   = S.ofDir == (bull ? 1 : -1)
+            bool fClean = true
+            if nh > 0
+                for j = math.max(0, nh - eqLook) to nh - 1
+                    float x = bull ? array.get(hL, j) : array.get(hH, j)
+                    if math.abs(x - tip) <= eqTk * TICK
+                        fClean := false
+            bool fSmt = false
+            if smtOn and nh > 0 and not na(sh) and not na(sl)
+                float mxH = na
+                float mnL = na
+                float sxH = na
+                float snL = na
+                for j = math.max(0, nh - smtLook) to nh - 1
+                    mxH := na(mxH) ? array.get(hH, j) : math.max(mxH, array.get(hH, j))
+                    mnL := na(mnL) ? array.get(hL, j) : math.min(mnL, array.get(hL, j))
+                    float a1 = array.get(hSH, j)
+                    float a2 = array.get(hSL, j)
+                    if not na(a1)
+                        sxH := na(sxH) ? a1 : math.max(sxH, a1)
+                    if not na(a2)
+                        snL := na(snL) ? a2 : math.min(snL, a2)
+                fSmt := bull ? not na(snL) and l < mnL and sl >= snL : not na(sxH) and h > mxH and sh <= sxH
+            int sc = (fPda ? 1 : 0) + (fLiq ? 1 : 0) + (fPd ? 1 : 0) + (fBias ? 1 : 0) + (fOf ? 1 : 0) + (fClean ? 1 : 0) + (fSmt ? 1 : 0)
+            float fr  = frontTk * TICK
+            float eCE = bull ? math.min(ce + fr, edge) : math.max(ce - fr, edge)
+            float eQ  = bull ? math.min(q25 + fr, edge) : math.max(q25 - fr, edge)
+            bool tooWide = maxStop > 0 and math.abs(eCE - stopFor(bull, eCE, tip)) > maxStop
+            bool show = not flatNow and not dup and not tooWide and sc >= minSetup and (not reqPda or fPda) and (not reqLiq or fLiq) and (not reqPd or fPd) and (not reqBias or fBias) and (not reqOf or fOf) and (not reqClean or fClean)
+            // CISD level = open of the run of candles that pushed into the sweep
+            float runOpen = na
+            int   runBar  = b0
+            if bull ? c < o : c > o
+                runOpen := o
+            int jj = nh - 1
+            int steps = 0
+            while jj >= 0 and steps < 10
+                float oj = array.get(hO, jj)
+                float cj = array.get(hC, jj)
+                if bull ? cj < oj : cj > oj
+                    runOpen := oj
+                    runBar := array.get(hB, jj)
+                    jj -= 1
+                    steps += 1
+                else
+                    break
+            float cisdLvl = na(runOpen) ? (bull ? h : l) : runOpen
+            bool dispNow = bull ? c > cisdLvl : c < cisdLvl
+            // A1: a late candle is dropped if this bar already took its tip
+            bool tapNow = false
+            if show and late
+                bool invNow = invWick ? (bull ? low < tip : high > tip) : (bull ? close < tip : close > tip)
+                tapNow := bull ? low <= edge : high >= edge
+                if invNow
+                    show := false
+            if show
+                Trade tA = mkTrade(bull, eCE, tip)
+                Trade tQ = mkTrade(bull, eQ, tip)
+                Trade tE = mkTrade(bull, edge, tip)
+                Trade tC = Trade.new(stop=stopFor(bull, edge, tip))
+                rbNew := RB.new(bull=bull, tip=tip, edge=edge, ce=ce, q25=q25, names=names, formT=cT, formBar=b0, legBar=runBar, trackFrom=bar_index + 1, fillFrom=bar_index + 1, cisdLvl=cisdLvl, disp=dispNow, dispBy=dispNow ? "CISD" : "", tapped=tapNow, far=bull ? h : l, ext=bull ? h : l, sScore=sc, fPda=fPda, fLiq=fLiq, fPd=fPd, fBias=fBias, fOf=fOf, fClean=fClean, fSmt=fSmt, t0=tA, t1=tQ, t2=tE, t3=tC)
+
+    // store the candle and update ATR(14) of the RB timeframe
+    float prevC = nh > 0 ? array.get(hC, nh - 1) : na
+    float tr = na(prevC) ? h - l : math.max(h, prevC) - math.min(l, prevC)
+    S.atr := na(S.atr) ? tr : S.atr + (tr - S.atr) / 14.0
+    array.push(hO, o)
+    array.push(hH, h)
+    array.push(hL, l)
+    array.push(hC, c)
+    array.push(hB, b0)
+    array.push(hSH, sh)
+    array.push(hSL, sl)
+    if array.size(hO) > 60
+        array.shift(hO)
+        array.shift(hH)
+        array.shift(hL)
+        array.shift(hC)
+        array.shift(hB)
+        array.shift(hSH)
+        array.shift(hSL)
+
+    // swing points confirmed by this candle (live from its close, A2)
+    if useSw
+        int ns = array.size(hH)
+        if ns >= 2 * swLen + 1
+            int cI = ns - 1 - swLen
+            float sph = array.get(hH, cI)
+            float spl = array.get(hL, cI)
+            bool isPH = true
+            bool isPL = true
+            for k = cI - swLen to cI + swLen
+                if k != cI
+                    if array.get(hH, k) >= sph
+                        isPH := false
+                    if array.get(hL, k) <= spl
+                        isPL := false
+            int bt = late ? time : time_close
+            if isPH
+                addLvl(sph, "Swing H", 1, 1, bt, koDay)
+                trimSwings(1)
+            if isPL
+                addLvl(spl, "Swing L", -1, 1, bt, koDay)
+                trimSwings(-1)
+
+    // one-sided liquidity traded through by this candle (or before it) is spent
+    if array.size(lvls) > 0
+        for i = array.size(lvls) - 1 to 0
+            Lvl lv = array.get(lvls, i)
+            if lv.kind != 0 and not na(lv.takenT) and (not late or lv.takenT < time)
+                dropLvl(i)
+    rbNew
+
+// ============================== ENGINE =======================================
+bool aNewBull = false
+bool aNewBear = false
+bool aTop     = false
+bool aBot     = false
+bool aInval   = false
+
+if barstate.isconfirmed
+    // ---- chart-bar runs for the CISD trigger (R5)
+    float prevUp = upRun
+    float prevDn = dnRun
+    if close > open
+        upRun := na(upRun) ? open : upRun
+        dnRun := na
+    else if close < open
+        dnRun := na(dnRun) ? open : dnRun
+        upRun := na
+    else
+        upRun := na
+        dnRun := na
+    float cisdBear = close > open ? upRun : na(prevUp) ? open : prevUp
+    float cisdBull = close < open ? dnRun : na(prevDn) ? open : prevDn
+
+    // ---- day / week levels and the PXH/PXL daily bias (R3, A8)
+    if newDay
+        if not na(dO)
+            float dC = close[1]
+            if not na(pdH)
+                bool tookH = dH > pdH
+                bool tookL = dL < pdL
+                bias := dC > pdH ? 1 : dC < pdL ? -1 : tookH and not tookL ? -1 : tookL and not tookH ? 1 : dC >= dO ? 1 : -1
+            else
+                bias := dC >= dO ? 1 : -1
+            pdH := dH
+            pdL := dL
+            if usePD
+                killName("PDH")
+                killName("PDL")
+                addLvl(dH, "PDH", 1, 3, time, koDay)
+                addLvl(dL, "PDL", -1, 3, time, koDay)
+        dO := open
+        dH := high
+        dL := low
+    else
+        if na(dO)
+            dO := open
+        dH := na(dH) ? high : math.max(dH, high)
+        dL := na(dL) ? low : math.min(dL, low)
+    if newWeek
+        if usePW and not na(wH)
+            killName("PWH")
+            killName("PWL")
+            addLvl(wH, "PWH", 1, 3, time, koDay)
+            addLvl(wL, "PWL", -1, 3, time, koDay)
+        wH := high
+        wL := low
+    else
+        wH := na(wH) ? high : math.max(wH, high)
+        wL := na(wL) ? low : math.min(wL, low)
+    if mNow >= 1080
+        sawEve := true
+    if sawEve ? cross18 : newDay
+        koDay += 1
+        koOpen := open
+    if newNyDate
+        mOpen := open
+        mOpenDay := koDay
+    if useKO
+        string koName = mNow == 1080 and ko1800 ? "18:00" : mNow == 0 and ko0000 ? "00:00" : mNow == 120 and ko0200 ? "02:00" : mNow == 510 and ko0830 ? "08:30" : mNow == 570 and ko0930 ? "09:30" : mNow == 600 and ko1000 ? "10:00" : mNow == 780 and ko1300 ? "13:00" : mNow == 810 and ko1330 ? "13:30" : ""
+        if koName != ""
+            addLvl(open, koName, 0, 2, time + 1, koDay)
+    if useSes
+        bool nAs = mNow >= 1200
+        bool nLn = mNow >= 120 and mNow < 300
+        bool nNy = mNow >= 570 and mNow < 720
+        if nAs
+            asH := inAs ? math.max(asH, high) : high
+            asL := inAs ? math.min(asL, low) : low
+        else if inAs
+            killName("Asia H")
+            killName("Asia L")
+            addLvl(asH, "Asia H", 1, 2, time, koDay)
+            addLvl(asL, "Asia L", -1, 2, time, koDay)
+        if nLn
+            lnH := inLn ? math.max(lnH, high) : high
+            lnL := inLn ? math.min(lnL, low) : low
+        else if inLn
+            killName("London H")
+            killName("London L")
+            addLvl(lnH, "London H", 1, 2, time, koDay)
+            addLvl(lnL, "London L", -1, 2, time, koDay)
+        if nNy
+            nyH := inNy ? math.max(nyH, high) : high
+            nyL := inNy ? math.min(nyL, low) : low
+        else if inNy
+            killName("NY AM H")
+            killName("NY AM L")
+            addLvl(nyH, "NY AM H", 1, 2, time, koDay)
+            addLvl(nyL, "NY AM L", -1, 2, time, koDay)
+        inAs := nAs
+        inLn := nLn
+        inNy := nNy
+
+    // ---- daily plan: a new trading day starts once no plan trade is open (A9)
+    if planDay != koDay and na(planT)
+        if dayTrades > 0
+            planDays += 1
+            planWinD += dayR > 0 ? 1 : 0
+        planDay := koDay
+        dayTrades := 0
+        dayDone := false
+        dayR := 0.0
+
+    // ---- one-sided liquidity traded through on this bar (A2)
+    if array.size(lvls) > 0
+        for i = 0 to array.size(lvls) - 1
+            Lvl lv = array.get(lvls, i)
+            if lv.kind != 0 and na(lv.takenT) and time >= lv.bornT
+                if lv.kind == 1 ? high >= lv.price + sweepTk * TICK : low <= lv.price - sweepTk * TICK
+                    lv.takenT := time
+
+    // ---- HTF gaps closed through on this bar die (R2)
+    if array.size(gaps) > 0
+        for i = 0 to array.size(gaps) - 1
+            Gap g = array.get(gaps, i)
+            if na(g.invT) and time >= g.bornT and (g.bull ? close < g.bot : close > g.top)
+                g.invT := time
+                box.delete(g.bx)
+                g.bx := na
+
+    // ---- track every RB already on the chart through this bar (R5, R6, A5)
+    if array.size(rbs) > 0
+        for i = 0 to array.size(rbs) - 1
+            RB r = array.get(rbs, i)
+            if not r.resolved and bar_index >= r.trackFrom
+                bool deadBefore = r.zoneDone
+                if not deadBefore and rbLife > 0 and r.age >= rbLife
+                    r.expired := true
+                    endZone(r)
+                    deadBefore := true
+                bool deadNow = false
+                if not deadBefore
+                    if not r.tapped and (r.bull ? low <= r.edge : high >= r.edge)
+                        r.tapped := true
+                    bool inv = invWick ? (r.bull ? low < r.tip : high > r.tip) : (r.bull ? close < r.tip : close > r.tip)
+                    if inv
+                        r.invalid := true
+                        deadNow := true
+                        Trade tsI = trd(r, selIdx)
+                        if not tsI.filled and not tsI.cancelled
+                            aInval := true
+                            alert((r.bull ? "Bullish" : "Bearish") + " RB invalidated before entry (tip " + px(r.tip) + " taken) · " + syminfo.ticker, alert.freq_once_per_bar_close)
+                    if flatNow or bar_index - r.formBar > MAX_AGE
+                        r.expired := true
+                        deadNow := true
+                bool canFill = bar_index >= r.fillFrom
+                for m = 0 to 3
+                    Trade t = trd(r, m)
+                    bool fNow = m == 3 ? stepCisd(t, r, canFill, deadBefore, deadNow, r.bull ? cisdBull : cisdBear, flatNow) : stepLimit(t, r.bull, canFill, deadBefore, deadNow)
+                    if fNow
+                        entryFactors(r, t)
+                        if m == selIdx and passes(t)
+                            if planOn and planDay == koDay and not dayDone and na(planT) and dayTrades < planMax
+                                t.size := math.pow(0.5, dayTrades)
+                                planT := t
+                                dayTrades += 1
+                            addMark(r, t)
+                            if r.bull
+                                aBot := true
+                            else
+                                aTop := true
+                            alert((r.bull ? "BOTTOM TICK · long " : "TOP TICK · short ") + syminfo.ticker + " @ " + px(t.entry) + " (" + array.get(ENTRY_NAMES, m) + ") · grade " + gradeOf(t.score, MAXS) + " " + str.tostring(t.score) + "/" + str.tostring(MAXS) + " · SL " + px(t.stop) + " · TP1 " + px(t.tp1) + " · TP2 " + px(t.tp2) + (t.size > 0 ? " · plan size " + sizeTxt(t.size) : ""), alert.freq_once_per_bar_close)
+                    stepOpen(t, r.bull, m == 3, flatNow)
+                if deadNow and not r.zoneDone
+                    endZone(r)
+                if isDone(r.t0) and isDone(r.t1) and isDone(r.t2) and isDone(r.t3)
+                    r.resolved := true
+                    if not r.zoneDone
+                        endZone(r)
+                    countRB(r)
+                    setups += 1
+                else if not r.zoneDone
+                    if not na(r.bx)
+                        box.set_right(r.bx, bar_index)
+                    if not na(r.ceLn)
+                        line.set_x2(r.ceLn, bar_index)
+                    if not na(r.qLn)
+                        line.set_x2(r.qLn, bar_index)
+                // the leg off the tip, through this bar, for OTE from the next bar (A6)
+                r.ext := r.bull ? math.max(r.ext, high) : math.min(r.ext, low)
+
+    // ---- the open plan trade resolves at its plan target (R9)
+    if not na(planT)
+        if planTgt == "TP1" ? planT.done1 : planT.done2
+            float rr = (planTgt == "TP1" ? planT.r1 : planT.r2) * planT.size
+            dayR += rr
+            planR += rr
+            planN += 1
+            planW += rr > 0 ? 1 : 0
+            if rr > 0 or dayTrades >= planMax
+                dayDone := true
+            planT := na
+
+    // ---- chart-timeframe gaps. Closing through one from the leg into a live RB's
+    // tip displaces that RB (GS: inverse the gaps in the leg); live ones are entry factors.
+    if array.size(lgTop) > 0
+        for i = array.size(lgTop) - 1 to 0
+            bool gb = array.get(lgBull, i)
+            if gb ? close < array.get(lgBot, i) : close > array.get(lgTop, i)
+                int gm = array.get(lgBar, i) - 1
+                if array.size(rbs) > 0
+                    for k = 0 to array.size(rbs) - 1
+                        RB r = array.get(rbs, k)
+                        if r.bull != gb and not r.resolved and not r.zoneDone and not r.disp and bar_index >= r.trackFrom and gm >= r.legBar and gm < r.trackFrom
+                            r.disp := true
+                            r.dispBy := "IFVG"
+                            refreshTag(r)
+                array.remove(lgBull, i)
+                array.remove(lgTop, i)
+                array.remove(lgBot, i)
+                array.remove(lgBar, i)
+    if low > high[2] and low - high[2] >= ltfMinTk * TICK
+        array.push(lgBull, true)
+        array.push(lgTop, low)
+        array.push(lgBot, high[2])
+        array.push(lgBar, bar_index)
+    if high < low[2] and low[2] - high >= ltfMinTk * TICK
+        array.push(lgBull, false)
+        array.push(lgTop, low[2])
+        array.push(lgBot, high)
+        array.push(lgBar, bar_index)
+    while array.size(lgTop) > 40
+        array.shift(lgBull)
+        array.shift(lgTop)
+        array.shift(lgBot)
+        array.shift(lgBar)
+
+    // ---- chart-timeframe swings confirmed on this bar (engineered liquidity, A6)
+    if not na(pvhNow)
+        array.push(pvH, pvhNow)
+        array.push(pvHB, bar_index - elStr)
+        if array.size(pvH) > 30
+            array.shift(pvH)
+            array.shift(pvHB)
+    if not na(pvlNow)
+        array.push(pvL, pvlNow)
+        array.push(pvLB, bar_index - elStr)
+        if array.size(pvL) > 30
+            array.shift(pvL)
+            array.shift(pvLB)
+
+    // ---- gap-timeframe candles (R2, A8)
+    if onA
+        pdaStep(AA, nameA, newABar, lastABar, true)
+    if onB
+        pdaStep(AB, nameB, newBBar, lastBBar, not onA)
+
+    // ---- build the RB-timeframe candle; finalize it on its last bar (A1)
+    RB made1 = na
+    RB made2 = na
+    if newRbBar
+        if not aDone and not na(aO)
+            made1 := finalize(aO, aH, aL, aC, aT, aBar, true, aSH, aSL)
+        aO    := open
+        aH    := high
+        aL    := low
+        aC    := close
+        aSH   := smtH
+        aSL   := smtL
+        aT    := time
+        aBar  := bar_index
+        aDone := false
+    else if not na(aO)
+        aH  := math.max(aH, high)
+        aL  := math.min(aL, low)
+        aC  := close
+        aSH := na(smtH) ? aSH : na(aSH) ? smtH : math.max(aSH, smtH)
+        aSL := na(smtL) ? aSL : na(aSL) ? smtL : math.min(aSL, smtL)
+    if lastRbBar and not aDone and not na(aO)
+        made2 := finalize(aO, aH, aL, aC, aT, aBar, false, aSH, aSL)
+        aDone := true
+
+    for k = 0 to 1
+        RB nr = k == 0 ? made1 : made2
+        if not na(nr)
+            drawNew(nr)
+            array.push(rbs, nr)
+            if nr.bull
+                aNewBull := true
+            else
+                aNewBear := true
+            Trade tn = trd(nr, selIdx)
+            alert((nr.bull ? "Bullish" : "Bearish") + " RB " + rbName + " [setup " + str.tostring(nr.sScore) + "/" + str.tostring(SETUPMAX) + "] off " + nr.names + " · " + (selIdx == 3 ? "wait for a tap, then CISD" : "limit " + array.get(ENTRY_NAMES, selIdx) + " @ " + px(tn.entry) + " · SL " + px(tn.stop)) + " · " + syminfo.ticker, alert.freq_once_per_bar_close)
+
+    // ---- gaps that died before the current RB candle opened go; live ones extend
+    if array.size(gaps) > 0
+        for i = array.size(gaps) - 1 to 0
+            Gap g = array.get(gaps, i)
+            if not na(g.invT) and g.invT < aT
+                array.remove(gaps, i)
+            else if not na(g.bx)
+                if bar_index - g.left > MAX_AGE
+                    g.left := bar_index - MAX_AGE
+                    box.set_left(g.bx, g.left)
+                box.set_right(g.bx, bar_index)
+
+    // ---- replaced levels go, and yesterday's key opens expire (A3)
+    if array.size(lvls) > 0
+        for i = array.size(lvls) - 1 to 0
+            Lvl lv = array.get(lvls, i)
+            if not na(lv.deadT) or (lv.kind == 0 and lv.dayId < koDay)
+                dropLvl(i)
+
+    // ---- extend level lines
+    if array.size(lvls) > 0
+        for i = 0 to array.size(lvls) - 1
+            Lvl lv = array.get(lvls, i)
+            if not na(lv.ln)
+                if bar_index - lv.bornBar > MAX_AGE
+                    line.set_x1(lv.ln, bar_index - MAX_AGE)
+                line.set_x2(lv.ln, bar_index)
+
+    // ---- entry / stop / TP lines for the newest live RBs; only the newest maxKeep
+    // RBs that are still drawn keep their drawings, and finished RBs with none are dropped
+    int liveShown = 0
+    int kept = 0
+    int total = 0
+    if array.size(rbs) > 0
+        for i = array.size(rbs) - 1 to 0
+            RB r = array.get(rbs, i)
+            bool active = not r.resolved and not na(r.bx) and not isDone(trd(r, selIdx))
+            if active and liveShown < lvlN
+                liveShown += 1
+                drawTrade(r)
+            else
+                clearTrade(r)
+            if not na(r.bx)
+                kept += 1
+                if kept > maxKeep
+                    deleteDrawings(r)
+            total += 1
+            if na(r.bx) and (r.resolved or total > 300)
+                array.remove(rbs, i)
+
+// ============================== ALERTS =======================================
+alertcondition(aNewBull, "Bullish RB formed", "Bullish rejection block formed: limit resting")
+alertcondition(aNewBear, "Bearish RB formed", "Bearish rejection block formed: limit resting")
+alertcondition(aBot, "BOTTOM tick (long fill)", "Bottom tick: rejection block long filled")
+alertcondition(aTop, "TOP tick (short fill)", "Top tick: rejection block short filled")
+alertcondition(aInval, "RB invalidated", "Rejection block invalidated before entry")
+
+// ============================ STATS TABLE ====================================
+var table stat = na
+if barstate.islast and showStats
+    tblPos = switch statsPos
+        "Top Right"    => position.top_right
+        "Top Left"     => position.top_left
+        "Bottom Right" => position.bottom_right
+        "Bottom Left"  => position.bottom_left
+        "Middle Right" => position.middle_right
+        => position.top_right
+    if na(stat)
+        stat := table.new(tblPos, 5, 29, border_width=1, frame_color=color.new(color.gray, 40), frame_width=1)
+    else
+        table.set_position(stat, tblPos)
+    color hdrBg = color.new(color.gray, 20)
+    color rowBg = color.new(color.black, 55)
+    color txt   = color.white
+    table.clear(stat, 0, 0, 4, 28)
+    int live = 0
+    if array.size(rbs) > 0
+        for i = 0 to array.size(rbs) - 1
+            if not array.get(rbs, i).resolved
+                live += 1
+    string gapsTxt = onA and onB ? nameA + "/" + nameB : onA ? nameA : onB ? nameB : "off"
+
+    table.cell(stat, 0, 0, "RB " + rbName + " · gaps " + gapsTxt, bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 0, "Setups", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 0, str.tostring(setups), bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 3, 0, "Live", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 4, 0, str.tostring(live), bgcolor=hdrBg, text_color=txt, text_size=size.small)
+
+    table.cell(stat, 0, 1, "Daily bias (PXH/PXL)", bgcolor=rowBg, text_color=txt, text_size=size.small, tooltip="Powell: from the last daily candle against the one before it. Close above its high = bullish; below its low = bearish; took only the high and closed back inside = bearish; took only the low = bullish; otherwise the candle's color.")
+    table.cell(stat, 1, 1, bias == 1 ? "▲ Bull" : bias == -1 ? "▼ Bear" : "-", bgcolor=rowBg, text_color=bias == 1 ? colBull : bias == -1 ? colBear : txt, text_size=size.small)
+    table.cell(stat, 2, 1, "Order flow", bgcolor=rowBg, text_color=txt, text_size=size.small, tooltip="ICT: direction of the last close through a 3-candle swing on gap timeframe A.")
+    table.cell(stat, 3, 1, S.ofDir == 1 ? "▲ Bull" : S.ofDir == -1 ? "▼ Bear" : "-", bgcolor=rowBg, text_color=S.ofDir == 1 ? colBull : S.ofDir == -1 ? colBear : txt, text_size=size.small)
+    table.cell(stat, 4, 1, "≥ " + minGrade, bgcolor=rowBg, text_color=txt, text_size=size.small, tooltip="Minimum grade for TOP / BOT markers, alerts, the entry rows and the daily plan.")
+
+    table.cell(stat, 0, 2, "Entry", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 1, 2, "Fills", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+    table.cell(stat, 2, 2, "Fill%", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Share of finished setups where this entry filled at or above the minimum grade.")
+    string tipTp = "Whole position held to that target with the same stop, no breakeven. Average R per filled trade · share of trades that ended above 0R."
+    table.cell(stat, 3, 2, "→TP1", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip=tipTp)
+    table.cell(stat, 4, 2, "→TP2", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip=tipTp)
+    for m = 0 to 3
+        int n = array.get(eFill, m)
+        float s1 = array.get(eS1, m)
+        float s2 = array.get(eS2, m)
+        table.cell(stat, 0, 3 + m, (m == selIdx ? "▶ " : "") + array.get(ENTRY_NAMES, m), bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 1, 3 + m, str.tostring(n), bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, 3 + m, f_pct(n, setups), bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 3, 3 + m, fR(s1, array.get(eW1, m), n), bgcolor=rowBg, text_color=n > 0 ? (s1 > 0 ? colBull : colBear) : txt, text_size=size.small)
+        table.cell(stat, 4, 3 + m, fR(s2, array.get(eW2, m), n), bgcolor=rowBg, text_color=n > 0 ? (s2 > 0 ? colBull : colBear) : txt, text_size=size.small)
+
+    int row = 7
+    if planOn
+        table.cell(stat, 0, row, "Daily plan (▶ → " + planTgt + ")", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Powell: trade 1 full size, a win ends the day; after a loss trade 2 at ½, then ¼; max " + str.tostring(planMax) + " a day. R is weighted by size.")
+        table.cell(stat, 1, row, "Days", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, row, "Green", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Share of finished plan days that ended above 0R.")
+        table.cell(stat, 3, row, "R / day", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 4, row, "Total", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Total R of finished plan trades, today's included.")
+        float perDay = planDays > 0 ? (planR - (planDay == koDay ? dayR : 0.0)) / planDays : na
+        table.cell(stat, 0, row + 1, str.tostring(planN) + " trades · " + f_pct(planW, planN) + " won", bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 1, row + 1, str.tostring(planDays), bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, row + 1, f_pct(planWinD, planDays), bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 3, row + 1, na(perDay) ? "-" : fRs(perDay), bgcolor=rowBg, text_color=na(perDay) ? txt : perDay > 0 ? colBull : colBear, text_size=size.small)
+        table.cell(stat, 4, row + 1, fRs(planR), bgcolor=rowBg, text_color=planR > 0 ? colBull : planR < 0 ? colBear : txt, text_size=size.small)
+        string today = not na(planT) ? "Today: in trade " + str.tostring(dayTrades) + " (" + sizeTxt(planT.size) + ")" : dayDone ? (dayR > 0 ? "Today: done, green" : "Today: done, stop trading") : "Today: next trade " + str.tostring(dayTrades + 1) + " at " + sizeTxt(math.pow(0.5, dayTrades))
+        table.cell(stat, 0, row + 2, today, bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 1, row + 2, "", bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, row + 2, "", bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 3, row + 2, "Today", bgcolor=rowBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 4, row + 2, fRs(dayR), bgcolor=rowBg, text_color=dayR > 0 ? colBull : dayR < 0 ? colBear : txt, text_size=size.small)
+        row += 3
+
+    if fullTbl
+        table.cell(stat, 0, row, "Filter lab (▶)", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Every fill of the selected entry (▶), whatever its grade, split by the factors that held. A factor earns its place if its row beats All fills on a decent sample (about 100 fills).")
+        table.cell(stat, 1, row, "Fills", bgcolor=hdrBg, text_color=txt, text_size=size.small)
+        table.cell(stat, 2, row, "Share", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip="Share of all fills where this factor held.")
+        table.cell(stat, 3, row, "→TP1", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip=tipTp)
+        table.cell(stat, 4, row, "→TP2", bgcolor=hdrBg, text_color=txt, text_size=size.small, tooltip=tipTp)
+        array<string> labNames = array.from("All fills", "PD array (HTF gap)", "Key level / liquidity", "Premium / discount", "Daily bias", "Order flow", "Clean tip", "SMT", "Engineered liquidity", "LTF gap at entry", "OTE", "Displaced", "Session", "Grade A+", "Grade A", "Grade B", "Grade C")
+        int nAll = array.get(lN, 0)
+        for k = 0 to LAB_N - 1
+            int n = array.get(lN, k)
+            float s1 = array.get(lS1, k)
+            float s2 = array.get(lS2, k)
+            bool off = k == 7 and not smtOn
+            table.cell(stat, 0, row + 1 + k, array.get(labNames, k), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 1, row + 1 + k, off ? "off" : str.tostring(n), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 2, row + 1 + k, off ? "" : f_pct(n, nAll), bgcolor=rowBg, text_color=txt, text_size=size.small)
+            table.cell(stat, 3, row + 1 + k, off ? "" : fR(s1, array.get(lW1, k), n), bgcolor=rowBg, text_color=n > 0 ? (s1 > 0 ? colBull : colBear) : txt, text_size=size.small)
+            table.cell(stat, 4, row + 1 + k, off ? "" : fR(s2, array.get(lW2, k), n), bgcolor=rowBg, text_color=n > 0 ? (s2 > 0 ? colBull : colBear) : txt, text_size=size.small)
