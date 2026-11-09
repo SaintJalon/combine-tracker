@@ -1,0 +1,37 @@
+# Keeps data/ff_calendar_thisweek.json — Forex Factory's economic calendar for the week — up to date, so the
+# tracker's News reads it from its own site (no relay, nothing for anyone to set up). Runs hourly; commits
+# only when the calendar actually changed, so most runs change nothing and trigger no deploy.
+name: Forex Factory calendar
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ff-calendar
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download this week's calendar
+        run: |
+          curl -fsS --retry 3 --retry-delay 20 -m 60 -A 'combine-tracker calendar sync (github.com/SaintJalon/combine-tracker)' \
+            https://nfs.faireconomy.media/ff_calendar_thisweek.json -o /tmp/ff.json
+          # only a non-empty list of events replaces the file (an error page or rate-limit answer never does)
+          jq -e 'type == "array" and length > 0 and (.[0] | has("title") and has("date") and has("impact"))' /tmp/ff.json > /dev/null
+          jq -c . /tmp/ff.json > data/ff_calendar_thisweek.json
+      - name: Commit if it changed
+        run: |
+          if git diff --quiet -- data/ff_calendar_thisweek.json; then echo "Calendar unchanged."; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/ff_calendar_thisweek.json
+          git commit -m 'Update Forex Factory calendar'
+          git push

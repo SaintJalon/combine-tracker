@@ -11,12 +11,10 @@ and stores nothing. Your API key is still typed into the app and passes through 
 the relay holds no key, so nobody who finds its address can spend your data credit.
 
 ## News (Forex Factory calendar)
-Core → **News** reads Forex Factory's weekly economic calendar through this relay too — Forex Factory's feed
-doesn't let web pages read it directly. Paste the relay's address in **News → Settings → Relay** (it's the same
-field Replay uses). **If your relay was set up before V95, redeploy it once**: Cloudflare → your worker →
-**Edit code** → paste the new [`worker.mjs`](worker.mjs) → **Deploy**. Without the update, News says so.
-The relay forwards only `ff_calendar_thisweek.json`, and Cloudflare keeps it 15 minutes, so Forex Factory
-sees at most a few requests an hour. FinancialJuice headlines don't need the relay.
+News doesn't need the relay: a GitHub Action (`.github/workflows/ff-calendar.yml`) copies Forex Factory's weekly
+calendar to `data/ff_calendar_thisweek.json` on the site every hour, and the app reads it from there. The relay
+can still forward `ff_calendar_thisweek.json` as a backup if that file is ever missing (paste its address in
+**News → Settings → Backup relay**).
 
 ## Set it up (about 5 minutes, no terminal)
 1. Sign up or log in at **dash.cloudflare.com** (free).

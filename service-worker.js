@@ -1,7 +1,7 @@
 // Bump CACHE on every deploy. Changing this file is what makes the browser
 // re-install the worker at all — if it stays byte-identical, `install` never
 // re-runs and old caches are never purged.
-const CACHE = 'combine-tracker-v95';
+const CACHE = 'combine-tracker-v96';
 const ASSETS = [
   './',
   './index.html',
@@ -66,6 +66,18 @@ self.addEventListener('fetch', function (e) {
         }
         return resp;
       }).catch(function () { return caches.match('./index.html'); })
+    );
+    return;
+  }
+
+  // Published data (data/, e.g. the Forex Factory calendar refreshed hourly): network first, so it's
+  // never served stale, falling back to the last copy when offline.
+  if (new URL(req.url).pathname.indexOf('/data/') !== -1) {
+    e.respondWith(
+      fetchFresh(req.url).then(function (resp) {
+        if (resp && resp.ok) { const copy = resp.clone(); caches.open(CACHE).then(function (c) { c.put(req.url, copy); }); }
+        return resp;
+      }).catch(function () { return caches.match(req.url); })
     );
     return;
   }
