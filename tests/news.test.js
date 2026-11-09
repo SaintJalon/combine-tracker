@@ -62,6 +62,18 @@ t('countdown text', () => {
   assert.strictEqual(N.untilTxt(cpiT, cpiT + 6 * 60000), '6m ago');
   assert.strictEqual(N.untilTxt(cpiT, cpiT - 120 * 60000), 'in 2h');
 });
+t('CT minutes: 8:30 ET is 450 (7:30am CT)', () => {
+  assert.strictEqual(N.ctMinutes(cpiT), 450);
+  assert.strictEqual(N.ctMinutes(Date.parse('2026-11-10T00:05:00-06:00')), 5);
+});
+t('session groups: same-time releases grouped, overnight and other days left out', () => {
+  const g = N.sessionGroups(ev, '2026-11-10', ['High']);
+  assert.strictEqual(g.length, 1);
+  assert.deepStrictEqual(g[0].events.map((e) => e.title), ['Core CPI m/m', 'CPI m/m']);
+  assert.deepStrictEqual(N.sessionGroups(ev, '2026-11-12', ['High']), []); // GBP GDP is 1:00am CT
+  assert.strictEqual(N.sessionGroups(ev, '2026-11-12', ['High'], 0, 1439).length, 1);
+  assert.strictEqual(N.sessionGroups(ev, '2026-11-12', ['High', 'Medium']).length, 1); // 9:30am oil
+});
 t('not an array → no events', () => {
   assert.deepStrictEqual(N.parseFF({ error: 'x' }), []);
 });
