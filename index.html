@@ -6977,20 +6977,27 @@
   // red-folder (High) events, every currency, inside the guard window right now
   function newsGuardHits(){var n=newsCfg();return n.guard?CTNews.guardHits(newsEvents(),Date.now(),+n.before||0,+n.after||0,["High"]):[];}
   function agoTxt(at){var m=Math.round((Date.now()-at)/60000);return m<1?"just now":(m<60?m+"m ago":Math.round(m/60)+"h ago");}
-  // Forex Factory's calendar changes slowly: fetch at most hourly unless asked
+  // Forex Factory's calendar is published on this site (data/, refreshed hourly by a GitHub Action in the repo),
+  // so it works for everyone with nothing to set up. A relay, if one is set, is only the fallback.
   async function loadFF(force){
-    var r=newsRelay();if(newsBusy.ff)return;
-    if(!r){newsMsg.ff="";return;}
-    if(!force&&newsFF&&Date.now()-newsFF.at<60*60000)return;
+    if(newsBusy.ff)return;
+    if(!force&&newsFF&&Date.now()-newsFF.at<30*60000)return;
     newsBusy.ff=true;
     try{
-      var res=await fetch(r+"/ff/ff_calendar_thisweek.json",{cache:"no-store"});
-      if(res.status===404){var j404={};try{j404=await res.clone().json();}catch(e){}throw new Error(j404.error?"Your relay needs the update for News: redeploy it with the newest relay/worker.mjs from the repo (Cloudflare → your worker → Edit code → paste → Deploy).":"Forex Factory has no calendar right now ("+res.status+").");}
-      if(!res.ok)throw new Error("Forex Factory answered "+res.status+(res.status===429?" — too many requests; it'll try again within the hour.":"."));
-      var data=await res.json();if(!Array.isArray(data))throw new Error("Forex Factory sent something that isn't a calendar.");
+      var data=null,r=newsRelay();
+      try{var res=await fetch("data/ff_calendar_thisweek.json",{cache:"no-store"});if(res.ok){var d=await res.json();if(Array.isArray(d)&&d.length)data=d;}}catch(e){}
+      if(!data&&r){
+        var rr=await fetch(r+"/ff/ff_calendar_thisweek.json",{cache:"no-store"});
+        if(rr.status===404){var j404={};try{j404=await rr.clone().json();}catch(e){}throw new Error(j404.error?"The calendar file isn't on the site, and your relay needs the update for News (redeploy it with the newest relay/worker.mjs).":"Forex Factory has no calendar right now.");}
+        if(!rr.ok)throw new Error("Forex Factory answered "+rr.status+" through your relay.");
+        data=await rr.json();if(!Array.isArray(data))throw new Error("Forex Factory sent something that isn't a calendar.");
+      }
+      if(!data)throw new Error("Couldn't load the calendar — check you're online and tap Refresh.");
       newsFF={at:Date.now(),data:data};try{localStorage.setItem(NEWS_FF,JSON.stringify(newsFF));}catch(e){}
-      newsMsg.ff="";
-    }catch(e){newsMsg.ff=e&&e.message&&!/Failed to fetch|NetworkError|Load failed/i.test(e.message)?e.message:"Couldn't reach your relay at "+r+" — offline, or the address is wrong.";}
+      // the site's copy is refreshed hourly; if every event is a week old, the refresh has stopped
+      var ev=CTNews.parseFF(data),last=ev.length?ev[ev.length-1].t:0;
+      newsMsg.ff=last&&Date.now()-last>3*86400000?"This is last week's calendar — the hourly refresh may have stopped (repo → Actions → Forex Factory calendar).":"";
+    }catch(e){newsMsg.ff=e&&e.message&&!/Failed to fetch|NetworkError|Load failed/i.test(e.message)?e.message:"Couldn't load the calendar — check you're online and tap Refresh.";}
     finally{newsBusy.ff=false;renderNews();newsTick();}
   }
   // FinancialJuice rate-limits hard: every 3 minutes at most, and back off 10 minutes when refused
@@ -7026,8 +7033,6 @@
         var when=h.t?(now-h.t<3600000?agoTxt(h.t):CTNews.ctTime(h.t)):"";
         html+='<div class="nrow"><span class="nt">'+esc(when)+'</span><span class="nn">'+(h.link?'<a href="'+esc(h.link)+'" target="_blank" rel="noopener noreferrer">'+esc(h.title)+'</a>':esc(h.title))+'</span></div>';
       });
-    }else if(!newsRelay()){
-      html+='<div class="nempty">Forex Factory\'s calendar comes through your relay — its feed doesn\'t let web pages read it directly. Paste the relay address under <b>Settings</b> below (the same one Replay uses). No relay yet? Setup is in <b>relay/README.md</b> in the repo, about 5 minutes on Cloudflare. Headlines work without it.</div>';
     }else{
       html+='<div class="nstat'+(newsMsg.ff?" bad":"")+'">'+(newsMsg.ff?esc(newsMsg.ff):"Forex Factory · times in CT · "+(imps.length?imps.join(" + ")+" impact":"no impact picked")+(newsFF?" · updated "+agoTxt(newsFF.at):(newsBusy.ff?" · loading…":"")))+'</div>';
       var nx=CTNews.nextEvent(evs,now,imps),hits=newsGuardHits(),hitT={};hits.forEach(function(e){hitT[e.t+"|"+e.title]=1;});
@@ -7049,8 +7054,8 @@
       '<label class="fchk" style="margin:0"><input type="checkbox" data-nset="guard"'+(n.guard?" checked":"")+'> Entry Guard flags red-folder news</label>'+
       '<label>from <input type="number" min="0" max="60" inputmode="numeric" data-nset="before" value="'+(+n.before||0)+'"> min before</label>'+
       '<label>to <input type="number" min="0" max="60" inputmode="numeric" data-nset="after" value="'+(+n.after||0)+'"> min after</label>'+
-      '<div class="nrelay"><span>Relay</span><input type="url" data-nset="relay" value="'+esc(newsRelay())+'" placeholder="https://ct-relay.yourname.workers.dev" autocomplete="off" autocapitalize="none" spellcheck="false"></div>'+
-      '</div><div class="nstat" style="margin-top:8px">All currencies. The guard uses red-folder (high-impact) events only. Calendar: Forex Factory, refreshed hourly. Headlines: FinancialJuice.</div></details>';
+      '<div class="nrelay"><span>Backup relay · optional</span><input type="url" data-nset="relay" value="'+esc(newsRelay())+'" placeholder="https://ct-relay.yourname.workers.dev" autocomplete="off" autocapitalize="none" spellcheck="false"></div>'+
+      '</div><div class="nstat" style="margin-top:8px">All currencies. The guard uses red-folder (high-impact) events only. Calendar: Forex Factory, published on this site and refreshed hourly — nothing to set up. Headlines: FinancialJuice.</div></details>';
     host.innerHTML=html;
   }
   // header chip: the next red-folder event today (red inside the guard window, amber within 30 minutes)
@@ -7238,7 +7243,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v95";
+var APP_BUILD="v96";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

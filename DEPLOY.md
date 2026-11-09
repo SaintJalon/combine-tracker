@@ -6,6 +6,7 @@ Your logged P&L is saved on the device (localStorage).
 
 ## Files
 - `index.html` — the app
+- `data/ff_calendar_thisweek.json` — Forex Factory's calendar for News, refreshed hourly by `.github/workflows/ff-calendar.yml` (commits only when it changes; run it by hand from the repo's **Actions** tab)
 - `news.js` — News: parses Forex Factory's calendar and FinancialJuice's headlines; `node tests/news.test.js` checks it
 - `rules.js` — the prop-firm math (consistency-adjusted target, tomorrow's cap, end-of-day floor); `node tests/rules.test.js` checks it
 - `replay.js` — the Replay math (CSV import, CT sessions, candles, stop / target fills); `node tests/replay.test.js` checks it
