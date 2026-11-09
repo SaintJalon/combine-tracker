@@ -138,6 +138,9 @@
   .hud .hbackup{color:var(--amber);border-color:var(--amber-soft);background:var(--amber-soft)}
   .hud .hbackup.bad{color:var(--red);border-color:var(--red-soft);background:var(--red-soft)}
   .hud .hspend{color:var(--text)}
+  .hud .hnews{color:var(--text)}
+  .hud .hnews.warn{color:var(--amber);border-color:var(--amber-soft);background:var(--amber-soft)}
+  .hud .hnews.bad{color:var(--red);border-color:var(--red-soft);background:var(--red-soft)}
   @keyframes flashRing{50%{box-shadow:0 0 0 3px var(--accent),0 0 24px var(--accent)}}
   .flash{animation:flashRing .8s ease-in-out 2}
   .hud .hsync{opacity:.35;color:var(--accent)}
@@ -876,6 +879,34 @@
   .seg{display:inline-flex;border:1px solid var(--line2);border-radius:2px;overflow:hidden;flex-shrink:0}
   .seg button{background:transparent;border:none;border-right:1px solid var(--line2);color:var(--muted);padding:7px 10px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
   .seg button:last-child{border-right:none}
+  /* ---------- news ---------- */
+  .news .ntop{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .news .seg button.on{background:rgba(var(--accent-rgb),.14);color:var(--accent)}
+  .news .nstat{font-size:10.5px;color:var(--muted2);line-height:1.5}
+  .news .nstat.bad{color:var(--msg-bad)}
+  .news .nrow{display:flex;gap:9px;align-items:baseline;padding:8px 4px;border-top:1px solid var(--line);font-size:12px}
+  .news .nrow.past{opacity:.45}
+  .news .nrow.next{background:rgba(var(--accent-rgb),.08)}
+  .news .nrow.hit{background:var(--red-soft)}
+  .news .nt{width:62px;flex-shrink:0;color:var(--muted);font-weight:700}
+  .news .nc{width:34px;flex-shrink:0;font-weight:800;color:var(--muted)}
+  .news .ni{width:8px;height:8px;border-radius:2px;flex-shrink:0;align-self:center;background:var(--line2)}
+  .news .ni.High{background:var(--red)}.news .ni.Medium{background:var(--amber)}.news .ni.Low{background:var(--muted2)}
+  .news .nn{flex:1;min-width:0;color:var(--text);overflow-wrap:anywhere}
+  .news .nn small{display:block;color:var(--muted2);font-size:10.5px;margin-top:2px}
+  .news .nn a{color:var(--text);text-decoration:none}
+  @media(hover:hover){.news .nn a:hover{color:var(--accent);text-decoration:underline}}
+  .news .nday{margin-top:12px;padding:0 4px 4px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:800}
+  .news .nempty{padding:12px 4px;font-size:12px;color:var(--muted)}
+  .news details{margin-top:12px;border-top:1px dashed var(--line2);padding-top:8px}
+  .news summary{cursor:pointer;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800}
+  .news .nset{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-top:10px;font-size:11.5px;color:var(--muted)}
+  .news .nset input[type=number]{width:56px}
+  .news .nset input{background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:6px 7px;font-size:12px}
+  .news .nset .nrelay{flex:1 1 260px;display:flex;gap:6px;align-items:center}
+  .news .nset .nrelay input{flex:1;min-width:0}
+  .news .nchip{border:1px solid var(--line2);background:transparent;color:var(--muted);border-radius:2px;padding:5px 9px;font-size:10.5px;font-weight:800;letter-spacing:.06em;cursor:pointer}
+  .news .nchip.on{color:var(--text);border-color:var(--accent-border);background:rgba(var(--accent-rgb),.1)}
   .seg button.on{background:var(--accent);color:var(--on-accent)}
   .mxtog{position:relative;width:62px;height:26px;border:1px solid var(--line2);background:var(--surface);border-radius:2px;cursor:pointer;flex-shrink:0;padding:0;font-size:9.5px;font-weight:800;letter-spacing:.1em;color:var(--muted2);text-align:right;padding-right:7px}
   .mxtog::before{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;background:var(--muted2);border-radius:1px;transition:left .18s}
@@ -1013,6 +1044,7 @@
   .rpsets{margin-bottom:12px}
   .rpsub{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:4px 0 10px}
   .rprelay{display:flex;align-items:flex-end;gap:10px;margin-bottom:4px}
+  @media(max-width:760px){.news .nt{width:52px}.news .nc{width:30px}.news .nset input{font-size:16px}}
   .rprelay label{flex:1;min-width:0}
   .rprelay .k{display:block;font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px}
   .rprelay input{width:100%;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:9px 10px;font-size:13px;font-weight:700}
@@ -1268,6 +1300,7 @@
           <span class="hclock" id="mxClock">--:--:-- CST</span>
           <button type="button" class="hblock off" id="mxBlock" title="Current block in your daily schedule">Off-hours</button>
           <button type="button" class="hguard ok" id="mxGuard" title="Entry Guard status">Guard: clear</button>
+          <button type="button" class="hnews" id="mxNews" hidden>News</button>
           <button type="button" class="hbackup" id="mxBackup" hidden>Backup</button>
           <button type="button" class="hspend" id="mxSpend" hidden>Spent</button>
           <span class="hsync" id="mxSync" title="Saved on this device">● Saved</span>
@@ -1322,6 +1355,12 @@
     <div class="grpwrap">
       <h2 class="section" id="grpHead">Accounts &amp; Copy Groups</h2>
       <div class="eqcard grp" id="grpCard"></div>
+    </div>
+
+    <!-- News: Forex Factory's calendar (through the relay) and FinancialJuice's headlines -->
+    <div class="newswrap">
+      <h2 class="section" id="newsHead">News</h2>
+      <div class="eqcard news" id="newsCard"></div>
     </div>
 
     <!-- the day log lives on Core; own wrapper so folding "Push to Target" folds only its cards -->
@@ -1687,6 +1726,7 @@
 </div>
 
 <script src="rules.js"></script>
+<script src="news.js"></script>
 <script src="replay.js"></script>
 <script>
 (function(){
@@ -5181,6 +5221,8 @@
       var ck=curChecks(),done=ck.v.filter(function(x){return x;}).length;
       if(done<items.length)reasons.push("Checklist incomplete ("+done+"/"+items.length+")");
     }
+    var nh=newsGuardHits();
+    if(nh.length){var n0=nh[0],nc=newsCfg();reasons.push("News: "+CTNews.ctTime(n0.t)+" CT "+n0.cur+" "+n0.title+(nh.length>1?" (+"+(nh.length-1)+" more)":"")+" — no entries "+nc.before+"m before to "+nc.after+"m after");}
     var cd=cooldownMinOf();
     if(cd>0){
       var last=lastTradeAtOf();
@@ -6908,10 +6950,137 @@
     gd.className="hguard "+(gr.length?(hard?"bad":"warn"):"ok");
     gd.textContent=gr.length?("Guard: "+gr.length+" flag"+(gr.length>1?"s":"")):"Guard: clear";
     gd.title=gr.length?("Entry Guard — "+gr.join(" · ")):"Entry Guard: clear to trade";
+    newsTick();
     backupTick();
   }
   document.getElementById("mxBlock").addEventListener("click",function(){jumpTo("protocol","sched");});
   document.getElementById("mxGuard").addEventListener("click",function(){jumpTo("protocol","checklist");});
+  document.getElementById("mxNews").addEventListener("click",function(){
+    var h=document.getElementById("newsHead");if(h&&h.classList.contains("collapsed"))h.click();
+    newsCfg().view="today";renderNews();jumpTo("core","newsCard");
+  });
+  // ---- news: Forex Factory's calendar (through the relay — its feed doesn't allow pages to read it) and
+  // FinancialJuice's headlines (its feed does). Fetched results stay on this device, outside backups. ----
+  var NEWS_FF="ct_news_ff",NEWS_FJ="ct_news_fj",FJ_URL="https://www.financialjuice.com/feed.ashx?xy=rss";
+  var newsFF=null,newsFJ=null,newsMsg={ff:"",fj:""},newsBusy={ff:false,fj:false},fjWaitUntil=0,newsLastMin=-1;
+  function newsCfg(){
+    if(!state.news||typeof state.news!=="object")state.news={};
+    var n=state.news;if(!n.view)n.view="today";if(!n.imp)n.imp={High:true,Medium:false,Low:false};
+    if(n.guard==null)n.guard=true;if(n.before==null)n.before=5;if(n.after==null)n.after=5;
+    return n;
+  }
+  function newsImpacts(){var im=newsCfg().imp,o=[];["High","Medium","Low"].forEach(function(k){if(im[k])o.push(k);});return o;}
+  function newsLoadCache(k){try{var c=JSON.parse(localStorage.getItem(k)||"null");return c&&c.at?c:null;}catch(e){return null;}}
+  function newsEvents(){if(!newsFF)newsFF=newsLoadCache(NEWS_FF);return newsFF?CTNews.parseFF(newsFF.data):[];}
+  function newsHeads(){if(!newsFJ)newsFJ=newsLoadCache(NEWS_FJ);return newsFJ?newsFJ.items:[];}
+  function newsRelay(){return String(rpc.relay||"").trim().replace(/\/+$/,"");}
+  // red-folder (High) events, every currency, inside the guard window right now
+  function newsGuardHits(){var n=newsCfg();return n.guard?CTNews.guardHits(newsEvents(),Date.now(),+n.before||0,+n.after||0,["High"]):[];}
+  function agoTxt(at){var m=Math.round((Date.now()-at)/60000);return m<1?"just now":(m<60?m+"m ago":Math.round(m/60)+"h ago");}
+  // Forex Factory's calendar changes slowly: fetch at most hourly unless asked
+  async function loadFF(force){
+    var r=newsRelay();if(newsBusy.ff)return;
+    if(!r){newsMsg.ff="";return;}
+    if(!force&&newsFF&&Date.now()-newsFF.at<60*60000)return;
+    newsBusy.ff=true;
+    try{
+      var res=await fetch(r+"/ff/ff_calendar_thisweek.json",{cache:"no-store"});
+      if(res.status===404){var j404={};try{j404=await res.clone().json();}catch(e){}throw new Error(j404.error?"Your relay needs the update for News: redeploy it with the newest relay/worker.mjs from the repo (Cloudflare → your worker → Edit code → paste → Deploy).":"Forex Factory has no calendar right now ("+res.status+").");}
+      if(!res.ok)throw new Error("Forex Factory answered "+res.status+(res.status===429?" — too many requests; it'll try again within the hour.":"."));
+      var data=await res.json();if(!Array.isArray(data))throw new Error("Forex Factory sent something that isn't a calendar.");
+      newsFF={at:Date.now(),data:data};try{localStorage.setItem(NEWS_FF,JSON.stringify(newsFF));}catch(e){}
+      newsMsg.ff="";
+    }catch(e){newsMsg.ff=e&&e.message&&!/Failed to fetch|NetworkError|Load failed/i.test(e.message)?e.message:"Couldn't reach your relay at "+r+" — offline, or the address is wrong.";}
+    finally{newsBusy.ff=false;renderNews();newsTick();}
+  }
+  // FinancialJuice rate-limits hard: every 3 minutes at most, and back off 10 minutes when refused
+  async function loadFJ(force){
+    if(newsBusy.fj||Date.now()<fjWaitUntil)return;
+    if(!force&&newsFJ&&Date.now()-newsFJ.at<3*60000)return;
+    newsBusy.fj=true;
+    try{
+      var res=await fetch(FJ_URL,{cache:"no-store"});
+      var items=res.ok?CTNews.parseRSS(await res.text()):[];
+      if(!items.length){fjWaitUntil=Date.now()+10*60000;throw new Error("FinancialJuice is limiting requests right now — trying again in 10 minutes.");}
+      newsFJ={at:Date.now(),items:items.slice(0,60)};try{localStorage.setItem(NEWS_FJ,JSON.stringify(newsFJ));}catch(e){}
+      newsMsg.fj="";
+    }catch(e){newsMsg.fj=e&&e.message&&!/Failed to fetch|NetworkError|Load failed/i.test(e.message)?e.message:"Couldn't reach FinancialJuice — check you're online.";fjWaitUntil=Math.max(fjWaitUntil,Date.now()+3*60000);}
+    finally{newsBusy.fj=false;renderNews();}
+  }
+  function newsRow(e,now,cls){
+    var fp=[e.forecast?"F "+e.forecast:"",e.previous?"P "+e.previous:""].filter(Boolean).join(" · ");
+    return '<div class="nrow'+(cls?" "+cls:"")+'"><span class="nt">'+(e.allDay?"all day":CTNews.ctTime(e.t))+'</span><span class="ni '+esc(e.impact)+'" title="'+esc(e.impact)+' impact"></span><span class="nc">'+esc(e.cur)+'</span>'+
+      '<span class="nn">'+esc(e.title)+(fp||cls==="next"?'<small>'+esc(fp)+(cls==="next"?(fp?" · ":"")+CTNews.untilTxt(e.t,now):"")+'</small>':'')+'</span></div>';
+  }
+  function renderNews(){
+    var host=document.getElementById("newsCard");if(!host)return;
+    var n=newsCfg(),now=Date.now(),imps=newsImpacts(),evs=newsEvents(),today=CTNews.ctDate(now),html="";
+    var keep=host.querySelector("details[open]")?true:false;
+    html+='<div class="ntop"><div class="seg" role="group">'+[["today","Today"],["week","Week"],["heads","Headlines"]].map(function(v){return '<button type="button" data-nv="'+v[0]+'"'+(n.view===v[0]?' class="on"':'')+'>'+v[1]+'</button>';}).join("")+'</div>'+
+      '<button type="button" class="secbtn" data-na="refresh">↻ Refresh</button></div>';
+    if(n.view==="heads"){
+      var hs=newsHeads();
+      html+='<div class="nstat'+(newsMsg.fj?" bad":"")+'">'+(newsMsg.fj?esc(newsMsg.fj):"FinancialJuice"+(newsFJ?" · updated "+agoTxt(newsFJ.at):"")+" · refreshes every 3 min while open")+'</div>';
+      if(!hs.length)html+='<div class="nempty">'+(newsBusy.fj?"Loading headlines…":"No headlines yet — tap Refresh.")+'</div>';
+      hs.slice(0,40).forEach(function(h){
+        var when=h.t?(now-h.t<3600000?agoTxt(h.t):CTNews.ctTime(h.t)):"";
+        html+='<div class="nrow"><span class="nt">'+esc(when)+'</span><span class="nn">'+(h.link?'<a href="'+esc(h.link)+'" target="_blank" rel="noopener noreferrer">'+esc(h.title)+'</a>':esc(h.title))+'</span></div>';
+      });
+    }else if(!newsRelay()){
+      html+='<div class="nempty">Forex Factory\'s calendar comes through your relay — its feed doesn\'t let web pages read it directly. Paste the relay address under <b>Settings</b> below (the same one Replay uses). No relay yet? Setup is in <b>relay/README.md</b> in the repo, about 5 minutes on Cloudflare. Headlines work without it.</div>';
+    }else{
+      html+='<div class="nstat'+(newsMsg.ff?" bad":"")+'">'+(newsMsg.ff?esc(newsMsg.ff):"Forex Factory · times in CT · "+(imps.length?imps.join(" + ")+" impact":"no impact picked")+(newsFF?" · updated "+agoTxt(newsFF.at):(newsBusy.ff?" · loading…":"")))+'</div>';
+      var nx=CTNews.nextEvent(evs,now,imps),hits=newsGuardHits(),hitT={};hits.forEach(function(e){hitT[e.t+"|"+e.title]=1;});
+      var show=evs.filter(function(e){return e.impact==="Holiday"||imps.indexOf(e.impact)>=0;});
+      if(n.view==="today"){
+        var td=show.filter(function(e){return CTNews.eventDay(e)===today;});
+        if(!td.length)html+='<div class="nempty">'+(evs.length?"Nothing at the impact you picked today.":(newsBusy.ff?"Loading the calendar…":"No calendar yet — tap Refresh."))+'</div>';
+        td.forEach(function(e){html+=newsRow(e,now,hitT[e.t+"|"+e.title]?"hit":(e===nx?"next":(!e.allDay&&e.t<now?"past":"")));});
+        if(nx&&CTNews.ctDate(nx.t)!==today)html+='<div class="nstat" style="margin-top:8px">Next: '+esc(weekdayLbl(CTNews.ctDate(nx.t)))+' '+CTNews.ctTime(nx.t)+' CT · '+esc(nx.cur)+' '+esc(nx.title)+' ('+CTNews.untilTxt(nx.t,now)+')</div>';
+      }else{
+        var lastD=null;
+        if(!show.length)html+='<div class="nempty">'+(newsBusy.ff?"Loading the calendar…":"Nothing this week at the impact you picked.")+'</div>';
+        show.forEach(function(e){var dd=CTNews.eventDay(e);if(dd!==lastD){lastD=dd;html+='<div class="nday">'+esc(weekdayLbl(dd))+(dd===today?" · today":"")+'</div>';}
+          html+=newsRow(e,now,hitT[e.t+"|"+e.title]?"hit":(e===nx?"next":(!e.allDay&&e.t<now?"past":"")));});
+      }
+    }
+    html+='<details'+(keep?" open":"")+'><summary>Settings</summary><div class="nset">'+
+      '<span>Show</span>'+["High","Medium","Low"].map(function(k){return '<button type="button" class="nchip'+(n.imp[k]?" on":"")+'" data-nimp="'+k+'">'+(k==="High"?"● Red":(k==="Medium"?"● Orange":"● Yellow"))+'</button>';}).join("")+
+      '<label class="fchk" style="margin:0"><input type="checkbox" data-nset="guard"'+(n.guard?" checked":"")+'> Entry Guard flags red-folder news</label>'+
+      '<label>from <input type="number" min="0" max="60" inputmode="numeric" data-nset="before" value="'+(+n.before||0)+'"> min before</label>'+
+      '<label>to <input type="number" min="0" max="60" inputmode="numeric" data-nset="after" value="'+(+n.after||0)+'"> min after</label>'+
+      '<div class="nrelay"><span>Relay</span><input type="url" data-nset="relay" value="'+esc(newsRelay())+'" placeholder="https://ct-relay.yourname.workers.dev" autocomplete="off" autocapitalize="none" spellcheck="false"></div>'+
+      '</div><div class="nstat" style="margin-top:8px">All currencies. The guard uses red-folder (high-impact) events only. Calendar: Forex Factory, refreshed hourly. Headlines: FinancialJuice.</div></details>';
+    host.innerHTML=html;
+  }
+  // header chip: the next red-folder event today (red inside the guard window, amber within 30 minutes)
+  function newsTick(){
+    var el=document.getElementById("mxNews");if(!el)return;
+    var now=Date.now(),evs=newsEvents(),hits=newsGuardHits(),nx=CTNews.nextEvent(evs,now,["High"]),today=CTNews.ctDate(now);
+    var e=hits[0]||(nx&&CTNews.ctDate(nx.t)===today?nx:null);
+    el.hidden=!e;
+    if(e){
+      el.className="hnews"+(hits.length?" bad":(e.t-now<=30*60000?" warn":""));
+      el.textContent="News "+CTNews.ctTime(e.t)+" "+e.cur+" · "+CTNews.untilTxt(e.t,now);
+      el.title=e.cur+" "+e.title+" at "+CTNews.ctTime(e.t)+" CT"+(hits.length?" — Entry Guard: no entries now":"");
+    }
+    // once a minute: refresh the countdowns on the card, and fetch what's due while the app is open
+    var mn=Math.floor(now/60000);
+    if(mn!==newsLastMin){newsLastMin=mn;if(!document.querySelector("#newsCard input:focus"))renderNews();loadFF(false);if(newsCfg().view==="heads"&&curTab==="core")loadFJ(false);}
+  }
+  document.getElementById("newsCard").addEventListener("click",function(e){
+    var b=e.target.closest("button");if(!b)return;var n=newsCfg();
+    if(b.dataset.nv){n.view=b.dataset.nv;save();renderNews();if(n.view==="heads")loadFJ(false);else loadFF(false);return;}
+    if(b.dataset.na==="refresh"){if(n.view==="heads"){fjWaitUntil=0;loadFJ(true);}else loadFF(true);renderNews();return;}
+    if(b.dataset.nimp){n.imp[b.dataset.nimp]=!n.imp[b.dataset.nimp];save();renderNews();newsTick();return;}
+  });
+  document.getElementById("newsCard").addEventListener("change",function(e){
+    var k=e.target.getAttribute("data-nset");if(!k)return;var n=newsCfg();
+    if(k==="guard")n.guard=e.target.checked;
+    else if(k==="before"||k==="after"){var v=parseInt(e.target.value,10);n[k]=isNaN(v)?5:Math.max(0,Math.min(60,v));}
+    else if(k==="relay"){rpc.relay=e.target.value.trim().replace(/\/+$/,"");rpSaveCfg();newsFF=null;newsMsg.ff="";save().then(function(){loadFF(true);});renderNews();return;}
+    save();renderNews();newsTick();
+  });
   // ---- backup reminder: all data lives on this device, so nudge once the last export gets old ----
   var BACKUP_KEY="ct_last_backup"; // device-level, like the effect prefs; never inside the backup itself
   function lastBackupAt(){try{return +localStorage.getItem(BACKUP_KEY)||0;}catch(e){return 0;}}
@@ -7069,7 +7238,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v94";
+var APP_BUILD="v95";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";

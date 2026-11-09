@@ -1,4 +1,4 @@
-# Market-data relay (Cloudflare Worker)
+# Relay for Replay downloads and News (Cloudflare Worker)
 
 Replay's **Download bars** calls Databento or Massive straight from your browser. A browser only lets
 a page read another site's answer if that site allows it, and data providers don't always. This relay
@@ -9,6 +9,14 @@ a download uses one to a few).
 It is deliberately narrow: it forwards only the market-data calls Replay makes, only for your site,
 and stores nothing. Your API key is still typed into the app and passes through with each request —
 the relay holds no key, so nobody who finds its address can spend your data credit.
+
+## News (Forex Factory calendar)
+Core → **News** reads Forex Factory's weekly economic calendar through this relay too — Forex Factory's feed
+doesn't let web pages read it directly. Paste the relay's address in **News → Settings → Relay** (it's the same
+field Replay uses). **If your relay was set up before V95, redeploy it once**: Cloudflare → your worker →
+**Edit code** → paste the new [`worker.mjs`](worker.mjs) → **Deploy**. Without the update, News says so.
+The relay forwards only `ff_calendar_thisweek.json`, and Cloudflare keeps it 15 minutes, so Forex Factory
+sees at most a few requests an hour. FinancialJuice headlines don't need the relay.
 
 ## Set it up (about 5 minutes, no terminal)
 1. Sign up or log in at **dash.cloudflare.com** (free).
