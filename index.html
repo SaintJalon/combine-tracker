@@ -2373,16 +2373,31 @@
       var ldays=Object.keys(lead).map(function(d){return{d:d,date:(lj[d]&&lj[d].date)||null};});
       ldays.sort(function(x,y){if(x.date!==y.date){if(!x.date)return 1;if(!y.date)return -1;return x.date<y.date?-1:1;}return x.d-y.d;});
       followersOf(L).forEach(function(a){
-        var k="acct:"+a.id,rec=followRec(a),out=Object.assign({},rec.own),fj=state.journal[k]||(state.journal[k]={}),ownDates={},slot=1,d;
-        for(d in fj){if(fj.hasOwnProperty(d)&&fj[d]&&fj[d].copied)delete fj[d];} // copy slots are rebuilt below
+        var k="acct:"+a.id,rec=followRec(a),fj=state.journal[k]||(state.journal[k]={}),ownDates={},slot=1,d,prev=state.logs[k]||{};
+        // a copied day you changed — a note, trades, "followed my plan", or its date — is yours now, like editing its P&L:
+        // keep it as an own day instead of rebuilding it from the leader (which used to wipe the change)
+        var leadDates={};ldays.forEach(function(x){if(x.date)leadDates[x.date]=1;});
+        for(d in fj){
+          if(!fj.hasOwnProperty(d)||!fj[d]||!fj[d].copied)continue;
+          var e=fj[d],moved=e.src?e.date!==e.src:!!(e.date&&!leadDates[e.date]);
+          var touched=(e.note&&String(e.note).trim())||(Array.isArray(e.trades)&&e.trades.length)||e.followed||moved;
+          if(touched&&prev.hasOwnProperty(d)&&!rec.own.hasOwnProperty(d)){
+            rec.own[d]=prev[d];
+            if(moved&&e.src){if(!rec.skip)rec.skip={};rec.skip[e.src]=1;} // moved off the leader's date: don't copy that date back in
+            delete e.copied;delete e.src;
+          }
+          else delete fj[d]; // copy slots are rebuilt below
+        }
+        var out=Object.assign({},rec.own);
         for(d in rec.own){if(rec.own.hasOwnProperty(d)&&fj[d]&&fj[d].date)ownDates[fj[d].date]=1;}
         ldays.forEach(function(x){
           if(x.date&&ownDates[x.date])return; // you logged that date yourself: yours wins
           if(a.start&&x.date&&x.date<a.start)return; // the account didn't exist yet
+          if(rec.skip&&x.date&&rec.skip[x.date])return; // you moved this copy to another date
           if(rec.from&&(!x.date||x.date<rec.from))return; // before this account started copying the leader
           while(out.hasOwnProperty(slot)||(fj[slot]&&fj[slot].date))slot++;
           out[slot]=lead[x.d]; // 1:1 — a copier places the same trade on every account
-          if(x.date)fj[slot]={note:"",trades:[],date:x.date,copied:true};
+          if(x.date)fj[slot]={note:"",trades:[],date:x.date,copied:true,src:x.date};
         });
         // own days and copies together, in date order; the own-days record follows its days to their new numbers
         var fm=reorderByDate(out,fj);
@@ -2755,7 +2770,7 @@
       }
       var jj=(state.journal[modeKey()]||{})[d]||null;
       var trs=(jj&&jj.trades)||[],jnote=(jj&&jj.note)||"",jdate=(jj&&jj.date)||"",hasTr=trs.length>0;
-      if(!logged)jdate=""; // a date on a day with no P&L isn't real yet — show where the plan puts it instead
+      if(!logged&&openDay!==d)jdate=""; // a date on a day with no P&L isn't real yet — show where the plan puts it instead (except the day you opened, e.g. from the calendar)
       var wkLbl=jdate?'<small style="color:var(--muted2);font-weight:500;font-size:10px">'+weekdayLbl(jdate)+'</small>':
         (proj[d]?'<small class="proj" title="Projected: the next open session if you trade each one from here">≈ '+weekdayLbl(proj[d])+(d===pdn?' · pass':'')+(rbDue&&proj[d]>=rbDue?' <span class="r">· after rebill</span>':'')+'</small>':'');
       var cap=maxTradesOf(),tradeSum=hasTr?sumTrades(trs):null,locked=(tradeSum!=null&&tradeSum<=-c.stop),overCap=trs.length>cap,followed=!!(jj&&jj.followed);
@@ -2855,7 +2870,13 @@
         ed.addEventListener("change",function(e){
           var t=e.target;
           if(t.classList.contains("jnote")){dayJ(d).note=t.value;openDay=d;save().then(renderDays);return;}
-          if(t.classList.contains("jdate")){dayJ(d).date=t.value||"";openDay=d;save().then(function(){renderDays();renderStats();renderCalendar();});return;}
+          if(t.classList.contains("jdate")){
+            // two logged days on one date would hide one of them on the calendar: say which day already has it
+            var lgD=curLog(),jD=curJournal(),clash=null;
+            if(t.value)for(var od in jD){if(jD.hasOwnProperty(od)&&+od!==d&&(od in lgD)&&jD[od]&&jD[od].date===t.value){clash=+od;break;}}
+            if(clash){mxAlert("Day "+clash+" is already logged on "+weekdayLbl(t.value)+". Change or clear that day first, or pick another date.",{title:"Date already used"});t.value=dayJ(d).date||"";return;}
+            dayJ(d).date=t.value||"";openDay=d;syncFollowers();save().then(renderAll);return;
+          }
           if(t.classList.contains("jfollowed")){dayJ(d).followed=t.checked;openDay=d;save().then(function(){renderDays();renderStats();});return;}
           if(t.classList.contains("tp")||t.classList.contains("trr")||t.classList.contains("ts")){
             var tr=dayJ(d).trades,ti=+t.dataset.ti;if(!tr[ti])return;
@@ -4926,8 +4947,10 @@
     if(e.target.closest("#calNext")){shiftCalMonth(1);save().then(renderCalendar);return;}
     if(e.target.closest("#calToday")){if(!state.calMonth)state.calMonth={};state.calMonth[modeKey()]=monthKeyNow();save().then(renderCalendar);return;}
     var cell=e.target.closest(".calcell");if(!cell||cell.classList.contains("blank")||cell.classList.contains("hol"))return;
-    if(cell.dataset.plan||cell.dataset.extra){calSel=calSel===cell.dataset.date?null:cell.dataset.date;renderCalendar();return;} // a future day: show its numbers
     var iso=cell.dataset.date;if(!iso)return;
+    // a future day shows its plan numbers; close any open day so typing can't land in the wrong one
+    if((cell.dataset.plan||cell.dataset.extra)&&iso>isoDate()){calSel=calSel===iso?null:iso;if(openDay!=null){openDay=null;renderDays();}renderCalendar();return;}
+    calSel=null; // today and past days always open that day for logging, even when the plan has today as its next day
     var d=ensureDayForDate(iso);
     save().then(function(){focusDay(d);});
   });
@@ -7046,7 +7069,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v93";
+var APP_BUILD="v94";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
