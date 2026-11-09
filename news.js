@@ -36,6 +36,25 @@
   // a timed release is on the Central-time date it happens.
   function eventDay(e) { return e.allDay && /^\d{4}-\d{2}-\d{2}$/.test(e.day || '') ? e.day : ctDate(e.t); }
 
+  // Minutes after midnight, Central time (7:30am → 450).
+  function ctMinutes(t) {
+    var p = {}; new Intl.DateTimeFormat('en-US', { timeZone: CT, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' })
+      .formatToParts(new Date(t)).forEach(function (x) { p[x.type] = x.value; });
+    return (+p.hour % 24) * 60 + (+p.minute);
+  }
+  // Timed red-folder (or `impacts`) releases on a CT date inside the trading day (default 5:00am–4:00pm CT),
+  // grouped by release time: [{t, events:[...]}] — CPI and Core CPI at 7:30 are one group.
+  function sessionGroups(evs, dayIso, impacts, fromMin, toMin) {
+    var from = fromMin == null ? 300 : fromMin, to = toMin == null ? 960 : toMin, out = [];
+    (evs || []).forEach(function (e) {
+      if (e.allDay || impacts.indexOf(e.impact) < 0 || ctDate(e.t) !== dayIso) return;
+      var m = ctMinutes(e.t); if (m < from || m > to) return;
+      var g = out.length && out[out.length - 1].t === e.t ? out[out.length - 1] : null;
+      if (g) g.events.push(e); else out.push({ t: e.t, events: [e] });
+    });
+    return out;
+  }
+
   // Events whose guard window (from `before` minutes ahead of the release to `after` minutes past it)
   // contains `now`. Only timed events with an impact in `impacts` count.
   function guardHits(evs, now, before, after, impacts) {
@@ -74,7 +93,7 @@
     }).filter(Boolean).sort(function (a, b) { return b.t - a.t; });
   }
 
-  var api = { parseFF: parseFF, ctDate: ctDate, eventDay: eventDay, ctTime: ctTime, guardHits: guardHits, nextEvent: nextEvent, untilTxt: untilTxt, parseRSS: parseRSS };
+  var api = { parseFF: parseFF, ctDate: ctDate, eventDay: eventDay, ctMinutes: ctMinutes, sessionGroups: sessionGroups, ctTime: ctTime, guardHits: guardHits, nextEvent: nextEvent, untilTxt: untilTxt, parseRSS: parseRSS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.CTNews = api;
 })(this);

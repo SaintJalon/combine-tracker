@@ -1,7 +1,7 @@
 // Bump CACHE on every deploy. Changing this file is what makes the browser
 // re-install the worker at all — if it stays byte-identical, `install` never
 // re-runs and old caches are never purged.
-const CACHE = 'combine-tracker-v96';
+const CACHE = 'combine-tracker-v97';
 const ASSETS = [
   './',
   './index.html',
@@ -93,6 +93,17 @@ self.addEventListener('fetch', function (e) {
         return resp;
       }).catch(function () { return r; });
       return r || net;
+    })
+  );
+});
+
+// Coach Co's news notifications: tapping one brings the tracker to the front (or opens it).
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+      for (const c of list) { if ('focus' in c) return c.focus(); }
+      return self.clients.openWindow ? self.clients.openWindow('./') : undefined;
     })
   );
 });
