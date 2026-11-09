@@ -53,6 +53,14 @@ await t('not an open proxy: other paths, providers and methods are refused', asy
   assert.strictEqual((await R(DB, { method: 'POST' })).status, 405);
   assert.strictEqual(calls.length, 0);
 });
+await t('Forex Factory: this week\'s calendar only, no query or key forwarded, cached briefly', async () => {
+  const r = await R('/ff/ff_calendar_thisweek.json?x=1', { headers: { Authorization: 'Basic abc' } });
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(calls, [{ url: 'https://nfs.faireconomy.media/ff_calendar_thisweek.json', auth: null }]);
+  assert.strictEqual(r.headers.get('Access-Control-Allow-Origin'), SITE);
+  assert.strictEqual(r.headers.get('Cache-Control'), 'max-age=300');
+  for (const p of ['/ff/ff_calendar_lastweek.json', '/ff/other.json', '/ff/ff_calendar_thisweek.xml', '/ff/../databento/v0/x']) assert.strictEqual((await R(p)).status, 404, p);
+});
 await t('provider unreachable → 502 the app can explain', async () => {
   const keep = globalThis.fetch; globalThis.fetch = async () => { throw new Error('down'); };
   const r = await R(DB);
