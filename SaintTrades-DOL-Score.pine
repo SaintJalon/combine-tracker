@@ -1,0 +1,549 @@
+//@version=6
+// =============================================================================
+// SaintTrades DOL Score                                               INDICATOR
+// -----------------------------------------------------------------------------
+// Keeps a pool of liquidity levels, scores each one out of 100 and draws the
+// top score as the draw on liquidity (DOL). Non-repainting: structure is built
+// from finished candles, bias is the previous finished candle of each timeframe.
+//
+// --------------------------------- RULES -------------------------------------
+//  R1. Trading mode picks three timeframes: bias (HTF), structure (STF) and
+//      execution.    Swing = D / 4H / 1H    Day Trading = 4H / 1H / 15m
+//      Scalping = 1H / 15m / 5m. The chart must be at or below the execution
+//      timeframe. Structure candles are built from the chart's own bars, so
+//      only levels inside the loaded chart history exist.
+//  R2. Candidates, all found on the structure timeframe:
+//        BSL / SSL  a swing high / low (N candles each side) no wick has taken
+//        FVG        a three-candle gap of at least the minimum size, untouched
+//        OB         the last opposite candle before the move that left an FVG,
+//                   body edge to wick, untouched
+//        Breaker    an OB that an execution candle closed through; it is a
+//                   target again from the other side until price touches it
+//  R3. Score out of 100 (ATR = 14-candle ATR of the structure timeframe):
+//        Proximity  35  distance from price in ATRs. Full marks at 1 ATR,
+//                       half at zero, falling to 30% at the max distance.
+//                       Beyond the max distance the level is out of the pool.
+//        Freshness  25  halves every "half-life" structure candles.
+//        Confluence 25  +10 the HTF bias points at it, +4 the STF bias does,
+//                       +8 within 0.25 ATR of the previous day high / low,
+//                       +4 of the daily, midnight or 09:30 open,
+//                       +3 of the previous day's midpoint.
+//        Density    15  swings: +6 per equal high / low beside it, +5 if the
+//                       six candles before it were a tight coil.
+//                       FVG / OB / breaker: the size of the gap, full marks at
+//                       1 ATR.
+//  R4. DOL = the top score. It only changes when it is touched, drops out of
+//      the pool, or another level beats it by the switch margin. A DOL that
+//      ends leaves a faded "ghost" (✓ = price touched it).
+//  R5. Inversion FVG: an execution candle closing fully through an FVG flips
+//      it into support / resistance. It is removed after more than N execution
+//      closes inside it, or a close back through it.
+//  R6. PoT% (probability of touch) is measured on this chart: of the past DOLs
+//      in the same score band, the share price touched within the window.
+//      (touched + 1) / (count + 2), capped at 95%. The check table shows every
+//      band, so you can see whether a higher score really gets touched more.
+//  R7. Bias per timeframe: bullish after a candle body closes above the last
+//      confirmed swing high, bearish after one closes below the last confirmed
+//      swing low.
+// =============================================================================
+indicator("SaintTrades DOL Score", "DOL Score", overlay=true, max_boxes_count=300, max_lines_count=100, max_labels_count=200)
+
+// ============================== TYPES ========================================
+type Lvl
+    int   id
+    int   kind             // 1 BSL, 2 SSL, 3 FVG, 4 OB, 5 breaker, 6 inversion FVG
+    int   dir              // zones: 1 = support, -1 = resistance
+    float top
+    float bot
+    int   t0               // open time of the candle it comes from
+    int   born             // structure-candle count when it formed
+    bool  tapped = false
+    int   eq     = 0
+    bool  coil   = false
+    float disp   = 0.0
+    int   inside = 0
+    bool  cand   = false
+    float edge   = na
+    bool  up     = false
+    float score  = 0.0
+    float sP     = 0.0
+    float sF     = 0.0
+    float sC     = 0.0
+    float sD     = 0.0
+
+type Ghost
+    float  top
+    float  bot
+    int    t0
+    int    t1
+    bool   swept
+    bool   up
+    string name
+
+type Ep
+    float px
+    bool  up
+    int   bucket
+    int   deadline
+
+// =============================== INPUTS ======================================
+G_MD  = "1 · Mode"
+G_DOL = "2 · DOL scoring"
+G_FVG = "3 · Gaps & order blocks"
+G_VIS = "4 · Visuals"
+
+modeIn   = input.string("Day Trading", "Trading mode", options=["Swing", "Day Trading", "Scalping"], tooltip="Bias / structure / execution timeframes. Swing = D / 4H / 1H, Day Trading = 4H / 1H / 15m, Scalping = 1H / 15m / 5m. Use a chart at or below the execution timeframe.", group=G_MD)
+pivN     = input.int(3, "Swing strength (candles each side)", minval=1, maxval=10, group=G_MD)
+
+useLiq   = input.bool(true, "Swing highs / lows (BSL / SSL)", group=G_DOL)
+useFvg   = input.bool(true, "Fair value gaps", group=G_DOL)
+useOb    = input.bool(true, "Order blocks & breakers", group=G_DOL)
+maxAtr   = input.float(8.0, "Max ATR distance", minval=1.5, step=0.5, tooltip="A level further than this many structure-timeframe ATRs from price drops out of the pool.", group=G_DOL)
+halfLife = input.float(48.0, "Freshness half-life (structure candles)", minval=1, step=4, group=G_DOL)
+switchPts = input.float(5.0, "A new level must beat the DOL by (score)", minval=0, step=1, tooltip="Stops the DOL flickering between two levels with nearly the same score.", group=G_DOL)
+potWin   = input.int(24, "PoT window (structure candles)", minval=1, maxval=500, tooltip="A DOL counts as touched if price reaches it within this many structure candles of becoming the DOL.", group=G_DOL)
+minPot   = input.float(0.0, "Minimum PoT to show the DOL (%)", minval=0, maxval=95, step=5, group=G_DOL)
+
+minGap   = input.float(0.15, "Minimum gap size (ATR)", minval=0, step=0.05, group=G_FVG)
+maxIn    = input.int(3, "Remove an inversion gap after closes inside", minval=1, maxval=50, group=G_FVG)
+maxAge   = input.int(300, "Forget levels older than (structure candles)", minval=20, maxval=2000, group=G_FVG)
+
+colUp    = input.color(#26a69a, "Up", group=G_VIS)
+colDn    = input.color(#ef5350, "Down", group=G_VIS)
+colOth   = input.color(#9598a1, "Other levels", group=G_VIS)
+nRun     = input.int(3, "Runner-up levels shown", minval=0, maxval=10, group=G_VIS)
+nGhost   = input.int(6, "Ghost DOLs kept", minval=0, maxval=30, group=G_VIS)
+showIfvg = input.bool(true, "Show inversion FVGs", group=G_VIS)
+showFvg  = input.bool(false, "Show untouched FVGs", group=G_VIS)
+extBars  = input.int(25, "Label distance (bars)", minval=5, maxval=300, group=G_VIS)
+tblPos   = input.string("Top Right", "Table", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Off"], group=G_VIS)
+showChk  = input.bool(true, "Show the score check", tooltip="Past DOLs by score band and how many price touched inside the PoT window.", group=G_VIS)
+
+// ============================= CONSTANTS =====================================
+NY     = "America/New_York"
+BAR_MS = timeframe.in_seconds() * 1000
+htf    = modeIn == "Swing" ? "D" : modeIn == "Scalping" ? "60" : "240"
+stf    = modeIn == "Swing" ? "240" : modeIn == "Scalping" ? "15" : "60"
+etf    = modeIn == "Swing" ? "60" : modeIn == "Scalping" ? "5" : "15"
+EQ_TOL = 0.10    // equal highs / lows: within this many ATRs
+CF_TOL = 0.25    // confluence: within this many ATRs
+
+if barstate.isfirst and timeframe.in_seconds() > timeframe.in_seconds(etf)
+    runtime.error("Use a chart at or below the execution timeframe of this mode (Swing 1H, Day Trading 15m, Scalping 5m).")
+
+px(float p) =>
+    str.tostring(p, format.mintick)
+
+tfName(string tf) =>
+    tf == "D" ? "D" : tf == "240" ? "4H" : tf == "60" ? "1H" : tf + "m"
+
+kindName(int k) =>
+    k == 1 ? "BSL" : k == 2 ? "SSL" : k == 3 ? "FVG" : k == 4 ? "OB" : k == 5 ? "Breaker" : "iFVG"
+
+bucketOf(float s) =>
+    s < 45 ? 0 : s < 60 ? 1 : s < 75 ? 2 : 3
+
+// ====================== HIGHER-TIMEFRAME DATA ================================
+// R7: structural bias from confirmed pivots and body closes
+f_bias(int n) =>
+    var float ph = na
+    var float pl = na
+    var int   b  = 0
+    float p1 = ta.pivothigh(high, n, n)
+    float p2 = ta.pivotlow(low, n, n)
+    if not na(p1)
+        ph := p1
+    if not na(p2)
+        pl := p2
+    if not na(ph) and close > ph
+        b := 1
+    if not na(pl) and close < pl
+        b := -1
+    b
+
+f_biasPrev(int n) =>
+    int b = f_bias(n)
+    b[1]
+
+b1 = request.security(syminfo.tickerid, htf, f_biasPrev(pivN), lookahead=barmerge.lookahead_on)
+b2 = request.security(syminfo.tickerid, stf, f_biasPrev(pivN), lookahead=barmerge.lookahead_on)
+b3 = request.security(syminfo.tickerid, etf, f_biasPrev(pivN), lookahead=barmerge.lookahead_on)
+[pdH, pdL, dO] = request.security(syminfo.tickerid, "D", [high[1], low[1], open], lookahead=barmerge.lookahead_on)
+
+var float mnO = na
+var float nyO = na
+nyMin = hour(time, NY) * 60 + minute(time, NY)
+if nyMin < nyMin[1]
+    mnO := open
+if nyMin >= 570 and nyMin[1] < 570
+    nyO := open
+
+// ===================== STRUCTURE CANDLES (R1) ================================
+var array<float> cO = array.new<float>()
+var array<float> cH = array.new<float>()
+var array<float> cL = array.new<float>()
+var array<float> cC = array.new<float>()
+var array<int>   cT = array.new<int>()
+var float aO   = na
+var float aH   = na
+var float aL   = na
+var int   aT   = na
+var int   stfN = 0
+var float atrS = na
+
+stfNew = timeframe.change(stf)
+stfEnd = barstate.isconfirmed and time_close == time_close(stf)
+etfEnd = barstate.isconfirmed and time_close == time_close(etf)
+
+if stfNew
+    aO := open
+    aH := high
+    aL := low
+    aT := time
+else if not na(aO)
+    aH := math.max(aH, high)
+    aL := math.min(aL, low)
+
+// ============================== STATE ========================================
+var array<Lvl>   lv     = array.new<Lvl>()
+var array<Ghost> ghosts = array.new<Ghost>()
+var array<Ep>    eps    = array.new<Ep>()
+var array<int>   bkN    = array.new<int>(4, 0)
+var array<int>   bkHit  = array.new<int>(4, 0)
+var int    nextId = 1
+var int    dolId  = 0
+var float  dTop   = na
+var float  dBot   = na
+var float  dEdge  = na
+var int    dT0    = na
+var bool   dUp    = false
+var string dName  = ""
+var float  dScore = na
+var float  dP     = na
+var float  dF     = na
+var float  dC     = na
+var float  dD     = na
+
+pushGhost(bool swept) =>
+    if nGhost > 0
+        ghosts.push(Ghost.new(dTop, dBot, dT0, time, swept, dUp, dName))
+        if ghosts.size() > nGhost
+            ghosts.shift()
+
+// ====================== LEVEL LIFE CYCLE (R2, R5) ============================
+bool dolSwept = false
+bool newIfvg  = false
+bool hitDol   = false
+if lv.size() > 0
+    for i = lv.size() - 1 to 0
+        Lvl z = lv.get(i)
+        bool rm = false
+        bool touch = z.kind == 1 ? high >= z.top : z.kind == 2 ? low <= z.bot : high >= z.bot and low <= z.top
+        if touch and z.id == dolId
+            hitDol := true
+        if z.kind <= 2
+            rm := touch
+        else if z.kind == 3
+            if etfEnd and (z.dir == 1 ? close < z.bot : close > z.top)
+                z.kind   := 6
+                z.dir    := -z.dir
+                z.inside := 0
+                z.born   := stfN
+                newIfvg  := true
+            else if touch
+                z.tapped := true
+        else if z.kind == 4
+            if etfEnd and (z.dir == 1 ? close < z.bot : close > z.top)
+                z.kind   := 5
+                z.dir    := -z.dir
+                z.tapped := false
+                z.born   := stfN
+            else if touch
+                z.tapped := true
+        else if z.kind == 5
+            rm := touch
+        else if etfEnd
+            if z.dir == -1 ? close > z.top : close < z.bot
+                rm := true
+            else if close <= z.top and close >= z.bot
+                z.inside += 1
+                rm := z.inside > maxIn
+        if stfN - z.born > maxAge
+            rm := true
+        if rm
+            lv.remove(i)
+
+if hitDol
+    pushGhost(true)
+    dolId    := 0
+    dolSwept := true
+
+// PoT episodes: touched inside the window, or not
+if eps.size() > 0
+    for i = eps.size() - 1 to 0
+        Ep e = eps.get(i)
+        if e.up ? high >= e.px : low <= e.px
+            bkN.set(e.bucket, bkN.get(e.bucket) + 1)
+            bkHit.set(e.bucket, bkHit.get(e.bucket) + 1)
+            eps.remove(i)
+        else if stfN > e.deadline
+            bkN.set(e.bucket, bkN.get(e.bucket) + 1)
+            eps.remove(i)
+
+// ================== NEW STRUCTURE ON A FINISHED CANDLE (R2) ==================
+if stfEnd and not na(aO)
+    float pc = cC.size() > 0 ? cC.last() : aO
+    float tr = math.max(aH - aL, math.abs(aH - pc), math.abs(aL - pc))
+    atrS := na(atrS) ? tr : (atrS * 13 + tr) / 14
+    cO.push(aO)
+    cH.push(aH)
+    cL.push(aL)
+    cC.push(close)
+    cT.push(aT)
+    if cO.size() > 60
+        cO.shift()
+        cH.shift()
+        cL.shift()
+        cC.shift()
+        cT.shift()
+    stfN += 1
+    aO := na
+    int sz = cH.size()
+    int w  = 2 * pivN + 1
+    // swing highs / lows
+    if sz >= w and atrS > 0
+        int ix = sz - 1 - pivN
+        float ph = cH.get(ix)
+        float pl = cL.get(ix)
+        bool isH = true
+        bool isL = true
+        for j = sz - w to sz - 1
+            if j != ix
+                if cH.get(j) >= ph
+                    isH := false
+                if cL.get(j) <= pl
+                    isL := false
+        bool coil = false
+        if (isH or isL) and ix >= 6
+            float hh = cH.get(ix - 1)
+            float ll = cL.get(ix - 1)
+            for j = ix - 6 to ix - 1
+                hh := math.max(hh, cH.get(j))
+                ll := math.min(ll, cL.get(j))
+            coil := hh - ll <= 2.0 * atrS
+        if isH
+            int eq = 0
+            for z in lv
+                if z.kind == 1 and math.abs(z.top - ph) <= EQ_TOL * atrS
+                    eq += 1
+                    z.eq += 1
+            lv.push(Lvl.new(id=nextId, kind=1, dir=-1, top=ph, bot=ph, t0=cT.get(ix), born=stfN, eq=eq, coil=coil))
+            nextId += 1
+        if isL
+            int eq = 0
+            for z in lv
+                if z.kind == 2 and math.abs(z.bot - pl) <= EQ_TOL * atrS
+                    eq += 1
+                    z.eq += 1
+            lv.push(Lvl.new(id=nextId, kind=2, dir=1, top=pl, bot=pl, t0=cT.get(ix), born=stfN, eq=eq, coil=coil))
+            nextId += 1
+    // fair value gaps and the order block behind them
+    if sz >= 3 and atrS > 0
+        int i = sz - 1
+        float gUp = cL.get(i) - cH.get(i - 2)
+        float gDn = cL.get(i - 2) - cH.get(i)
+        int   d   = gUp > 0 and gUp >= minGap * atrS ? 1 : gDn > 0 and gDn >= minGap * atrS ? -1 : 0
+        if d != 0
+            float gap = d == 1 ? gUp : gDn
+            lv.push(Lvl.new(id=nextId, kind=3, dir=d, top=d == 1 ? cL.get(i) : cL.get(i - 2), bot=d == 1 ? cH.get(i - 2) : cH.get(i), t0=cT.get(i - 1), born=stfN, disp=gap / atrS))
+            nextId += 1
+            for j = i - 1 to math.max(i - 6, 0)
+                bool opp = d == 1 ? cC.get(j) < cO.get(j) : cC.get(j) > cO.get(j)
+                if opp
+                    float oT = d == 1 ? cO.get(j) : cH.get(j)
+                    float oB = d == 1 ? cL.get(j) : cO.get(j)
+                    bool dup = false
+                    for z in lv
+                        if (z.kind == 4 or z.kind == 5) and z.t0 == cT.get(j)
+                            dup := true
+                    if not dup and (d == 1 ? close > oT : close < oB)
+                        lv.push(Lvl.new(id=nextId, kind=4, dir=d, top=oT, bot=oB, t0=cT.get(j), born=stfN, disp=gap / atrS))
+                        nextId += 1
+                    break
+    while lv.size() > 150
+        lv.shift()
+
+// ============================ SCORING (R3) ===================================
+scoreLvl(Lvl z) =>
+    z.cand := false
+    bool on = z.kind <= 2 ? useLiq : z.kind == 3 ? useFvg and not z.tapped : z.kind == 4 ? useOb and not z.tapped : z.kind == 5 ? useOb : false
+    if on and atrS > 0
+        float e = close > z.top ? z.top : close < z.bot ? z.bot : na
+        float d = math.abs(e - close) / atrS
+        if not na(e) and d <= maxAtr
+            bool up = e > close
+            float c = 0.0
+            float tol = CF_TOL * atrS
+            if up ? b1 == 1 : b1 == -1
+                c += 10
+            if up ? b2 == 1 : b2 == -1
+                c += 4
+            if math.abs(e - pdH) <= tol or math.abs(e - pdL) <= tol
+                c += 8
+            if math.abs(e - dO) <= tol or math.abs(e - mnO) <= tol or math.abs(e - nyO) <= tol
+                c += 4
+            if math.abs(e - (pdH + pdL) / 2) <= tol
+                c += 3
+            float dn = z.kind <= 2 ? 6.0 * z.eq + (z.coil ? 5.0 : 0.0) : 15.0 * math.min(z.disp, 1.0)
+            z.sP    := 35.0 * (d < 1 ? 0.5 + 0.5 * d : 1.0 - 0.7 * (d - 1) / math.max(maxAtr - 1, 0.01))
+            z.sF    := 25.0 * math.pow(0.5, (stfN - z.born) / halfLife)
+            z.sC    := math.min(c, 25.0)
+            z.sD    := math.min(dn, 15.0)
+            z.score := z.sP + z.sF + z.sC + z.sD
+            z.edge  := e
+            z.up    := up
+            z.cand  := true
+
+// ============================ THE DOL (R4) ===================================
+Lvl best = na
+Lvl curZ = na
+for z in lv
+    scoreLvl(z)
+    if z.cand
+        if z.id == dolId
+            curZ := z
+        if na(best)
+            best := z
+        else if z.score > best.score
+            best := z
+
+bool newDol = false
+if dolId != 0 and na(curZ)
+    pushGhost(false)
+    dolId := 0
+if not na(best)
+    bool take = dolId == 0
+    if not take and best.id != dolId
+        take := best.score >= curZ.score + switchPts
+    if take
+        if dolId != 0
+            pushGhost(false)
+        dolId  := best.id
+        curZ   := best
+        newDol := true
+        eps.push(Ep.new(best.edge, best.up, bucketOf(best.score), stfN + potWin))
+if not na(curZ)
+    dTop   := curZ.top
+    dBot   := curZ.bot
+    dEdge  := curZ.edge
+    dT0    := curZ.t0
+    dUp    := curZ.up
+    dName  := kindName(curZ.kind)
+    dScore := curZ.score
+    dP     := curZ.sP
+    dF     := curZ.sF
+    dC     := curZ.sC
+    dD     := curZ.sD
+
+// R6: measured probability of touch for the DOL's score band
+int   dBk  = bucketOf(nz(dScore))
+float pot  = math.min(95.0, 100.0 * (bkHit.get(dBk) + 1) / (bkN.get(dBk) + 2))
+bool  show = dolId != 0 and pot >= minPot
+
+// =============================== ALERTS ======================================
+if newDol and barstate.isconfirmed
+    alert(syminfo.ticker + " new DOL: " + dName + " " + px(dEdge) + (dUp ? " above" : " below") + ", score " + str.tostring(dScore, "0") + ", PoT " + str.tostring(pot, "0") + "%", alert.freq_once_per_bar_close)
+if dolSwept
+    alert(syminfo.ticker + " DOL touched: " + dName + " " + px(dEdge), alert.freq_once_per_bar)
+if newIfvg
+    alert(syminfo.ticker + " new inversion FVG", alert.freq_once_per_bar_close)
+alertcondition(newDol, "New DOL target", "ST DOL Score: a new DOL target is active")
+alertcondition(dolSwept, "DOL touched", "ST DOL Score: price touched the DOL")
+alertcondition(newIfvg, "New inversion FVG", "ST DOL Score: an FVG was inverted")
+
+// ================================ PLOTS ======================================
+plot(show ? dEdge : na, "DOL", color=dUp ? colUp : colDn, linewidth=2, style=plot.style_linebr, display=display.pane)
+plotshape(dolSwept and dUp, "DOL touched (above)", style=shape.diamond, location=location.abovebar, color=color.new(#ffd600, 0), size=size.tiny)
+plotshape(dolSwept and not dUp, "DOL touched (below)", style=shape.diamond, location=location.belowbar, color=color.new(#ffd600, 0), size=size.tiny)
+
+// ============================ LAST-BAR DRAWINGS ==============================
+var array<line>  dLn = array.new<line>()
+var array<label> dLb = array.new<label>()
+var array<box>   dBx = array.new<box>()
+
+if barstate.islast
+    for l in dLn
+        line.delete(l)
+    for l in dLb
+        label.delete(l)
+    for b in dBx
+        box.delete(b)
+    dLn.clear()
+    dLb.clear()
+    dBx.clear()
+    int   xr  = time + extBars * BAR_MS
+    float pad = nz(atrS) * 0.04
+    // ghosts
+    for g in ghosts
+        color gc = g.up ? colUp : colDn
+        dBx.push(box.new(g.t0, g.top + pad, g.t1, g.bot - pad, xloc=xloc.bar_time, border_color=color.new(gc, 70), bgcolor=color.new(gc, 90), text=g.name + (g.swept ? " ✓" : ""), text_size=size.tiny, text_color=color.new(gc, 40), text_halign=text.align_right))
+    // gaps
+    for z in lv
+        if z.kind == 6 and showIfvg
+            color zc = z.dir == 1 ? colUp : colDn
+            dBx.push(box.new(z.t0, z.top, xr, z.bot, xloc=xloc.bar_time, border_color=color.new(zc, 50), bgcolor=color.new(zc, 85), text="iFVG", text_size=size.tiny, text_color=zc, text_halign=text.align_right))
+        else if z.kind == 3 and showFvg and not z.tapped
+            dBx.push(box.new(z.t0, z.top, xr, z.bot, xloc=xloc.bar_time, border_color=color.new(colOth, 70), bgcolor=color.new(colOth, 90), text="FVG", text_size=size.tiny, text_color=colOth, text_halign=text.align_right))
+    // runner-ups
+    if nRun > 0
+        array<float> sc = array.new<float>()
+        array<Lvl>   cs = array.new<Lvl>()
+        for z in lv
+            if z.cand and z.id != dolId
+                sc.push(z.score)
+                cs.push(z)
+        if sc.size() > 0
+            array<int> ord = sc.sort_indices(order.descending)
+            for k = 0 to math.min(nRun, ord.size()) - 1
+                Lvl z = cs.get(ord.get(k))
+                dLn.push(line.new(z.t0, z.edge, xr, z.edge, xloc=xloc.bar_time, color=color.new(colOth, 30), style=line.style_dotted))
+                dLb.push(label.new(xr, z.edge, kindName(z.kind) + " " + str.tostring(z.score, "0"), xloc=xloc.bar_time, style=label.style_label_left, color=color.new(colOth, 100), textcolor=colOth, size=size.small, tooltip="Proximity " + str.tostring(z.sP, "0") + " · Freshness " + str.tostring(z.sF, "0") + " · Confluence " + str.tostring(z.sC, "0") + " · Density " + str.tostring(z.sD, "0")))
+    // the DOL
+    if show
+        color c = dUp ? colUp : colDn
+        dBx.push(box.new(dT0, dTop + pad, xr, dBot - pad, xloc=xloc.bar_time, border_color=c, bgcolor=color.new(c, 75)))
+        dLb.push(label.new(xr, dEdge, "DOL " + (dUp ? "▲ " : "▼ ") + dName + " " + px(dEdge) + " · " + str.tostring(dScore, "0") + " · PoT " + str.tostring(pot, "0") + "%", xloc=xloc.bar_time, style=label.style_label_left, color=color.new(c, 100), textcolor=c, size=size.normal))
+
+// ================================ TABLE ======================================
+biasTxt(int b) =>
+    b == 1 ? "Bullish" : b == -1 ? "Bearish" : "Neutral"
+
+if barstate.islast and tblPos != "Off"
+    var table tb = table.new(tblPos == "Top Left" ? position.top_left : tblPos == "Bottom Right" ? position.bottom_right : tblPos == "Bottom Left" ? position.bottom_left : position.top_right, 3, 10, bgcolor=color.new(#131722, 10), border_width=1, border_color=color.new(#363a45, 0))
+    color tc = color.white
+    color dc = #9598a1
+    array<int>    bs = array.from(b1, b2, b3)
+    array<string> tn = array.from(tfName(htf), tfName(stf), tfName(etf))
+    for k = 0 to 2
+        int b = bs.get(k)
+        table.cell(tb, k, 0, tn.get(k) + " " + biasTxt(b), text_color=b == 1 ? colUp : b == -1 ? colDn : dc, text_size=size.small)
+    color c = dUp ? colUp : colDn
+    table.cell(tb, 0, 1, "DOL", text_color=dc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 1, 1, dolId != 0 ? (dUp ? "▲ " : "▼ ") + dName + " " + px(dEdge) : "None in range", text_color=dolId != 0 ? c : dc, text_size=size.small, text_halign=text.align_left)
+    table.merge_cells(tb, 1, 1, 2, 1)
+    table.cell(tb, 0, 2, "Score", text_color=dc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 1, 2, dolId != 0 ? str.tostring(dScore, "0") + "  (P " + str.tostring(dP, "0") + " · F " + str.tostring(dF, "0") + " · C " + str.tostring(dC, "0") + " · D " + str.tostring(dD, "0") + ")" : "-", text_color=tc, text_size=size.small, text_halign=text.align_left)
+    table.merge_cells(tb, 1, 2, 2, 2)
+    table.cell(tb, 0, 3, "PoT", text_color=dc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 1, 3, dolId != 0 ? str.tostring(pot, "0") + "%  from " + str.tostring(bkN.get(dBk)) + " past DOLs" : "-", text_color=tc, text_size=size.small, text_halign=text.align_left)
+    table.merge_cells(tb, 1, 3, 2, 3)
+    if showChk
+        table.cell(tb, 0, 4, "Score band", text_color=dc, text_size=size.small, text_halign=text.align_left)
+        table.cell(tb, 1, 4, "DOLs", text_color=dc, text_size=size.small)
+        table.cell(tb, 2, 4, "Touched", text_color=dc, text_size=size.small)
+        array<string> bn = array.from("Under 45", "45 - 59", "60 - 74", "75 +")
+        for k = 0 to 3
+            int n = bkN.get(k)
+            table.cell(tb, 0, 5 + k, bn.get(k), text_color=tc, text_size=size.small, text_halign=text.align_left)
+            table.cell(tb, 1, 5 + k, str.tostring(n), text_color=tc, text_size=size.small)
+            table.cell(tb, 2, 5 + k, n > 0 ? str.tostring(math.round(100.0 * bkHit.get(k) / n)) + "%" : "-", text_color=tc, text_size=size.small)

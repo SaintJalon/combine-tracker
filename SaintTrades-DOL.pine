@@ -1,0 +1,737 @@
+//@version=6
+// =============================================================================
+// SaintTrades DOL + 4H Reclaim                                        INDICATOR
+// -----------------------------------------------------------------------------
+// Two jobs in one script:
+//   1. Find the draw on liquidity (DOL) for the day from the SaintTrades
+//      KeyLevels pools, and show the JS RB rejection blocks around price.
+//   2. Signal when price breaks out of the previous 4H candle's range and a
+//      candle closes back inside it.
+// Non-repainting: signals fire on closed bars only, higher-timeframe values are
+// the previous finished candle.
+//
+// --------------------------------- RULES -------------------------------------
+//  R1. Liquidity pools: previous day high/low, previous week high/low, Asia
+//      high/low and London high/low. A pool is "taken" once a wick trades
+//      through it. Day and session pools reset at the 18:00 NY open.
+//  R2. Bias for the day starts from the last two finished daily candles (or is
+//      set by hand):
+//        yesterday closed above the prior day's high         -> bullish
+//        yesterday closed below the prior day's low          -> bearish
+//        yesterday swept the prior high and closed back in   -> bearish
+//        yesterday swept the prior low and closed back in    -> bullish
+//        otherwise (inside day, or swept both)               -> the side of
+//                                        yesterday's midpoint it closed on
+//      During the day it flips when a reclaim candle closes through a pool:
+//      a close below a low pool turns it bearish, a close above a high pool
+//      turns it bullish (input). A wick through a pool does not flip it.
+//  R3. DOL = the nearest pool on the bias side that has not been taken. When it
+//      is taken the DOL moves to the next one out. When none is left the DOL is
+//      "delivered" for the day.
+//  R4. 4H range = high and low of the previous finished 4H candle.
+//  R5. Breakout: price trades beyond the range (a wick, or a close - input).
+//      Reclaim: a reclaim candle (5m by default, whatever the chart) then
+//      closes back inside the range.
+//        above the 4H high, close back below it -> SELL
+//        below the 4H low,  close back above it -> BUY
+//      After a signal the side re-arms on a fresh breakout, up to the number
+//      of signals per side per 4H candle (input, default 2).
+//  R6. Entry = that candle's close. Stop = the breakout extreme + buffer.
+//      TP1 = the 4H midpoint. Target = the opposite side of the 4H range, or
+//      the DOL when the trade points at it (input).
+//  R7. One trade at a time. Every trade is scored three ways in R: all out at
+//      the midpoint, all to the target, and half off at the midpoint with the
+//      stop moved to the entry from the next bar and the rest to the target.
+//      The table splits them by with / against the DOL. A bar that trades both
+//      the stop and a target counts as the stop.
+//  R8. Rejection blocks follow JS RB: a candle whose wick takes a swing
+//      high/low while its body stays on the near side. Zone = body edge to
+//      wick tip. It lasts until a later wick trades past its tip.
+// =============================================================================
+indicator("SaintTrades DOL + 4H Reclaim", "ST DOL 4H", overlay=true, max_lines_count=300, max_labels_count=300, max_boxes_count=100)
+
+// ============================== TYPES ========================================
+type Pool
+    string name
+    bool   isHigh
+    float  price = na
+    bool   live  = false
+    bool   taken = false
+    bool   broken = false
+    int    t0    = na
+
+type Trade
+    bool   bull
+    bool   withDol
+    float  entry
+    float  stop
+    float  risk
+    float  tp1
+    float  tgt
+    float  rr
+    string tgtName
+    int    bar0
+    bool   doneM = false
+    float  rM    = 0.0
+    bool   done  = false
+    float  r     = 0.0
+    bool   doneG = false
+    float  rG    = 0.0
+    bool   t1    = false
+    line   lnE
+    line   lnS
+    line   lnT
+    line   ln1
+    label  lb
+    label  res
+
+// =============================== INPUTS ======================================
+G_DOL = "1 · Draw on liquidity"
+G_SET = "2 · 4H breakout & reclaim"
+G_TR  = "3 · Entry, stop & target"
+G_RB  = "4 · Rejection blocks (JS RB rules)"
+G_VIS = "5 · Visuals"
+
+biasIn  = input.string("Auto (daily candles)", "Bias for the day", options=["Auto (daily candles)", "Bullish", "Bearish"], tooltip="Auto reads the last two finished daily candles (rule R2 in the source). Set it by hand when you have your own read.", group=G_DOL)
+usePD   = input.bool(true, "Previous day high / low", group=G_DOL)
+usePW   = input.bool(true, "Previous week high / low", group=G_DOL)
+useAsia = input.bool(true, "Asia high / low (NY)", inline="as", group=G_DOL)
+asiaSes = input.session("2000-0400", "", inline="as", group=G_DOL)
+useLon  = input.bool(true, "London high / low (NY)", inline="ln", group=G_DOL)
+lonSes  = input.session("0300-0900", "", inline="ln", group=G_DOL)
+flipOn  = input.bool(true, "Flip the bias when price closes through an opposite pool", tooltip="Auto bias only. A reclaim candle closing below a low pool turns the day bearish, above a high pool bullish. A wick through a pool does not count.", group=G_DOL)
+minDist = input.float(0.0, "Skip pools closer than (points)", minval=0, step=5, tooltip="A pool a few points away is not much of a draw. 0 = the nearest untaken pool is always the DOL.", group=G_DOL)
+
+rngIn   = input.string("4H", "Range timeframe", options=["1H", "4H"], group=G_SET)
+confIn  = input.string("5m", "Reclaim candle", options=["Chart", "3m", "5m", "15m"], tooltip="The candle that must close back inside the range. 5m ignores one-minute wicks on a 1m chart. On a chart at or above this timeframe the chart candle is used.", group=G_SET)
+maxSig  = input.int(2, "Signals per side per 4H candle", minval=1, maxval=4, tooltip="After a signal the side needs a fresh breakout before it can signal again.", group=G_SET)
+brkIn   = input.string("Wick beyond", "Breakout counts as", options=["Wick beyond", "Close beyond"], tooltip="Wick beyond: any trade through the 4H high/low, so one candle can sweep and close back inside. Close beyond: a candle must first close outside the range.", group=G_SET)
+minBrk  = input.int(0, "Breakout must clear the level by (ticks)", minval=0, maxval=400, group=G_SET)
+maxOut  = input.int(0, "Cancel if outside longer than (bars, 0 = off)", minval=0, group=G_SET)
+dirIn   = input.string("Both", "Direction", options=["Both", "Longs only", "Shorts only"], group=G_SET)
+onlyDol = input.bool(false, "Only trades toward the DOL", tooltip="Sells only on a bearish day, buys only on a bullish day. The table scores both kinds either way, so check it before turning this on.", group=G_SET)
+useWin  = input.bool(false, "Only signal inside (NY)", inline="win", group=G_SET)
+winSess = input.session("0800-1600", "", inline="win", group=G_SET)
+
+stopTk  = input.int(4, "Stop buffer past the extreme (ticks)", minval=0, maxval=400, tooltip="4 ticks = 1 point on NQ / MNQ.", group=G_TR)
+maxRisk = input.float(0.0, "Max stop size (points, 0 = off)", minval=0, step=1, group=G_TR)
+tgtIn   = input.string("Opposite side of the 4H range", "Target", options=["Opposite side of the 4H range", "DOL when the trade points at it"], tooltip="With the DOL option, a trade against the day's bias still uses the opposite side of the range.", group=G_TR)
+mgmtIn  = input.string("Half at the mid, rest to target", "Results & labels use", options=["Half at the mid, rest to target", "All out at the mid", "All to target"], tooltip="Half at the mid: half comes off at the 4H midpoint, the stop moves to the entry from the next bar, the rest runs to the target. The table scores all three either way.", group=G_TR)
+minRR   = input.float(1.0, "Minimum R:R to the target", minval=0, step=0.25, group=G_TR)
+useFlat = input.bool(true, "Flatten at 16:00 NY, no signals until 18:00", group=G_TR)
+riskUsd = input.float(0.0, "Risk per trade ($) for a contract count (0 = off)", minval=0, step=50, group=G_TR)
+
+showRB     = input.bool(true, "Show rejection blocks", group=G_RB)
+rbTfIn     = input.string("1H", "Timeframe", options=["15m", "30m", "1H", "4H"], group=G_RB)
+strengthIn = input.string("Sensitive", "Swing strength", options=["Sensitive", "Normal", "Strict"], tooltip="Set it the same as in JS RB. Sensitive = 1 candle each side, Normal = 2 left / 3 right, Strict = 6 each side.", group=G_RB)
+dirOnly    = input.bool(false, "Only RBs closing in their own direction", group=G_RB)
+rbN        = input.int(3, "Nearest blocks shown each side", minval=1, maxval=10, group=G_RB)
+
+colUp    = input.color(#26a69a, "Bullish", inline="c1", group=G_VIS)
+colDn    = input.color(#ef5350, "Bearish", inline="c1", group=G_VIS)
+colRng   = input.color(#ff9800, "4H range", inline="c2", group=G_VIS)
+colPool  = input.color(#9598a1, "Pools", inline="c2", group=G_VIS)
+colRB    = input.color(#b2b5be, "RBs", inline="c2", group=G_VIS)
+showRng  = input.bool(true, "Show the 4H range", group=G_VIS)
+showPool = input.bool(true, "Show liquidity pools", group=G_VIS)
+showTkn  = input.bool(false, "Keep taken pools on the chart", group=G_VIS)
+extBars  = input.int(25, "Label distance (bars)", minval=5, maxval=300, group=G_VIS)
+maxDraw  = input.int(30, "Trades kept on the chart", minval=1, maxval=60, group=G_VIS)
+tblPos   = input.string("Top Right", "Table", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Off"], group=G_VIS)
+
+// ============================= CONSTANTS =====================================
+NY     = "America/New_York"
+TICK   = na(syminfo.mintick) or syminfo.mintick <= 0 ? 0.25 : syminfo.mintick
+PV     = na(syminfo.pointvalue) or syminfo.pointvalue <= 0 ? 1.0 : syminfo.pointvalue
+BAR_MS = timeframe.in_seconds() * 1000
+rngTf  = rngIn == "1H" ? "60" : "240"
+rbTf   = rbTfIn == "15m" ? "15" : rbTfIn == "30m" ? "30" : rbTfIn == "4H" ? "240" : "60"
+pivN   = strengthIn == "Normal" ? 3 : strengthIn == "Strict" ? 6 : 1
+pivL   = strengthIn == "Normal" ? 2 : pivN
+tgtDol = tgtIn == "DOL when the trade points at it"
+mgSel  = mgmtIn == "All out at the mid" ? 1 : mgmtIn == "All to target" ? 2 : 0
+confTf = confIn == "3m" ? "3" : confIn == "5m" ? "5" : confIn == "15m" ? "15" : timeframe.period
+useConf = confIn != "Chart" and timeframe.in_seconds(confTf) > timeframe.in_seconds()
+// the last chart bar of a reclaim candle
+confEnd = barstate.isconfirmed and (not useConf or time_close == time_close(confTf))
+
+if barstate.isfirst and timeframe.in_seconds() >= timeframe.in_seconds(rngTf)
+    runtime.error("Use a chart timeframe below the range timeframe, e.g. 5m or 15m for the 4H range.")
+
+px(float p) =>
+    str.tostring(p, format.mintick)
+
+fmtR(float r) =>
+    (r > 0 ? "+" : "") + str.tostring(r, "0.0") + "R"
+
+// ====================== HIGHER-TIMEFRAME DATA ================================
+[pdH, pdL, pdC, ppH, ppL, dT] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1], high[2], low[2], time], lookahead=barmerge.lookahead_on)
+[pwH, pwL, wT] = request.security(syminfo.tickerid, "W", [high[1], low[1], time], lookahead=barmerge.lookahead_on)
+[rH, rL, rT] = request.security(syminfo.tickerid, rngTf, [high[1], low[1], time], lookahead=barmerge.lookahead_on)
+
+newDay  = ta.change(dT) != 0 or bar_index == 0
+newWeek = ta.change(wT) != 0 or bar_index == 0
+newRng  = ta.change(rT) != 0
+rM      = (rH + rL) / 2
+
+// R8: JS RB's rejection blocks on their own timeframe. Returns the live zones.
+jsZonesHTF() =>
+    var array<float> hs = array.new<float>()
+    var array<float> ls = array.new<float>()
+    var array<float> bT = array.new<float>()
+    var array<float> bB = array.new<float>()
+    var array<int>   bX = array.new<int>()
+    var array<float> uT = array.new<float>()
+    var array<float> uB = array.new<float>()
+    var array<int>   uX = array.new<int>()
+    if bT.size() > 0
+        for i = bT.size() - 1 to 0
+            if high > bT.get(i)
+                bT.remove(i)
+                bB.remove(i)
+                bX.remove(i)
+    if uT.size() > 0
+        for i = uT.size() - 1 to 0
+            if low < uB.get(i)
+                uT.remove(i)
+                uB.remove(i)
+                uX.remove(i)
+    if bar_index >= pivL + pivN
+        float ph = high[pivN]
+        float pl = low[pivN]
+        bool isH = true
+        bool isL = true
+        for k = 0 to pivN + pivL
+            if k != pivN
+                if high[k] >= ph
+                    isH := false
+                if low[k] <= pl
+                    isL := false
+        if isH
+            hs.push(ph)
+            if hs.size() > 500
+                hs.shift()
+        if isL
+            ls.push(pl)
+            if ls.size() > 500
+                ls.shift()
+    float bt = math.max(open, close)
+    float bb = math.min(open, close)
+    int nb = 0
+    int nu = 0
+    if hs.size() > 0
+        for i = hs.size() - 1 to 0
+            float lv = hs.get(i)
+            if high > lv
+                if bt < lv
+                    nb += 1
+                hs.remove(i)
+    if ls.size() > 0
+        for i = ls.size() - 1 to 0
+            float lv = ls.get(i)
+            if low < lv
+                if bb > lv
+                    nu += 1
+                ls.remove(i)
+    if dirOnly
+        nb := close < open ? nb : 0
+        nu := close > open ? nu : 0
+    if barstate.isconfirmed
+        if nb > 0
+            bT.push(high)
+            bB.push(bt)
+            bX.push(time)
+            if bT.size() > 500
+                bT.shift()
+                bB.shift()
+                bX.shift()
+        if nu > 0
+            uT.push(bb)
+            uB.push(low)
+            uX.push(time)
+            if uT.size() > 500
+                uT.shift()
+                uB.shift()
+                uX.shift()
+    [array.copy(bT), array.copy(bB), array.copy(bX), array.copy(uT), array.copy(uB), array.copy(uX)]
+
+[rbBT, rbBB, rbBX, rbUT, rbUB, rbUX] = request.security(syminfo.tickerid, rbTf, jsZonesHTF())
+
+// ============================== POOLS (R1) ===================================
+var array<Pool> pools = array.new<Pool>()
+if barstate.isfirst
+    pools.push(Pool.new("PDH", true))
+    pools.push(Pool.new("PDL", false))
+    pools.push(Pool.new("PWH", true))
+    pools.push(Pool.new("PWL", false))
+    pools.push(Pool.new("Asia H", true))
+    pools.push(Pool.new("Asia L", false))
+    pools.push(Pool.new("London H", true))
+    pools.push(Pool.new("London L", false))
+
+poolOn(int i) =>
+    i < 2 ? usePD : i < 4 ? usePW : i < 6 ? useAsia : useLon
+
+setPool(int i, float p, int t) =>
+    Pool q = pools.get(i)
+    q.price := p
+    q.live  := not na(p)
+    q.taken := false
+    q.broken := false
+    q.t0    := t
+
+var float asH = na
+var float asL = na
+var float lnH = na
+var float lnL = na
+var int   lastDol = -1
+inAs = not na(time(timeframe.period, asiaSes, NY))
+inLn = not na(time(timeframe.period, lonSes, NY))
+
+if newDay
+    setPool(0, pdH, time)
+    setPool(1, pdL, time)
+    for i = 4 to 7
+        Pool q = pools.get(i)
+        q.live := false
+if newWeek
+    setPool(2, pwH, time)
+    setPool(3, pwL, time)
+
+if inAs
+    asH := inAs[1] ? math.max(asH, high) : high
+    asL := inAs[1] ? math.min(asL, low) : low
+else if inAs[1] and not na(asH)
+    setPool(4, asH, time)
+    setPool(5, asL, time)
+if inLn
+    lnH := inLn[1] ? math.max(lnH, high) : high
+    lnL := inLn[1] ? math.min(lnL, low) : low
+else if inLn[1] and not na(lnH)
+    setPool(6, lnH, time)
+    setPool(7, lnL, time)
+
+bool dolHit = false
+for [i, q] in pools
+    if q.live and not q.taken
+        if q.isHigh ? high > q.price : low < q.price
+            q.taken := true
+            if i == lastDol
+                dolHit := true
+
+// ============================ BIAS & DOL (R2, R3) ============================
+int    autoBias = 0
+string biasWhy  = "no daily history yet"
+if not na(ppH) and not na(pdC)
+    float pdMid = (pdH + pdL) / 2
+    bool failH = pdH > ppH and pdC <= ppH
+    bool failL = pdL < ppL and pdC >= ppL
+    if pdC > ppH
+        autoBias := 1
+        biasWhy  := "closed above the prior day's high"
+    else if pdC < ppL
+        autoBias := -1
+        biasWhy  := "closed below the prior day's low"
+    else if failH and not failL
+        autoBias := -1
+        biasWhy  := "swept the prior high, closed back in"
+    else if failL and not failH
+        autoBias := 1
+        biasWhy  := "swept the prior low, closed back in"
+    else
+        autoBias := pdC >= pdMid ? 1 : -1
+        biasWhy  := pdC >= pdMid ? "closed in the top half of the day" : "closed in the bottom half of the day"
+
+var int    dayBias = 0
+var string dayWhy  = "no daily history yet"
+if newDay or dayBias == 0
+    dayBias := autoBias
+    dayWhy  := biasWhy
+if confEnd
+    for [i, q] in pools
+        if poolOn(i) and q.live and not q.broken
+            if q.isHigh ? close > q.price : close < q.price
+                q.broken := true
+                if flipOn
+                    dayBias := q.isHigh ? 1 : -1
+                    dayWhy  := (q.isHigh ? "closed above " : "closed below ") + q.name
+
+int bias = biasIn == "Bullish" ? 1 : biasIn == "Bearish" ? -1 : dayBias
+biasWhy := biasIn != "Auto (daily candles)" ? "set by hand" : dayWhy
+
+int   dolI = -1
+int   nxtI = -1
+float dD1  = na
+float dD2  = na
+if bias != 0
+    for [i, q] in pools
+        if poolOn(i) and q.live and not q.taken and q.isHigh == (bias == 1)
+            float d = math.abs(q.price - close)
+            if d >= minDist
+                if na(dD1) or d < dD1
+                    dD2  := dD1
+                    nxtI := dolI
+                    dD1  := d
+                    dolI := i
+                else if na(dD2) or d < dD2
+                    dD2  := d
+                    nxtI := i
+float  dolPrice = na
+string dolName  = ""
+if dolI >= 0
+    dolPrice := pools.get(dolI).price
+    dolName  := pools.get(dolI).name
+lastDol := dolI
+
+// ======================== 4H BREAKOUT & RECLAIM (R4-R6) ======================
+var bool  outHi  = false
+var bool  outLo  = false
+var bool  expHi  = false
+var bool  expLo  = false
+var int   cntHi  = 0
+var int   cntLo  = 0
+var float extHi  = na
+var float extLo  = na
+var int   barHi  = na
+var int   barLo  = na
+if newRng
+    outHi  := false
+    outLo  := false
+    expHi  := false
+    expLo  := false
+    cntHi  := 0
+    cntLo  := 0
+    extHi  := na
+    extLo  := na
+
+nyMin    = hour(time, NY) * 60 + minute(time, NY)
+flatZone = useFlat and nyMin >= 960 and nyMin < 1080
+inWin    = not useWin or not na(time(timeframe.period, winSess, NY))
+canSig   = barstate.isconfirmed and not flatZone and inWin and not na(rH)
+
+bool reclaimDn = false
+bool reclaimUp = false
+if not na(rH)
+    if high > rH
+        extHi := na(extHi) ? high : math.max(extHi, high)
+    if low < rL
+        extLo := na(extLo) ? low : math.min(extLo, low)
+    bool brkHi = brkIn == "Close beyond" ? confEnd and close > rH + minBrk * TICK : high > rH + minBrk * TICK
+    bool brkLo = brkIn == "Close beyond" ? confEnd and close < rL - minBrk * TICK : low < rL - minBrk * TICK
+    if brkHi and not outHi
+        outHi := true
+        expHi := false
+        barHi := bar_index
+    if brkLo and not outLo
+        outLo := true
+        expLo := false
+        barLo := bar_index
+    if outHi and maxOut > 0 and bar_index - barHi > maxOut
+        expHi := true
+    if outLo and maxOut > 0 and bar_index - barLo > maxOut
+        expLo := true
+    // the reclaim: the side re-arms on the next breakout
+    if outHi and confEnd and close < rH
+        outHi     := false
+        reclaimDn := not expHi and cntHi < maxSig
+    if outLo and confEnd and close > rL
+        outLo     := false
+        reclaimUp := not expLo and cntLo < maxSig
+
+// R6: build the trade for a reclaim, or na when it fails a filter
+mkTrade(bool bull, float ext) =>
+    Trade t = na
+    float e  = close
+    float st = bull ? ext - stopTk * TICK : ext + stopTk * TICK
+    float rk = math.abs(e - st)
+    bool  wd = bull ? bias == 1 : bias == -1
+    float far = bull ? rH : rL
+    string tn = bull ? "range high" : "range low"
+    if tgtDol and wd and not na(dolPrice)
+        if bull ? dolPrice > e : dolPrice < e
+            far := dolPrice
+            tn  := "DOL " + dolName
+    float rr = rk > 0 ? math.abs(far - e) / rk : 0.0
+    bool dirOk = dirIn == "Both" or (bull ? dirIn == "Longs only" : dirIn == "Shorts only")
+    bool sideOk = bull ? far > e : far < e
+    bool ok = rk > 0 and sideOk and rr >= minRR and (maxRisk == 0 or rk <= maxRisk) and (not onlyDol or wd) and dirOk
+    if ok
+        bool midOk = bull ? rM > e and rM < far : rM < e and rM > far
+        t := Trade.new(bull=bull, withDol=wd, entry=e, stop=st, risk=rk, tp1=midOk ? rM : na, tgt=far, rr=rr, tgtName=tn, bar0=bar_index)
+    t
+
+// ============================ TRADES & STATS (R7) ============================
+var Trade        cur   = na
+var array<Trade> hist  = array.new<Trade>()
+var array<Trade> openT = array.new<Trade>()   // trades with a result still open
+// rows: 0 all, 1 with the DOL, 2 against the DOL
+var array<int>   sN  = array.new<int>(3, 0)
+var array<int>   sNM = array.new<int>(3, 0)
+var array<int>   sWM = array.new<int>(3, 0)
+var array<float> sSM = array.new<float>(3, 0.0)
+var array<int>   sW  = array.new<int>(3, 0)
+var array<float> sS  = array.new<float>(3, 0.0)
+var array<int>   sWG = array.new<int>(3, 0)
+var array<float> sSG = array.new<float>(3, 0.0)
+
+book(Trade t) =>
+    for k = 0 to 2
+        if k == 0 or (k == 1 and t.withDol) or (k == 2 and not t.withDol)
+            sN.set(k, sN.get(k) + 1)
+            sS.set(k, sS.get(k) + t.r)
+            sSG.set(k, sSG.get(k) + t.rG)
+            if t.r > 0
+                sW.set(k, sW.get(k) + 1)
+            if t.rG > 0
+                sWG.set(k, sWG.get(k) + 1)
+            if not na(t.tp1)
+                sNM.set(k, sNM.get(k) + 1)
+                sSM.set(k, sSM.get(k) + t.rM)
+                if t.rM > 0
+                    sWM.set(k, sWM.get(k) + 1)
+
+dropTrade(Trade t) =>
+    line.delete(t.lnE)
+    line.delete(t.lnS)
+    line.delete(t.lnT)
+    line.delete(t.ln1)
+    label.delete(t.lb)
+    label.delete(t.res)
+
+// the result the labels, alerts and "live" state follow
+selDone(Trade t) =>
+    mgSel == 0 ? t.doneG : mgSel == 1 ? t.doneM : t.done
+
+selR(Trade t) =>
+    mgSel == 0 ? t.rG : mgSel == 1 ? t.rM : t.r
+
+// R7: one bar of an open trade, all three results. True when the shown result ends.
+stepTrade(Trade t) =>
+    bool ended = false
+    if bar_index > t.bar0
+        bool hitS = t.bull ? low <= t.stop : high >= t.stop
+        bool hit1 = not na(t.tp1) and (t.bull ? high >= t.tp1 : low <= t.tp1)
+        bool hitT = t.bull ? high >= t.tgt : low <= t.tgt
+        bool hitE = t.bull ? low <= t.entry : high >= t.entry
+        float mtm  = (t.bull ? close - t.entry : t.entry - close) / t.risk
+        float midR = na(t.tp1) ? 0.0 : math.abs(t.tp1 - t.entry) / t.risk
+        bool was = selDone(t)
+        if not t.done
+            if hitS
+                t.r    := -1.0
+                t.done := true
+            else if hitT
+                t.r    := t.rr
+                t.done := true
+            else if flatZone
+                t.r    := mtm
+                t.done := true
+        if not t.doneM and not na(t.tp1)
+            if hitS
+                t.rM    := -1.0
+                t.doneM := true
+            else if hit1
+                t.rM    := midR
+                t.doneM := true
+            else if flatZone
+                t.rM    := mtm
+                t.doneM := true
+        if not t.doneG and not na(t.tp1)
+            if not t.t1
+                if hitS
+                    t.rG    := -1.0
+                    t.doneG := true
+                else if hit1
+                    t.t1 := true
+                    if hitT
+                        t.rG    := 0.5 * midR + 0.5 * t.rr
+                        t.doneG := true
+                    else if flatZone
+                        t.rG    := 0.5 * midR + 0.5 * mtm
+                        t.doneG := true
+                else if flatZone
+                    t.rG    := mtm
+                    t.doneG := true
+            else
+                if hitE
+                    t.rG    := 0.5 * midR
+                    t.doneG := true
+                else if hitT
+                    t.rG    := 0.5 * midR + 0.5 * t.rr
+                    t.doneG := true
+                else if flatZone
+                    t.rG    := 0.5 * midR + 0.5 * mtm
+                    t.doneG := true
+        // no midpoint between the entry and the target: every result is the full one
+        if na(t.tp1) and t.done
+            t.rM    := t.r
+            t.doneM := true
+            t.rG    := t.r
+            t.doneG := true
+        if not was
+            line.set_x2(t.lnE, bar_index)
+            line.set_x2(t.lnS, bar_index)
+            line.set_x2(t.lnT, bar_index)
+            line.set_x2(t.ln1, bar_index)
+            if selDone(t)
+                ended := true
+                float rr = selR(t)
+                color rc = rr > 0 ? colUp : colDn
+                string how = rr <= -1 ? "stopped" : flatZone ? "flat 16:00" : mgSel == 1 ? "midpoint hit" : mgSel == 2 ? "target hit" : hitT ? "half at the mid, half at the target" : "half at the mid, rest at breakeven"
+                t.res := label.new(bar_index, close, fmtR(rr), style=label.style_label_left, color=color.new(rc, 100), textcolor=rc, size=size.small, tooltip=how)
+    ended
+
+bool aBuy  = false
+bool aSell = false
+bool aExit = false
+
+if openT.size() > 0
+    for i = openT.size() - 1 to 0
+        Trade t = openT.get(i)
+        if stepTrade(t)
+            aExit := true
+            cur   := na
+            alert((t.bull ? "BUY " : "SELL ") + syminfo.ticker + " closed " + fmtR(selR(t)), alert.freq_once_per_bar_close)
+        if t.done and t.doneM and t.doneG
+            book(t)
+            openT.remove(i)
+
+// a new signal
+if (reclaimDn or reclaimUp) and canSig and na(cur)
+    bool bull = reclaimUp and not reclaimDn
+    Trade t = mkTrade(bull, bull ? extLo : extHi)
+    if not na(t)
+        color c = bull ? colUp : colDn
+        string cts = riskUsd > 0 ? "\nContracts: " + str.tostring(math.floor(riskUsd / (t.risk * PV))) : ""
+        string tip = (bull ? "Below the range low, closed back inside" : "Above the range high, closed back inside") + "\nEntry " + px(t.entry) + "\nStop " + px(t.stop) + " (" + str.tostring(t.risk, "0.00") + " pts)" + (na(t.tp1) ? "" : "\nTP1 range mid " + px(t.tp1)) + "\nTarget " + t.tgtName + " " + px(t.tgt) + " (" + str.tostring(t.rr, "0.0") + "R)" + "\n" + (t.withDol ? "With the DOL" : "Against the DOL") + cts
+        t.lnE := line.new(bar_index, t.entry, bar_index + 1, t.entry, color=color.new(#2962ff, 0), width=1)
+        t.lnS := line.new(bar_index, t.stop, bar_index + 1, t.stop, color=colDn, width=1)
+        t.lnT := line.new(bar_index, t.tgt, bar_index + 1, t.tgt, color=colUp, width=1)
+        t.ln1 := line.new(bar_index, t.tp1, bar_index + 1, t.tp1, color=colUp, width=1, style=line.style_dotted)
+        t.lb  := label.new(bar_index, bull ? low : high, (bull ? "BUY " : "SELL ") + px(t.entry) + (t.withDol ? " ★" : ""), style=bull ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=size.small, tooltip=tip)
+        cur := t
+        openT.push(t)
+        hist.push(t)
+        if bull
+            cntLo += 1
+        else
+            cntHi += 1
+        if hist.size() > maxDraw
+            dropTrade(hist.shift())
+        aBuy  := bull
+        aSell := not bull
+        alert((bull ? "BUY " : "SELL ") + syminfo.ticker + " · 4H reclaim" + (t.withDol ? " with the DOL" : "") + "\nEntry " + px(t.entry) + "  SL " + px(t.stop) + "  TP " + px(t.tgt) + "  R:R " + str.tostring(t.rr, "0.0"), alert.freq_once_per_bar_close)
+
+if dolHit
+    alert(syminfo.ticker + " took the DOL", alert.freq_once_per_bar)
+
+alertcondition(aBuy, "DOL 4H BUY", "ST DOL 4H: BUY, closed back above the 4H low")
+alertcondition(aSell, "DOL 4H SELL", "ST DOL 4H: SELL, closed back below the 4H high")
+alertcondition(aExit, "DOL 4H trade closed", "ST DOL 4H: trade closed")
+alertcondition(dolHit, "DOL taken", "ST DOL 4H: the draw on liquidity was taken")
+
+// ================================ PLOTS ======================================
+pH = plot(showRng and not newRng ? rH : na, "Range high", color=colRng, style=plot.style_linebr, display=display.pane)
+pL = plot(showRng and not newRng ? rL : na, "Range low", color=colRng, style=plot.style_linebr, display=display.pane)
+plot(showRng and not newRng ? rM : na, "Range mid", color=color.new(colRng, 55), style=plot.style_linebr, display=display.pane)
+fill(pH, pL, color=color.new(colRng, 93), title="Range fill")
+plot(dolPrice, "DOL", color=bias == 1 ? colUp : colDn, linewidth=2, style=plot.style_linebr, display=display.pane)
+plotshape(dolHit and bias == 1, "DOL taken (high)", style=shape.diamond, location=location.abovebar, color=color.new(#ffd600, 0), size=size.tiny)
+plotshape(dolHit and bias != 1, "DOL taken (low)", style=shape.diamond, location=location.belowbar, color=color.new(#ffd600, 0), size=size.tiny)
+
+// ============================ LAST-BAR DRAWINGS ==============================
+var array<line>  pLn = array.new<line>()
+var array<label> pLb = array.new<label>()
+var array<box>   pBx = array.new<box>()
+
+// the n zones nearest to price on one side
+pickNear(array<float> edge, bool above, int n) =>
+    array<int> res = array.new<int>()
+    if edge.size() > 0
+        for pass = 1 to n
+            int best = -1
+            float bd = na
+            for i = 0 to edge.size() - 1
+                float e = edge.get(i)
+                if (above ? e > close : e < close) and not res.includes(i)
+                    float d = math.abs(e - close)
+                    if na(bd) or d < bd
+                        bd := d
+                        best := i
+            if best >= 0
+                res.push(best)
+    res
+
+if barstate.islast
+    for l in pLn
+        line.delete(l)
+    for l in pLb
+        label.delete(l)
+    for b in pBx
+        box.delete(b)
+    pLn.clear()
+    pLb.clear()
+    pBx.clear()
+    int xr = time + extBars * BAR_MS
+    if showPool
+        for [i, q] in pools
+            if poolOn(i) and q.live and (showTkn or not q.taken)
+                bool isDol = i == dolI
+                color c = isDol ? (bias == 1 ? colUp : colDn) : q.taken ? color.new(colPool, 60) : colPool
+                string tx = (isDol ? "DOL ▸ " : "") + q.name + " " + px(q.price) + (q.taken ? " ✓" : "")
+                pLn.push(line.new(q.t0, q.price, xr, q.price, xloc=xloc.bar_time, color=c, width=isDol ? 2 : 1, style=isDol ? line.style_solid : line.style_dotted))
+                pLb.push(label.new(xr, q.price, tx, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(c, 100), textcolor=c, size=isDol ? size.normal : size.small))
+    if showRB
+        array<int> ia = pickNear(rbBB, true, rbN)
+        for i in ia
+            if high <= rbBT.get(i)
+                pBx.push(box.new(rbBX.get(i), rbBT.get(i), xr, rbBB.get(i), xloc=xloc.bar_time, border_color=color.new(colRB, 30), bgcolor=color.new(colRB, 80), text=rbTfIn + " RB", text_size=size.tiny, text_color=colRB, text_halign=text.align_right))
+        array<int> ib = pickNear(rbUT, false, rbN)
+        for i in ib
+            if low >= rbUB.get(i)
+                pBx.push(box.new(rbUX.get(i), rbUT.get(i), xr, rbUB.get(i), xloc=xloc.bar_time, border_color=color.new(colRB, 30), bgcolor=color.new(colRB, 80), text=rbTfIn + " RB", text_size=size.tiny, text_color=colRB, text_halign=text.align_right))
+
+// ================================ TABLE ======================================
+statM(int k) =>
+    int n = sNM.get(k)
+    n > 0 ? str.tostring(math.round(100.0 * sWM.get(k) / n)) + "%  " + fmtR(sSM.get(k) / n) : "-"
+
+statT(int k) =>
+    int n = sN.get(k)
+    n > 0 ? str.tostring(math.round(100.0 * sW.get(k) / n)) + "%  " + fmtR(sS.get(k) / n) : "-"
+
+statG(int k) =>
+    int n = sN.get(k)
+    n > 0 ? str.tostring(math.round(100.0 * sWG.get(k) / n)) + "%  " + fmtR(sSG.get(k) / n) : "-"
+
+if barstate.islast and tblPos != "Off"
+    var table tb = table.new(tblPos == "Top Left" ? position.top_left : tblPos == "Bottom Right" ? position.bottom_right : tblPos == "Bottom Left" ? position.bottom_left : position.top_right, 5, 9, bgcolor=color.new(#131722, 10), border_width=1, border_color=color.new(#363a45, 0))
+    color tc = color.white
+    color dc = #9598a1
+    color bc = bias == 1 ? colUp : bias == -1 ? colDn : dc
+    string dolTx = dolI >= 0 ? dolName + " " + px(dolPrice) + "  (" + str.tostring(math.abs(dolPrice - close), "0.00") + " pts)" : bias == 0 ? "-" : "Delivered, no untaken pool left"
+    string nxtTx = "-"
+    if nxtI >= 0
+        nxtTx := pools.get(nxtI).name + " " + px(pools.get(nxtI).price)
+    string st = not na(cur) ? (cur.bull ? "BUY live" : "SELL live") + " → " + px(cur.tgt) : outHi ? "Above the high, wait for a close back inside" : outLo ? "Below the low, wait for a close back inside" : "Inside the range"
+    table.cell(tb, 0, 0, "Bias", text_color=dc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 1, 0, (bias == 1 ? "Bullish" : bias == -1 ? "Bearish" : "-") + " · " + biasWhy, text_color=bc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 0, 1, "DOL", text_color=dc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 1, 1, dolTx, text_color=bc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 0, 2, "Next", text_color=dc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 1, 2, nxtTx, text_color=tc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 0, 3, rngIn, text_color=dc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 1, 3, st, text_color=tc, text_size=size.small, text_halign=text.align_left)
+    for r = 0 to 3
+        table.merge_cells(tb, 1, r, 4, r)
+    table.cell(tb, 0, 4, "Win% · avg R", text_color=dc, text_size=size.small, text_halign=text.align_left)
+    table.cell(tb, 1, 4, "Trades", text_color=dc, text_size=size.small)
+    table.cell(tb, 2, 4, "To the mid", text_color=dc, text_size=size.small)
+    table.cell(tb, 3, 4, "To target", text_color=dc, text_size=size.small)
+    table.cell(tb, 4, 4, "½ mid + BE", text_color=dc, text_size=size.small)
+    for k = 0 to 2
+        table.cell(tb, 0, 5 + k, k == 0 ? "All" : k == 1 ? "With the DOL" : "Against the DOL", text_color=tc, text_size=size.small, text_halign=text.align_left)
+        table.cell(tb, 1, 5 + k, str.tostring(sN.get(k)), text_color=tc, text_size=size.small)
+        table.cell(tb, 2, 5 + k, statM(k), text_color=tc, text_size=size.small)
+        table.cell(tb, 3, 5 + k, statT(k), text_color=tc, text_size=size.small)
+        table.cell(tb, 4, 5 + k, statG(k), text_color=tc, text_size=size.small)
