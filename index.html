@@ -1941,6 +1941,7 @@
     }}
   };
 
+  var MAX_DAYS=250; // most day slots an account's log can grow to (was 40, which a long-running account outgrows)
   var KEY="combine_all_state_v3";
   var mem={};
   var state={firm:"topstep",plan:"combine",size:"100k",targets:{},maxloss:{},stops:{},consPct:{},days:{},logs:{},journal:{},balance:{},calc:null,follow:{},accounts:[],activeId:null,theme:null,accent:null,autoFund:{},calMonth:{}};
@@ -2033,13 +2034,13 @@
     // past that the plan adds days instead of asking for bigger days. Logged days anywhere in the log count.
     c.baseDays=c.days;c.addedDays=0;c.paceCap=null;c.pace=null;
     if(stageOf()!=="funded"){
-      var pcs=countedStats({days:40}),avg=c.target/c.baseDays,cap=avg*1.5;
+      var pcs=countedStats({days:MAX_DAYS}),avg=c.target/c.baseDays,cap=avg*1.5;
       if(c.consPct>0)cap=Math.min(cap,c.consPct/100*c.target);
       // a day already logged past the plan stays in it, even once you've caught up
-      var mx=0,lg=curLog();for(var kk in lg){if(lg.hasOwnProperty(kk)&&+kk>mx&&+kk<=40)mx=+kk;}
+      var mx=0,lg=curLog();for(var kk in lg){if(lg.hasOwnProperty(kk)&&+kk>mx&&+kk<=MAX_DAYS)mx=+kk;}
       var span=Math.max(c.days,mx);
       var A=CTRules.paceAdjust({remaining:c.target-pcs.total,daysLeft:Math.max(0,span-pcs.days),base:avg,cap:cap});
-      c.days=Math.min(40,span+Math.max(0,A.extra));c.addedDays=c.days-c.baseDays;
+      c.days=Math.min(MAX_DAYS,span+Math.max(0,A.extra));c.addedDays=c.days-c.baseDays;
       c.paceCap=cap;c.pace=A;c.planAvg=avg;
     }
     return c;
@@ -2140,15 +2141,17 @@
     var c=cfg(),log=curLog(),d;
     for(d=1;d<=c.days;d++){if(!(d in log))break;}
     if(d>c.days){
-      if(!state.days)state.days={};
-      state.days[modeKey()]=Math.min(40,c.days+1);
-      d=state.days[modeKey()];
+      // every plan day is logged: add a day after the last one in use. There used to be a 40-day ceiling,
+      // and at 40 a backfilled day took over day 40 — the newest logged day vanished.
+      var top=c.days;for(var k in log)if(log.hasOwnProperty(k)&&+k>top)top=+k;
+      d=top+1;if(!state.days)state.days={};state.days[modeKey()]=d;
     }
     dayJ(d).date=iso;
     return d;
   }
   // Scroll to and open a day's card in the list below (expanding a collapsed section first).
   function focusDay(d){
+    var cd=cfg().days;if(d>cd){if(!state.days)state.days={};state.days[modeKey()]=d;save();} // a logged day past the plan's length gets its card
     openDay=d;
     showTab("core",{keepScroll:true});
     var hd1=document.getElementById("h1"),hd2=document.getElementById("h2");
@@ -2233,7 +2236,7 @@
     var c=cfg(),log=curLog(),j=curJournal(),P=livePlan(),ym=calMonth().split("-").map(Number),y=ym[0],m=ym[1]-1;
     titleEl.textContent=MONTH_NAMES[m]+" "+y;
     var byDate={};
-    for(var d=1;d<=c.days;d++){if((d in log)&&j[d]&&j[d].date&&!byDate.hasOwnProperty(j[d].date))byDate[j[d].date]=d;}
+    for(var d in log){if(log.hasOwnProperty(d)&&j[d]&&j[d].date&&!byDate.hasOwnProperty(j[d].date))byDate[j[d].date]=+d;}
     var first=new Date(y,m,1),dow0=first.getDay(),mondayBack=(dow0+6)%7;
     var daysInMonth=new Date(y,m+1,0).getDate();
     var rows=Math.ceil((mondayBack+daysInMonth)/7);
@@ -5124,7 +5127,7 @@
         var v=parseFloat(inp.value),k=modeKey();
         if(!state.days)state.days={};
         if(isNaN(v)||v<=0)delete state.days[k];
-        else state.days[k]=Math.max(1,Math.min(40,Math.round(v)));
+        else state.days[k]=Math.max(1,Math.min(MAX_DAYS,Math.round(v)));
         save().then(renderAll);
       }
       inp.addEventListener("blur",commit);
@@ -7324,7 +7327,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v97";
+var APP_BUILD="v98";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
