@@ -1762,6 +1762,7 @@
   var DD_APEX_EOD="<b>End-of-day</b> trailing: the threshold is recalculated once a day at 4:59 PM ET from your highest closing balance and never moves down; intraday swings don't move it, but touching it intraday still fails the account. It keeps trailing for the whole evaluation (it would only stop at your profit-target balance, which is where you pass). The daily loss limit is a soft stop: hitting it liquidates and pauses you for the day, it doesn't fail the eval. No consistency rule and no minimum days in the evaluation.";
   var DD_APEX_INTRA="<b>Intraday</b> trailing: the threshold follows your highest balance in real time, open profit included, and never moves down — give back an unrealized gain and the floor has already moved up, so watch your live buffer. It trails for the whole evaluation. No daily loss limit, no consistency rule and no minimum days in the evaluation.";
   var DD_TPT="<b>End-of-day</b> trailing: the drawdown is recalculated at each day's close from your highest closing balance, not on open positions, and locks for good once it reaches your starting balance. No daily loss limit in the Test. A <b>50% consistency rule</b> applies: no single day can be half or more of your profit — break it and you don't fail, you just keep trading until your best day is under 50%. Minimum 3 trading days (Tests bought before Aug 17, 2026 keep 5).";
+  var DD_TRADEIFY_MIAMI="<b>Static</b> drawdown (Tradeify Miami, limited edition): the floor sits at your start minus the drawdown and <b>never moves</b>, not even after payouts. <b>Micros only.</b> Hit the target once to pass — no minimum days, no consistency rule. The daily loss limit is an optional add-on ($300 / $600 / $900): if you bought it, it pauses the session, it doesn't fail you — tap Daily loss limit above to set it. One-time fee: $149 / $279 / $467 without the DLL, $99 / $185 / $311 with it.";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor rises with your end-of-day balance and applies in real time, then locks for good at <b>$100 above your starting balance</b> once your closing balance clears the drawdown by $100. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit — plan on at least 3 trading days. Tradeify also sells a <b>50% consistency</b> add-on — if you bought it, tap Consistency above and set 50.";
   var DD_LIGHTNING="<b>No evaluation</b> — Lightning starts funded, so the target here is the <b>first payout's profit goal</b> (later payouts: $1,000 / $2,000 / $3,500 / $4,500; the goal resets after each payout). Consistency ladders <b>20% → 25% → 30%</b> by payout number — tap Consistency to raise it after each payout. <b>End-of-day</b> trailing that applies in real time, locking $100 above your starting balance. The 50K–150K daily loss limit is a soft pause. No minimum days.";
 
@@ -1896,7 +1897,12 @@
         "150k":S("Lucid","Maxx",150000,{target:9000,maxloss:4500,dd:"EOD trailing",ddDesc:DD_LUCID_MAXX,cons:"40%",consPct:40,contracts:"10 minis / 100 micros",contractsShort:"10-mini",mindays:"min 3 to pass",minShort:"3"})
       }}
     }},
-    tradeify:{name:"Tradeify",planOrder:["growth","select","lightning"],plans:{
+    tradeify:{name:"Tradeify",planOrder:["growth","select","lightning","miami"],plans:{
+      miami:{name:"Miami",order:["10k","25k","50k"],sizes:{
+        "10k":S("Tradeify","Miami",10000,{target:1250,maxloss:500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$300 soft · optional",contracts:"0 minis / 5 micros",contractsShort:"5-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true}),
+        "25k":S("Tradeify","Miami",25000,{target:2500,maxloss:1000,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$600 soft · optional",contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true}),
+        "50k":S("Tradeify","Miami",50000,{target:3500,maxloss:1500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$900 soft · optional",contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true})
+      }},
       growth:{name:"Growth",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("Tradeify","Growth",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$600 soft",contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 1 to pass",minShort:"1",locks:false}),
         "50k":S("Tradeify","Growth",50000,{target:3000,maxloss:2000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$1,250 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 1 to pass",minShort:"1",locks:false}),
@@ -7327,7 +7333,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v98";
+var APP_BUILD="v99";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
