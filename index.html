@@ -2150,11 +2150,14 @@
   function ensureDayForDate(iso){
     var existing=dateToDayIndex(iso);if(existing&&(existing in curLog()))return existing;
     var c=cfg(),log=curLog(),d;
-    for(d=1;d<=c.days;d++){if(!(d in log))break;}
+    var jr=curJournal();
+    // a free slot is unlogged AND empty — an upcoming day you wrote a note or trades for keeps them (and its number)
+    for(d=1;d<=c.days;d++){if(!(d in log)&&!dayHasContent(jr[d]))break;}
     if(d>c.days){
-      // every plan day is logged: add a day after the last one in use. There used to be a 40-day ceiling,
+      // every plan day is logged (or holds your notes): add a day after the last one in use. There used to be a 40-day ceiling,
       // and at 40 a backfilled day took over day 40 — the newest logged day vanished.
       var top=c.days;for(var k in log)if(log.hasOwnProperty(k)&&+k>top)top=+k;
+      for(var k2 in jr)if(jr.hasOwnProperty(k2)&&dayHasContent(jr[k2])&&+k2>top)top=+k2;
       d=top+1;if(!state.days)state.days={};state.days[modeKey()]=d;
     }
     dayJ(d).date=iso;
@@ -2432,15 +2435,28 @@
   // next free slot, in date order, with its date stamped in the follower's journal (flagged copied).
   // Day numbers follow the calendar: dated logged days are renumbered in date order, using the same day
   // numbers they already hold (undated days keep theirs). In place; → {old: new} or null if already in order.
-  function reorderByDate(log,j){
-    var keys=Object.keys(log).filter(function(d){return j[d]&&j[d].date;}).map(Number).sort(function(a,b){return a-b;});
-    if(keys.length<2)return null;
-    var items=keys.map(function(d){return{d:d,v:log[d],e:j[d]};});
-    var sorted=items.slice().sort(function(x,y){return x.e.date<y.e.date?-1:(x.e.date>y.e.date?1:x.d-y.d);});
-    if(sorted.every(function(it,i){return it.d===keys[i];}))return null;
-    var map={};
-    keys.forEach(function(d){delete log[d];delete j[d];});
-    sorted.forEach(function(it,i){var nd=keys[i];map[it.d]=nd;log[nd]=it.v;j[nd]=it.e;});
+  // Number an account's days the way you lived them: logged days take Day 1, 2, 3… in date order (undated
+  // old days keep their place among them), and unlogged slots (a note or trades for an upcoming day) come after.
+  // A slot holding only a date you tapped on the calendar and never logged is dropped once its card isn't open
+  // (keep = the open day) — that left-over used to sit as an empty "Day 1" in front of your real first day.
+  function dayHasContent(e){return !!(e&&((e.note&&String(e.note).trim())||(Array.isArray(e.trades)&&e.trades.length)||e.followed));}
+  function reorderByDate(log,j,keep){
+    var asc=function(a,b){return a-b;};
+    var lk=Object.keys(log).map(Number).sort(asc);
+    var pos=[],items=[];
+    lk.forEach(function(d,i){if(j[d]&&j[d].date){pos.push(i);items.push(d);}});
+    items.sort(function(x,y){var a=j[x].date,b=j[y].date;return a<b?-1:(a>b?1:x-y);});
+    var seq=lk.slice();pos.forEach(function(p,i){seq[p]=items[i];});
+    var dropped=false;
+    Object.keys(j).map(Number).filter(function(d){return !isNaN(d)&&!log.hasOwnProperty(d);}).sort(asc).forEach(function(d){
+      if(!dayHasContent(j[d])&&d!==+keep){delete j[d];dropped=true;return;}
+      seq.push(d);
+    });
+    if(!dropped&&seq.every(function(d,i){return d===i+1;}))return null;
+    var map={},nl={},nj={};
+    seq.forEach(function(d,i){var nd=i+1;map[d]=nd;if(log.hasOwnProperty(d))nl[nd]=log[d];if(j.hasOwnProperty(d))nj[nd]=j[d];});
+    Object.keys(log).forEach(function(d){delete log[d];});Object.keys(j).forEach(function(d){delete j[d];});
+    Object.assign(log,nl);Object.assign(j,nj);
     return map;
   }
   function syncFollowers(){
@@ -2453,7 +2469,7 @@
     state.accounts.forEach(function(a){
       if(a.follow)return; // followers are put in order after their copies are rebuilt
       var k="acct:"+a.id,lg=state.logs[k],jj=state.journal[k];
-      if(lg&&jj){var m=reorderByDate(lg,jj);if(m)dayMaps[k]=m;}
+      if(lg&&jj){var m=reorderByDate(lg,jj,k===modeKey()?openDay:null);if(m)dayMaps[k]=m;}
     });
     leaders().forEach(function(L){
       var lead=state.logs["acct:"+L.id]||{},lj=state.journal["acct:"+L.id]||{};
@@ -2487,7 +2503,7 @@
           if(x.date)fj[slot]={note:"",trades:[],date:x.date,copied:true,src:x.date};
         });
         // own days and copies together, in date order; the own-days record follows its days to their new numbers
-        var fm=reorderByDate(out,fj);
+        var fm=reorderByDate(out,fj,k===modeKey()?openDay:null);
         if(fm){var no={};for(var od in rec.own){if(rec.own.hasOwnProperty(od))no[fm[od]||od]=rec.own[od];}rec.own=no;dayMaps[k]=fm;}
         state.logs[k]=out;
       });
@@ -7367,7 +7383,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v100";
+var APP_BUILD="v101";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
