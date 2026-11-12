@@ -604,6 +604,7 @@
   .calcell .cv{display:block;font-size:12.5px;font-weight:800;margin-top:14px}
   .calcell .cadd{display:none;font-size:10px;color:var(--muted2);margin-top:14px;letter-spacing:.08em;text-transform:uppercase}
   .calcell.open:hover .cadd{display:block;color:var(--accent)}
+  @media(hover:none),(pointer:coarse){.calcell.canlog .cadd{display:block}} /* phones can't hover: show where a missed day can still be logged */
   .calcell.win{border-color:rgba(0,255,65,.45);background:linear-gradient(180deg,var(--green-soft),var(--card))}
   :root[data-theme="light"] .calcell.win{border-color:var(--green)}
   .calcell.win .cv{color:var(--green);text-shadow:0 0 10px rgba(var(--green-rgb),calc(var(--numglow)*.6))}
@@ -650,6 +651,10 @@
   .caldet li{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:5px}
   .caldet li span{color:var(--muted)}.caldet li b.g{color:var(--green)}.caldet li b.r{color:var(--red)}.caldet li b.a{color:var(--amber)}
   .caldet .cdw{margin-top:8px;color:var(--msg-warn)}.caldet .cdb{margin-top:8px}
+  .caldet .cdlog{display:flex;gap:8px;margin-top:10px}
+  .caldet .cdlog input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--line2);color:var(--text);border-radius:2px;padding:9px 10px;font-size:16px;font-weight:700}
+  .caldet .cdlog .cdsave{color:var(--accent);border-color:var(--accent-border)}
+  .caldet .cdlog .secbtn{min-height:40px;padding:0 14px}
   .calleg{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:10.5px;color:var(--muted2)}
   .calleg span{display:inline-flex;align-items:center;gap:5px}.calleg b{color:var(--green);font-size:9.5px}
   .calleg .sw{display:inline-block;width:12px;height:12px;border:1px solid var(--line);border-radius:2px;background:var(--card)}
@@ -2288,12 +2293,12 @@
             cls.push("hol","rbday");
             content='<span class="cn">'+cur.getDate()+'</span><span class="chol">no trading</span>';
           }else{
-            cls.push("open");openCount++;
+            cls.push("open");if(iso<=todayIso)cls.push("canlog");openCount++;
             content='<span class="cn">'+cur.getDate()+'</span><span class="cadd">+ log</span>';
           }
           if(rbSet[iso]){cls.push("rebill");content+='<span class="crb">↻ rebill</span>';}
           else if(rw0&&iso===rw0.last&&val==null){cls.push("lastday");content+='<span class="crisk">last day before rebill</span>';}
-          html+='<div class="calcell '+cls.join(" ")+(iso===calSel?" calpick":"")+'" data-date="'+iso+'"'+(planOn[iso]?' data-plan="'+planOn[iso]+'"':'')+(extraOn[iso]?' data-extra="1"':'')+'>'+content+'</div>';
+          html+='<div class="calcell '+cls.join(" ")+(iso===calSel||iso===calLog?" calpick":"")+'" data-date="'+iso+'"'+(planOn[iso]?' data-plan="'+planOn[iso]+'"':'')+(extraOn[iso]?' data-extra="1"':'')+'>'+content+'</div>';
         }
         cur.setDate(cur.getDate()+1);
       }
@@ -2321,8 +2326,32 @@
   }
   // The numbers for one future day of the plan, opened by tapping it on the calendar.
   var calSel=null;
+  // Tapping today or a past date opens this box right under the calendar — log or fix that day without
+  // leaving the calendar (it used to scroll far down to a numbered day card).
+  var calLog=null;
+  function renderCalLog(el){
+    var iso=calLog,log=curLog(),j=curJournal(),d=dateToDayIndex(iso),has=d!=null&&(d in log),jd=has?(j[d]||{}):{};
+    var trs=(jd.trades||[]).length,copied=!!(has&&jd.copied),a=activeAcct(),L=a&&typeof leaderOf==="function"?leaderOf(a):null;
+    el.hidden=false;
+    el.innerHTML='<div class="cdh"><b>'+weekdayLbl(iso)+'</b>'+(has?' · day '+d:'')+(iso===isoDate()?' · <span class="acc">today</span>':'')+'<button type="button" class="secbtn" id="calDetX" aria-label="Close">×</button></div>'+
+      '<div class="cdlog"><input type="number" step="any" inputmode="decimal" id="calLogNet" placeholder="Net P&amp;L, e.g. 240 or -120" value="'+(has?esc(String(log[d])):"")+'"'+(trs?' readonly':'')+'>'+
+      '<button type="button" class="secbtn cdsave" id="calLogSave"'+(trs?' disabled':'')+'>Save</button>'+(has?'<button type="button" class="secbtn" id="calLogClear">Clear</button>':'')+'</div>'+
+      (trs?'<div class="cdw">This day is the sum of its '+pl(trs,"trade")+' — change them in Trades &amp; notes.</div>':'')+
+      (copied&&L?'<div class="cdw">Copied from '+esc(L.name)+'. Saving here makes it this account\'s own day.</div>':'')+
+      '<div class="cdb"><button type="button" class="secbtn" id="calLogOpen">Trades &amp; notes ›</button></div>';
+  }
+  function saveCalLog(clear){
+    var iso=calLog;if(!iso)return;
+    var inp=document.getElementById("calLogNet"),v=clear?null:parseFloat(inp&&inp.value);
+    if(!clear&&isNaN(v)){if(inp)inp.focus();return;}
+    var d=dateToDayIndex(iso);if(d==null||!(d in curLog()))d=ensureDayForDate(iso);
+    setDayNet(d,v);if(v!=null)dayJ(d).date=iso;
+    calLog=null;syncFollowers();autoFundArmed=true;
+    save().then(function(){renderAll();var c=document.querySelector('#calGrid .calcell[data-date="'+iso+'"]');if(c){c.classList.remove("flash");void c.offsetWidth;c.classList.add("flash");}});
+  }
   function renderCalDet(){
     var el=document.getElementById("calDet");if(!el)return;
+    if(calLog){renderCalLog(el);return;}
     var cell=calSel&&document.querySelector('#calGrid .calcell[data-date="'+calSel+'"]');
     if(!cell||!(cell.dataset.plan||cell.dataset.extra)){el.hidden=true;el.innerHTML="";return;}
     var c=cfg(),P=livePlan(),X=todayCtx(),p=X.plan,rbDue=rebillDue(),d=cell.dataset.plan?+cell.dataset.plan:null,need=d?P.live[d-1]:Math.ceil(Math.max(0,X.pi.left)/Math.max(1,X.pi.extra||1));
@@ -5003,8 +5032,12 @@
     var b=e.target.closest("button");if(!b)return;state.size=b.dataset.size;syncAcct();save().then(renderAll);
   });
 
+  document.getElementById("calBody").addEventListener("keydown",function(e){if(e.target.id==="calLogNet"&&e.key==="Enter"){e.preventDefault();saveCalLog(false);}});
   document.getElementById("calBody").addEventListener("click",function(e){
-    if(e.target.closest("#calDetX")){calSel=null;renderCalendar();return;}
+    if(e.target.closest("#calDetX")){calSel=null;calLog=null;renderCalendar();return;}
+    if(e.target.closest("#calLogSave")){saveCalLog(false);return;}
+    if(e.target.closest("#calLogClear")){saveCalLog(true);return;}
+    if(e.target.closest("#calLogOpen")){var oi=calLog;calLog=null;var od=dateToDayIndex(oi);if(od==null||!(od in curLog()))od=ensureDayForDate(oi);save().then(function(){renderCalendar();focusDay(od);});return;}
     if(e.target.closest("#calDetOpen")){var sc=document.querySelector('#calGrid .calcell[data-date="'+calSel+'"]');calSel=null;
       if(sc&&sc.dataset.plan){renderCalendar();focusDay(+sc.dataset.plan);return;}
       if(sc){var dd2=ensureDayForDate(sc.dataset.date);save().then(function(){renderCalendar();focusDay(dd2);});}return;}
@@ -5014,10 +5047,11 @@
     var cell=e.target.closest(".calcell");if(!cell||cell.classList.contains("blank")||cell.classList.contains("hol"))return;
     var iso=cell.dataset.date;if(!iso)return;
     // a future day shows its plan numbers; close any open day so typing can't land in the wrong one
-    if((cell.dataset.plan||cell.dataset.extra)&&iso>isoDate()){calSel=calSel===iso?null:iso;if(openDay!=null){openDay=null;renderDays();}renderCalendar();return;}
-    calSel=null; // today and past days always open that day for logging, even when the plan has today as its next day
-    var d=ensureDayForDate(iso);
-    save().then(function(){focusDay(d);});
+    if((cell.dataset.plan||cell.dataset.extra)&&iso>isoDate()){calLog=null;calSel=calSel===iso?null:iso;if(openDay!=null){openDay=null;renderDays();}renderCalendar();return;}
+    // today and past days open the log box under the calendar, even when the plan has today as its next day
+    calSel=null;calLog=calLog===iso?null:iso;if(openDay!=null){openDay=null;renderDays();}
+    renderCalendar();
+    if(calLog){var ci=document.getElementById("calLogNet");if(ci&&!ci.readOnly){ci.focus();ci.select();}}
   });
 
   async function deleteAccount(del){
@@ -7333,7 +7367,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v99";
+var APP_BUILD="v100";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
