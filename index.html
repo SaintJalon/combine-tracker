@@ -138,6 +138,14 @@
   .hud .hbackup{color:var(--amber);border-color:var(--amber-soft);background:var(--amber-soft)}
   .hud .hbackup.bad{color:var(--red);border-color:var(--red-soft);background:var(--red-soft)}
   .hud .hspend{color:var(--text)}
+  .hud .hpaid{color:var(--green)}
+  .polist{margin-top:9px}
+  .polist .atrow{display:flex;align-items:center;gap:10px}
+  .polist .am{flex:1}
+  .polist .podel{background:none;border:0;color:var(--muted2);font-size:15px;cursor:pointer;padding:2px 6px}
+  .polist .podel:hover{color:var(--red)}
+  .polist .old{color:var(--muted2);font-size:11px}
+  .ponet{margin-top:8px;font-size:12px;color:var(--muted2)}
   .hud .hnews{color:var(--text)}
   .hud .hnews.warn{color:var(--amber);border-color:var(--amber-soft);background:var(--amber-soft)}
   .hud .hnews.bad{color:var(--red);border-color:var(--red-soft);background:var(--red-soft)}
@@ -1317,6 +1325,7 @@
           <button type="button" class="hnews" id="mxNews" hidden>News</button>
           <button type="button" class="hbackup" id="mxBackup" hidden>Backup</button>
           <button type="button" class="hspend" id="mxSpend" hidden>Spent</button>
+          <button type="button" class="hspend hpaid" id="mxPaid" hidden>Paid</button>
           <span class="hsync" id="mxSync" title="Saved on this device">● Saved</span>
         </div>
       </div>
@@ -3037,7 +3046,13 @@
     }
     var el=document.getElementById("pConsist"),consPct=c.consPct;el.className="consistency";
     var cv=document.getElementById("pConvert");
-    if(daysLogged===0||total<=0){el.style.display="none";cv.className="convertbar";cv.innerHTML="";return;}
+    if(stageOf()==="funded"){
+      // funded: the bar above the progress turns into "payout ready" once this cycle clears the payout rules
+      var PX=payoutState();
+      if(PX.ready){cv.className="convertbar show";cv.innerHTML="<span>$ <b>Payout ready</b> — "+fmt(PX.cycle)+(PX.last?" since your "+weekdayLbl(PX.last)+" payout":" funded profit")+" clears your payout rules.</span><button type=\"button\" id=\"btnLogPayout\">＋ Log payout</button>";}
+      else{cv.className="convertbar";cv.innerHTML="";}
+    }
+    if(daysLogged===0||total<=0){el.style.display="none";if(stageOf()!=="funded"){cv.className="convertbar";cv.innerHTML="";}return;}
     // the target already carries the consistency rule (raised to best day ÷ cap), so reaching it is a clean pass
     var share=best/total,passed=total>=T;
     if(consPct===0){el.classList.add("none");el.innerHTML="No consistency rule on this plan — your best day can be any size. Still keep losers small; the Max Loss is the only thing that ends the run.";}
@@ -3055,7 +3070,7 @@
       }
       cv.className="convertbar show";
       cv.innerHTML="<span>★ <b>Target hit</b> — you've cleared "+fmt(T)+(consPct>0?" with consistency intact":"")+". Ready to convert to a funded account.</span><button type=\"button\" id=\"btnConvertFunded\">Convert to Funded →</button>";
-    }else{cv.className="convertbar";cv.innerHTML="";}
+    }else if(stageOf()!=="funded"){cv.className="convertbar";cv.innerHTML="";}
   }
 
   function equitySVG(c,log,base){
@@ -3121,8 +3136,11 @@
     var c=cfg(),log=curLog(),j=curJournal(),k=modeKey();
     var days=[],total=0,d;
     for(d=1;d<=c.days;d++){if(!(d in log)||beforeStart(d))continue;total+=log[d];days.push({d:d,date:(j[d]&&j[d].date)||null,net:log[d]});}
+    // a payout takes money out after that day's close: the balance drops, and since a trailing floor only
+    // ever moves up from a new high, it stays where it was — new profit has to clear the old high first
+    var paid=0;fundedPayouts().forEach(function(p){paid+=p.amount;days.push({d:1e9,date:p.date||isoDate(),net:-p.amount});});
     days.sort(function(x,y){var a=x.date||"",b=y.date||"";return a<b?-1:(a>b?1:x.d-y.d);});
-    var autoBal=c.size+total;
+    var autoBal=c.size+total-paid;
     var bal=(state.balance&&state.balance[k])?state.balance[k]:autoBal;
     var ddl=(c.dd||"").toLowerCase(),isStatic=ddl.indexOf("static")>=0,isIntra=ddl.indexOf("intraday")>=0;
     // End-of-day trailing only moves on a finished day's close: days before today, or today after the
@@ -3136,7 +3154,7 @@
       floor=F.floor;if(!closed&&Math.round(F.prospective)!==Math.round(floor))prospective=F.prospective;
     }
     var buffer=bal-floor;
-    return{c:c,bal:bal,autoBal:autoBal,floor:floor,prospective:prospective,isStatic:isStatic,buffer:buffer};
+    return{c:c,bal:bal,autoBal:autoBal,floor:floor,prospective:prospective,isStatic:isStatic,buffer:buffer,paid:paid};
   }
   function renderBuffer(){
     var B=bufferInfo(),c=B.c,host=document.getElementById("bufCard"),k=modeKey(),bal=B.bal,autoBal=B.autoBal,floor=B.floor,prospective=B.prospective,isStatic=B.isStatic,buffer=B.buffer;
@@ -3148,7 +3166,7 @@
     else if(buffer<500){mcls="warn";msg="▲ Under $500 buffer — drop to micros or stop for the day.";}
     else{mcls="ok";msg="Healthy buffer. Keep any single loss well inside it.";}
     var floorNote=prospective!=null?"moves to "+fmt(prospective)+" at close if you finish here":isStatic?"static — fixed":(c.locks?(floor>=c.size+(c.lockOff||0)?(c.lockOff?"locked at start + "+fmt(c.lockOff):"locked at start"):"trailing up"):"trailing");
-    var balNote=(state.balance&&state.balance[k])?"tap to edit · your entry":"tap to edit · auto from P&L";
+    var balNote=(state.balance&&state.balance[k])?"tap to edit · your entry":(B.paid?"auto · P&L − "+fmt(B.paid)+" paid out":"tap to edit · auto from P&L");
     host.innerHTML=
       '<div class="bh"><span class="bttl">Buffer to floor</span><span class="bbig '+cls+'">'+fmt(buffer)+'</span></div>'+
       '<div class="bufbar"><div class="fill" style="width:'+pct+'%;background:'+barColor+'"></div></div>'+
@@ -3607,28 +3625,109 @@
     save().then(renderAll);
     if(auto)mxAlert("Auto-converted to Funded — the eval run (net "+fmt(total)+" · "+days+" days) is archived under Attempt, and a fresh log just started for funded trading.",{title:"★ You're funded"});
   }
+  // ---- payouts: money taken out of a funded account (state.payouts[id] = [{amount, date}]) ----
+  function payoutsRaw(id){return (state.payouts&&state.payouts[id])||[];}
+  // the payouts that came out of this account's current funded run, oldest first
+  function fundedPayouts(id){
+    id=id||state.activeId;
+    if(((state.stage&&state.stage[id])||"eval")!=="funded")return [];
+    var m=state.attemptMeta&&state.attemptMeta[id],from=(m&&m.start)||"";
+    return payoutsRaw(id).filter(function(p){return p&&+p.amount>0&&(!from||!p.date||p.date>=from);})
+      .slice().sort(function(a,b){var x=a.date||"",y=b.date||"";return x<y?-1:(x>y?1:0);});
+  }
+  // every payout on every account — the money you actually received
+  function payoutTotals(){
+    var tot=0,n=0,accts=0;
+    state.accounts.forEach(function(a){var L=payoutsRaw(a.id),t=0;L.forEach(function(p){if(+p.amount>0){t+=+p.amount;n++;}});if(t>0){tot+=t;accts++;}});
+    return{tot:Math.round(tot*100)/100,n:n,accts:accts};
+  }
+  function renderPaidChip(){
+    var el=document.getElementById("mxPaid");if(!el)return;
+    var T=payoutTotals(),S=billTotals();el.hidden=!T.n;
+    if(T.n){el.textContent="Paid "+fmt(T.tot);
+      el.title=fmtc(T.tot)+" paid out · "+T.n+" payout"+(T.n===1?"":"s")+" on "+T.accts+" account"+(T.accts===1?"":"s")+
+        (S.cnt?" · net after "+fmtc(S.tot)+" spent: "+(T.tot-S.tot>=0?"+":"−")+fmtc(Math.abs(Math.round((T.tot-S.tot)*100)/100)):"")+" — tap for payouts";}
+  }
+  // this funded run's numbers, counted from the last payout: most firms start the next payout's
+  // profit, winning days and consistency over once you're paid
+  function payoutState(){
+    var c=cfg(),P=payoutCfg(),log=curLog(),j=curJournal(),pays=fundedPayouts();
+    var last=pays.length?pays[pays.length-1].date:null,paid=pays.reduce(function(t,p){return t+p.amount;},0);
+    var profit=0,cyc=0,days=0,best=-Infinity,d;
+    for(d=1;d<=c.days;d++){
+      if(!(d in log)||beforeStart(d))continue;
+      profit+=log[d];
+      var dt=j[d]&&j[d].date;
+      if(last&&!(dt&&dt>last))continue; // traded on or before the last payout: that cycle is paid
+      cyc+=log[d];days++;if(log[d]>best)best=log[d];
+    }
+    var X={P:P,thresh:P.thresh!=null?P.thresh:Math.round(c.maxloss),cons:P.cons!=null?P.cons:20,minDays:P.minDays!=null?P.minDays:5,
+      profit:profit,cycle:cyc,days:days,best:best,pays:pays,paid:paid,last:last,gates:[]};
+    if(cyc<X.thresh)X.gates.push("need "+fmt(X.thresh-cyc)+" more profit");
+    if(days<X.minDays)X.gates.push((X.minDays-days)+" more day"+((X.minDays-days)===1?"":"s"));
+    if(cyc>0&&!(best/cyc<=X.cons/100))X.gates.push("best day "+fmt(best)+" over "+X.cons+"% cap");
+    X.ready=!X.gates.length&&cyc>0;
+    return X;
+  }
   function renderPayout(){
     var c=cfg(),stage=stageOf(),host=document.getElementById("payoutPanel"),tog=document.getElementById("stageTog");
+    renderPaidChip();
     if(stage==="funded"){tog.textContent="↩ Revert to Eval";tog.disabled=false;}
     else{tog.textContent="Eval stage";tog.disabled=true;}
-    if(stage!=="funded"){host.innerHTML='<div class="rout" style="padding:2px">This account is in the <b>evaluation</b> stage. Once your logged days clear the profit target (and consistency, if the plan has one), a <b>Convert to Funded</b> button appears above the progress bar — that\'s the way in, so your eval days don\'t get counted twice.</div>';return;}
-    var P=payoutCfg(),thresh=P.thresh!=null?P.thresh:Math.round(c.maxloss),cons=P.cons!=null?P.cons:20,minDays=P.minDays!=null?P.minDays:5;
-    var log=curLog(),profit=0,days=0,best=-Infinity,d;
-    for(d=1;d<=c.days;d++){if(d in log){profit+=log[d];days++;if(log[d]>best)best=log[d];}}
-    var consOK=profit>0&&(best/profit<=cons/100),gates=[];
-    if(profit<thresh)gates.push("need "+fmt(thresh-profit)+" more profit");
-    if(days<minDays)gates.push((minDays-days)+" more day"+((minDays-days)===1?"":"s"));
-    if(profit>0&&!consOK)gates.push("best day "+fmt(best)+" over "+cons+"% cap");
-    var ready=gates.length===0&&profit>0;
+    if(stage!=="funded"){host.innerHTML='<div class="rout" style="padding:2px">This account is in the <b>evaluation</b> stage. Once your logged days clear the profit target (and consistency, if the plan has one), a <b>Convert to Funded</b> button appears above the progress bar — that\'s the way in, so your eval days don\'t get counted twice. Payouts are logged here once it\'s funded.</div>'+payoutHistory();return;}
+    var X=payoutState(),thresh=X.thresh,cons=X.cons,minDays=X.minDays,cyc=X.cycle,days=X.days,best=X.best,B=bufferInfo();
+    var gates=X.gates,ready=X.ready,since=X.last?"since your "+weekdayLbl(X.last)+" payout":"";
+    var after="";
+    if(ready){var left=B.buffer-cyc;
+      after='<br><span style="font-size:12px">Taking all of it: balance '+fmt(B.bal)+' → <b>'+fmt(B.bal-cyc)+'</b>, room above the floor '+fmt(B.buffer)+' → <b class="'+(left<=0?"r":(left<500?"a":"g"))+'">'+fmt(left)+'</b>'+(left<=0?" — that's at or under the floor, take less":"")+'.</span>';}
     host.innerHTML='<div class="grid">'+
-      '<div class="item"><div class="k">Funded profit</div><div class="v" style="color:'+(profit>=0?"var(--green)":"var(--red)")+'">'+fmt(profit)+'</div></div>'+
+      '<div class="item"><div class="k">'+(X.pays.length?"Since last payout":"Funded profit")+'</div><div class="v" style="color:'+(cyc>=0?"var(--green)":"var(--red)")+'">'+fmt(cyc)+'</div></div>'+
+      '<div class="item"><div class="k">Paid out</div><div class="v" style="color:var(--green)">'+fmt(X.paid)+'</div></div>'+
+      '<div class="item"><div class="k">Payouts</div><div class="v">'+X.pays.length+'</div></div>'+
       '<div class="item"><div class="k">Payout threshold</div><div class="v edit" id="poThresh">'+fmt(thresh)+'</div></div>'+
       '<div class="item"><div class="k">Consistency cap</div><div class="v edit" id="poCons">'+cons+'%</div></div>'+
-      '<div class="item"><div class="k">Days traded</div><div class="v">'+days+'</div></div>'+
       '<div class="item"><div class="k">Min payout days</div><div class="v edit" id="poMin">'+minDays+'</div></div>'+
+      '<div class="item"><div class="k">Days '+(X.pays.length?"this cycle":"traded")+'</div><div class="v">'+days+'</div></div>'+
       '<div class="item"><div class="k">Best day</div><div class="v">'+(best>-Infinity?fmt(best):"—")+'</div></div>'+
+      '<div class="item"><div class="k">Total funded P&amp;L</div><div class="v" style="color:'+(X.profit>=0?"var(--green)":"var(--red)")+'">'+fmt(X.profit)+'</div></div>'+
       '</div>'+
-      '<div class="pomsg '+(ready?"ok":"warn")+'">'+(ready?"✓ Ready — you can request a payout of up to <b>"+fmt(profit)+"</b>.":"Not yet · "+gates.join(" · ")+".")+'</div>';
+      '<div class="pomsg '+(ready?"ok":"warn")+'">'+(ready?"✓ Ready — you can request a payout of up to <b>"+fmt(cyc)+"</b>"+(since?" ("+since+")":"")+"."+after:"Not yet"+(since?" "+since:"")+" · "+gates.join(" · ")+".")+'</div>'+
+      '<button type="button" class="addtrade" id="poAdd" style="margin-top:8px">＋ Log payout</button>'+
+      payoutHistory();
+  }
+  // this account's payouts, newest first, with × to remove one; plus paid vs spent over every account
+  function payoutHistory(){
+    var L=payoutsRaw(state.activeId),cur=fundedPayouts(),h="";
+    if(L.length){
+      var rows=L.map(function(p,i){return{p:p,i:i};}).sort(function(a,b){var x=a.p.date||"",y=b.p.date||"";return x<y?1:(x>y?-1:b.i-a.i);});
+      h+='<div class="polist">'+rows.map(function(r){var inRun=cur.indexOf(r.p)>=0;
+        return '<div class="atrow"><span class="an" style="color:var(--green)">'+fmt(+r.p.amount||0)+'</span><span class="am">'+(r.p.date?weekdayLbl(r.p.date):"")+
+          (inRun||stageOf()!=="funded"?"":' <span class="old">· earlier run</span>')+'</span><button type="button" class="podel" data-pi="'+r.i+'" aria-label="Remove this payout" title="Remove">×</button></div>';}).join("")+'</div>';
+    }
+    var T=payoutTotals(),S=billTotals();
+    if(T.n&&(T.accts>1||S.cnt)){
+      var net=Math.round((T.tot-S.tot)*100)/100;
+      h+='<div class="ponet">All accounts: paid <b class="g">'+fmtc(T.tot)+'</b>'+(S.cnt?' · spent '+fmtc(S.tot)+' · net <b class="'+(net>=0?"g":"r")+'">'+(net>=0?"+":"−")+fmtc(Math.abs(net))+'</b>':"")+'</div>';
+    }
+    return h;
+  }
+  // Log a payout: amount (defaults to this cycle's profit), date, and — when other funded accounts copy the same
+  // trades — whether they got the same payout too.
+  async function logPayoutFlow(){
+    var id=state.activeId,funded=stageOf()==="funded",def="";
+    if(funded){var X=payoutState();def=X.cycle>0?Math.round(X.cycle):"";}
+    var amt=await mxPrompt("Payout amount ($):",def,{title:"＋ Log payout",okText:"Next",input:{type:"number",inputmode:"decimal",placeholder:"e.g. 2500"}});if(amt===null)return;
+    var n=parseFloat(amt);if(isNaN(n)||n<=0)return;n=Math.round(n*100)/100;
+    var dt=await mxPrompt("Payout date:",isoDate(),{title:"＋ Log payout",okText:"Log payout",input:{type:"date"}});if(dt===null)return;
+    dt=dt||isoDate();
+    var a=acctById(id),L=a?(a.lead?a:leaderOf(a)):null,others=[];
+    if(L)[L].concat(followersOf(L)).forEach(function(x){if(x.id!==id&&state.stage&&state.stage[x.id]==="funded")others.push(x);});
+    var ids=[id];
+    if(others.length&&(await mxConfirm("Did "+(others.length===1?"your other funded account":"your other "+others.length+" funded accounts")+" in this copy group get the same "+fmtc(n)+" payout too?\n\n"+others.map(function(x){return "• "+x.name;}).join("\n"),{title:"＋ Log payout",okText:"Yes, log all "+(others.length+1),cancelText:"Just this one"})))
+      ids=ids.concat(others.map(function(x){return x.id;}));
+    if(!state.payouts)state.payouts={};
+    ids.forEach(function(x){if(!state.payouts[x])state.payouts[x]=[];state.payouts[x].push({amount:n,date:dt});});
+    await save();renderAll();
   }
   // ---- attempt history + expiration ----
   function isoDate(dt){var d=dt||new Date(),p=function(n){return(n<10?"0":"")+n;};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
@@ -5609,9 +5708,17 @@
   });
   document.getElementById("pConvert").addEventListener("click",function(e){
     if(e.target.id==="btnConvertFunded")convertToFunded();
+    if(e.target.id==="btnLogPayout")logPayoutFlow();
   });
-  document.getElementById("payoutPanel").addEventListener("click",function(e){
-    var el=e.target;if(!el.classList.contains("edit")||el.querySelector("input"))return;
+  document.getElementById("payoutPanel").addEventListener("click",async function(e){
+    var el=e.target;
+    if(el.id==="poAdd"){logPayoutFlow();return;}
+    if(el.classList.contains("podel")){
+      var L=payoutsRaw(state.activeId),i=+el.dataset.pi,p=L[i];if(!p)return;
+      if(!(await mxConfirm("Remove the "+fmtc(+p.amount||0)+" payout"+(p.date?" from "+weekdayLbl(p.date):"")+"?",{title:"Remove payout",tone:"warn",okText:"Remove"})))return;
+      L.splice(i,1);await save();renderAll();return;
+    }
+    if(!el.classList.contains("edit")||el.querySelector("input"))return;
     var field=el.id==="poThresh"?"thresh":(el.id==="poCons"?"cons":(el.id==="poMin"?"minDays":null));if(!field)return;
     var P=payoutCfg(),cur=(field==="thresh"?(P.thresh!=null?P.thresh:Math.round(cfg().maxloss)):(field==="cons"?(P.cons!=null?P.cons:20):(P.minDays!=null?P.minDays:5)));
     el.innerHTML='<input type="number" min="0" value="'+cur+'">';var inp=el.querySelector("input");inp.focus();inp.select();
@@ -5623,14 +5730,8 @@
   document.getElementById("pgCard").addEventListener("change",function(e){
     if(e.target.id==="pgGoal"){var v=parseFloat(e.target.value);if(!state.payoutGoal)state.payoutGoal={};state.payoutGoal[state.activeId]=(isNaN(v)||v<=0)?null:Math.round(v);save().then(renderPayoutGoal);}
   });
-  document.getElementById("pgCard").addEventListener("click",async function(e){
-    if(e.target.id!=="pgAdd")return;
-    var stage=(state.stage&&state.stage[state.activeId])||"eval";
-    var def=stage==="funded"?(function(){var c=cfg(),log=curLog(),t=0;for(var d=1;d<=c.days;d++)if(d in log)t+=log[d];return Math.max(0,Math.round(t));})():"";
-    var amt=await mxPrompt("Payout amount ($):",def,{title:"＋ Log payout",okText:"Next",input:{type:"number",inputmode:"decimal",placeholder:"e.g. 2500"}});if(amt===null)return;var n=parseFloat(amt);if(isNaN(n)||n<=0)return;
-    var dt=await mxPrompt("Payout date:",isoDate(),{title:"＋ Log payout",okText:"Log payout",input:{type:"date"}});if(dt===null)return;
-    payoutsList().push({amount:Math.round(n),date:dt||isoDate()});
-    save().then(renderPayoutGoal);
+  document.getElementById("pgCard").addEventListener("click",function(e){
+    if(e.target.id==="pgAdd")logPayoutFlow();
   });
   document.getElementById("ipCard").addEventListener("change",function(e){
     if(e.target.id==="ipTpw"){var v=parseFloat(e.target.value);planningOf().tpw=isNaN(v)?null:v;save().then(renderIncomeProj);}
@@ -7252,6 +7353,10 @@
     jumpTo("core","billPanel");
     var b=document.getElementById("billPanel");b.classList.remove("flash");void b.offsetWidth;b.classList.add("flash");
   });
+  document.getElementById("mxPaid").addEventListener("click",function(){
+    jumpTo("path","payoutPanel");
+    var b=document.getElementById("payoutPanel");b.classList.remove("flash");void b.offsetWidth;b.classList.add("flash");
+  });
   function pulseSync(){var el=document.getElementById("mxSync");if(!el)return;el.classList.remove("on");void el.offsetWidth;el.classList.add("on");}
 
   // ---- SYSTEM program: experience settings ----
@@ -7383,7 +7488,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v101";
+var APP_BUILD="v102";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
