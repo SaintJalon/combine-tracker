@@ -1776,7 +1776,10 @@
   var DD_APEX_EOD="<b>End-of-day</b> trailing: the threshold is recalculated once a day at 4:59 PM ET from your highest closing balance and never moves down; intraday swings don't move it, but touching it intraday still fails the account. It keeps trailing for the whole evaluation (it would only stop at your profit-target balance, which is where you pass). The daily loss limit is a soft stop: hitting it liquidates and pauses you for the day, it doesn't fail the eval. No consistency rule and no minimum days in the evaluation.";
   var DD_APEX_INTRA="<b>Intraday</b> trailing: the threshold follows your highest balance in real time, open profit included, and never moves down — give back an unrealized gain and the floor has already moved up, so watch your live buffer. It trails for the whole evaluation. No daily loss limit, no consistency rule and no minimum days in the evaluation.";
   var DD_TPT="<b>End-of-day</b> trailing: the drawdown is recalculated at each day's close from your highest closing balance, not on open positions, and locks for good once it reaches your starting balance. No daily loss limit in the Test. A <b>50% consistency rule</b> applies: no single day can be half or more of your profit — break it and you don't fail, you just keep trading until your best day is under 50%. Minimum 3 trading days (Tests bought before Aug 17, 2026 keep 5).";
-  var DD_TRADEIFY_MIAMI="<b>Static</b> drawdown (Tradeify Miami, limited edition): the floor sits at your start minus the drawdown and <b>never moves</b>, not even after payouts. <b>Micros only.</b> Hit the target once to pass — no minimum days, no consistency rule. The daily loss limit is an optional add-on ($300 / $600 / $900): if you bought it, it pauses the session, it doesn't fail you — tap Daily loss limit above to set it. One-time fee: $149 / $279 / $467 without the DLL, $99 / $185 / $311 with it.";
+  // po: the plan's own sim-funded payout rules — minimum gross payout, consistency % (0 = none), minimum days, your
+  // share of each payout (split), and a total that sends you live (goLive, counted over every account of this plan).
+  function PO_MIAMI(min){return{thresh:min,cons:0,minDays:0,split:0.8,fund:0.1,goLive:12000,goLiveTxt:"go live with a $1,500 static balance"};}
+  var DD_TRADEIFY_MIAMI="<b>Static</b> drawdown (Tradeify Miami, limited edition — on sale until Dec 10): the floor sits at your start minus the drawdown and <b>never moves</b>, not even after sim payouts. <b>Micros only</b> — up to 10 / 20 / 30. Hit the target once to pass: no minimum days, no consistency rule. The daily loss limit is optional ($300 / $600 / $900, soft): hitting it flattens you and pauses trading until the next session — only the drawdown ends the account. Tap Daily loss limit above if you bought it. Sim funded: request payouts daily from $200 / $400 / $600 gross, no consistency, no minimum days; each payout splits <b>80% to you, 10% to your live fund, 10% to Tradeify</b>. When your Miami payouts plus current profit reach <b>$12,000</b>, it's paid out in full and you go live with a $1,500 static balance ($1,200 live fund + $300 from Tradeify; up to 20 micros, $250 minimum daily payouts, 90/10). One-time fee with the soft DLL: $99 / $185 / $311 (the no-DLL version costs more). Up to 10 evaluations and 3 sim funded accounts.";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor rises with your end-of-day balance and applies in real time, then locks for good at <b>$100 above your starting balance</b> once your closing balance clears the drawdown by $100. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit — plan on at least 3 trading days. Tradeify also sells a <b>50% consistency</b> add-on — if you bought it, tap Consistency above and set 50.";
   var DD_LIGHTNING="<b>No evaluation</b> — Lightning starts funded, so the target here is the <b>first payout's profit goal</b> (later payouts: $1,000 / $2,000 / $3,500 / $4,500; the goal resets after each payout). Consistency ladders <b>20% → 25% → 30%</b> by payout number — tap Consistency to raise it after each payout. <b>End-of-day</b> trailing that applies in real time, locking $100 above your starting balance. The 50K–150K daily loss limit is a soft pause. No minimum days.";
 
@@ -1913,9 +1916,9 @@
     }},
     tradeify:{name:"Tradeify",planOrder:["growth","select","lightning","miami"],plans:{
       miami:{name:"Miami",order:["10k","25k","50k"],sizes:{
-        "10k":S("Tradeify","Miami",10000,{target:1250,maxloss:500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$300 soft · optional",contracts:"0 minis / 5 micros",contractsShort:"5-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true}),
-        "25k":S("Tradeify","Miami",25000,{target:2500,maxloss:1000,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$600 soft · optional",contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true}),
-        "50k":S("Tradeify","Miami",50000,{target:3500,maxloss:1500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$900 soft · optional",contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true})
+        "10k":S("Tradeify","Miami",10000,{target:1000,maxloss:500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$300 soft · optional",contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(200)}),
+        "25k":S("Tradeify","Miami",25000,{target:2000,maxloss:1000,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$600 soft · optional",contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(400)}),
+        "50k":S("Tradeify","Miami",50000,{target:3500,maxloss:1500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$900 soft · optional",contracts:"0 minis / 30 micros",contractsShort:"30-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(600)})
       }},
       growth:{name:"Growth",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("Tradeify","Growth",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$600 soft",contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 1 to pass",minShort:"1",locks:false}),
@@ -3658,7 +3661,7 @@
     m.no=m.no+1;m.start=isoDate();m.evalDays=null;
     if(!state.stage)state.stage={};
     state.stage[state.activeId]="funded";
-    var P=payoutCfg();if(P.thresh==null)P.thresh=Math.round(c.maxloss);
+    var P=payoutCfg();if(P.thresh==null)P.thresh=c.po&&c.po.thresh!=null?c.po.thresh:Math.round(c.maxloss);
     if(!state.targets)state.targets={};
     state.targets["acct:"+state.activeId]=P.thresh;
     save().then(renderAll);
@@ -3675,10 +3678,25 @@
       .slice().sort(function(a,b){var x=a.date||"",y=b.date||"";return x<y?-1:(x>y?1:0);});
   }
   // every payout on every account — the money you actually received
+  // an account's plan payout rules (cfg().po), read without switching the open account
+  function poOf(id){var a=acctById(id);return a?asAcct(a,function(){return cfg().po||{};}):{};}
+  // your share of a payout: payouts are logged gross (what leaves the balance); some plans split it (Miami: 80% to you)
+  function payoutShare(id){var po=poOf(id);return po.split>0&&po.split<1?po.split:1;}
+  // every payout on every account — the money you actually received (your share)
   function payoutTotals(){
     var tot=0,n=0,accts=0;
-    state.accounts.forEach(function(a){var L=payoutsRaw(a.id),t=0;L.forEach(function(p){if(+p.amount>0){t+=+p.amount;n++;}});if(t>0){tot+=t;accts++;}});
+    state.accounts.forEach(function(a){var L=payoutsRaw(a.id),t=0;L.forEach(function(p){if(+p.amount>0){t+=+p.amount;n++;}});if(t>0){tot+=t*payoutShare(a.id);accts++;}});
     return{tot:Math.round(tot*100)/100,n:n,accts:accts};
+  }
+  // plans with a go-live total (Miami: $12,000 of payouts + current profit over all its accounts)
+  function goLiveInfo(){
+    var me=activeAcct(),po=poOf(state.activeId);if(!me||!po.goLive)return null;
+    var sum=0,paid=0,n=0;
+    state.accounts.forEach(function(a){
+      if(a.firm!==me.firm||a.plan!==me.plan||((state.stage&&state.stage[a.id])||"eval")!=="funded")return;
+      n++;asAcct(a,function(){var X=payoutState();paid+=X.paid;sum+=X.paid+Math.max(0,X.cycle);});
+    });
+    return{po:po,sum:sum,paid:paid,n:n,fund:paid*(po.fund||0)};
   }
   function renderPaidChip(){
     var el=document.getElementById("mxPaid");if(!el)return;
@@ -3701,11 +3719,13 @@
       if(last&&!(dt&&dt>last))continue; // traded on or before the last payout: that cycle is paid
       cyc+=log[d];days++;if(log[d]>best)best=log[d];
     }
-    var X={P:P,thresh:P.thresh!=null?P.thresh:Math.round(c.maxloss),cons:P.cons!=null?P.cons:20,minDays:P.minDays!=null?P.minDays:5,
+    var po=c.po||{},oldDefault=po.thresh!=null&&!P.mine&&P.thresh===Math.round(c.maxloss); // seeded with max loss before the plan had its own minimum
+    var X={P:P,po:po,thresh:(P.thresh!=null&&!oldDefault)?P.thresh:(po.thresh!=null?po.thresh:Math.round(c.maxloss)),
+      cons:P.cons!=null?P.cons:(po.cons!=null?po.cons:20),minDays:P.minDays!=null?P.minDays:(po.minDays!=null?po.minDays:5),
       profit:profit,cycle:cyc,days:days,best:best,pays:pays,paid:paid,last:last,gates:[]};
     if(cyc<X.thresh)X.gates.push("need "+fmt(X.thresh-cyc)+" more profit");
     if(days<X.minDays)X.gates.push((X.minDays-days)+" more day"+((X.minDays-days)===1?"":"s"));
-    if(cyc>0&&!(best/cyc<=X.cons/100))X.gates.push("best day "+fmt(best)+" over "+X.cons+"% cap");
+    if(X.cons>0&&cyc>0&&!(best/cyc<=X.cons/100))X.gates.push("best day "+fmt(best)+" over "+X.cons+"% cap");
     X.ready=!X.gates.length&&cyc>0;
     return X;
   }
@@ -3720,28 +3740,33 @@
     var after="";
     if(ready){var left=B.buffer-cyc;
       after='<br><span style="font-size:12px">Taking all of it: balance '+fmt(B.bal)+' → <b>'+fmt(B.bal-cyc)+'</b>, room above the floor '+fmt(B.buffer)+' → <b class="'+(left<=0?"r":(left<500?"a":"g"))+'">'+fmt(left)+'</b>'+(left<=0?" — that's at or under the floor, take less":"")+'.</span>';}
+    var share=payoutShare(state.activeId),GL=goLiveInfo(),glTxt="";
+    if(GL){var glp=Math.min(100,GL.sum/GL.po.goLive*100);
+      glTxt='<div class="ponet" style="margin-top:10px">Toward live: <b class="g">'+fmt(GL.sum)+'</b> of '+fmt(GL.po.goLive)+' — payouts plus current profit over '+(GL.n===1?'this account':'your '+GL.n+' '+esc(((c.title.split(" — ")[1]||"").split(" ")[0])||"plan")+' accounts')+(GL.fund?' · live fund '+fmtc(Math.round(GL.fund*100)/100):'')+'. At '+fmt(GL.po.goLive)+' it pays out in full and you '+GL.po.goLiveTxt+'.</div>'+
+        '<div class="bufbar" style="margin:6px 0 2px"><div class="fill" style="width:'+glp+'%;background:var(--green)"></div></div>';}
     host.innerHTML='<div class="grid">'+
       '<div class="item"><div class="k">'+(X.pays.length?"Since last payout":"Funded profit")+'</div><div class="v" style="color:'+(cyc>=0?"var(--green)":"var(--red)")+'">'+fmt(cyc)+'</div></div>'+
-      '<div class="item"><div class="k">Paid out</div><div class="v" style="color:var(--green)">'+fmt(X.paid)+'</div></div>'+
+      '<div class="item"><div class="k">Paid out'+(share<1?' (gross)':'')+'</div><div class="v" style="color:var(--green)">'+fmt(X.paid)+'</div>'+(share<1&&X.paid?'<div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">you got '+fmtc(Math.round(X.paid*share*100)/100)+' ('+Math.round(share*100)+'%)</div>':'')+'</div>'+
       '<div class="item"><div class="k">Payouts</div><div class="v">'+X.pays.length+'</div></div>'+
-      '<div class="item"><div class="k">Payout threshold</div><div class="v edit" id="poThresh">'+fmt(thresh)+'</div></div>'+
-      '<div class="item"><div class="k">Consistency cap</div><div class="v edit" id="poCons">'+cons+'%</div></div>'+
+      '<div class="item"><div class="k">'+(X.po.thresh!=null?'Min payout (gross)':'Payout threshold')+'</div><div class="v edit" id="poThresh">'+fmt(thresh)+'</div></div>'+
+      '<div class="item"><div class="k">Consistency cap</div><div class="v edit" id="poCons">'+(cons>0?cons+'%':'none')+'</div></div>'+
       '<div class="item"><div class="k">Min payout days</div><div class="v edit" id="poMin">'+minDays+'</div></div>'+
       '<div class="item"><div class="k">Days '+(X.pays.length?"this cycle":"traded")+'</div><div class="v">'+days+'</div></div>'+
       '<div class="item"><div class="k">Best day</div><div class="v">'+(best>-Infinity?fmt(best):"—")+'</div></div>'+
       '<div class="item"><div class="k">Total funded P&amp;L</div><div class="v" style="color:'+(X.profit>=0?"var(--green)":"var(--red)")+'">'+fmt(X.profit)+'</div></div>'+
       '</div>'+
       '<div class="pomsg '+(ready?"ok":"warn")+'">'+(ready?"✓ Ready — you can request a payout of up to <b>"+fmt(cyc)+"</b>"+(since?" ("+since+")":"")+"."+after:"Not yet"+(since?" "+since:"")+" · "+gates.join(" · ")+".")+'</div>'+
+      glTxt+
       '<button type="button" class="addtrade" id="poAdd" style="margin-top:8px">＋ Log payout</button>'+
       payoutHistory();
   }
   // this account's payouts, newest first, with × to remove one; plus paid vs spent over every account
   function payoutHistory(){
-    var L=payoutsRaw(state.activeId),cur=fundedPayouts(),h="";
+    var L=payoutsRaw(state.activeId),cur=fundedPayouts(),h="",share=payoutShare(state.activeId);
     if(L.length){
       var rows=L.map(function(p,i){return{p:p,i:i};}).sort(function(a,b){var x=a.p.date||"",y=b.p.date||"";return x<y?1:(x>y?-1:b.i-a.i);});
       h+='<div class="polist">'+rows.map(function(r){var inRun=cur.indexOf(r.p)>=0;
-        return '<div class="atrow"><span class="an" style="color:var(--green)">'+fmt(+r.p.amount||0)+'</span><span class="am">'+(r.p.date?weekdayLbl(r.p.date):"")+
+        return '<div class="atrow"><span class="an" style="color:var(--green)">'+fmt(+r.p.amount||0)+(share<1?'<span class="old"> gross · you '+fmtc(Math.round((+r.p.amount||0)*share*100)/100)+'</span>':'')+'</span><span class="am">'+(r.p.date?weekdayLbl(r.p.date):"")+
           (inRun||stageOf()!=="funded"?"":' <span class="old">· earlier run</span>')+'</span><button type="button" class="podel" data-pi="'+r.i+'" aria-label="Remove this payout" title="Remove">×</button></div>';}).join("")+'</div>';
     }
     var T=payoutTotals(),S=billTotals();
@@ -3756,7 +3781,8 @@
   async function logPayoutFlow(){
     var id=state.activeId,funded=stageOf()==="funded",def="";
     if(funded){var X=payoutState();def=X.cycle>0?Math.round(X.cycle):"";}
-    var amt=await mxPrompt("Payout amount ($):",def,{title:"＋ Log payout",okText:"Next",input:{type:"number",inputmode:"decimal",placeholder:"e.g. 2500"}});if(amt===null)return;
+    var shr=payoutShare(id);
+    var amt=await mxPrompt(shr<1?"Payout amount ($, gross — what comes off the balance; you get "+Math.round(shr*100)+"%):":"Payout amount ($):",def,{title:"＋ Log payout",okText:"Next",input:{type:"number",inputmode:"decimal",placeholder:"e.g. 2500"}});if(amt===null)return;
     var n=parseFloat(amt);if(isNaN(n)||n<=0)return;n=Math.round(n*100)/100;
     var dt=await mxPrompt("Payout date:",isoDate(),{title:"＋ Log payout",okText:"Log payout",input:{type:"date"}});if(dt===null)return;
     dt=dt||isoDate();
@@ -5760,9 +5786,9 @@
     }
     if(!el.classList.contains("edit")||el.querySelector("input"))return;
     var field=el.id==="poThresh"?"thresh":(el.id==="poCons"?"cons":(el.id==="poMin"?"minDays":null));if(!field)return;
-    var P=payoutCfg(),cur=(field==="thresh"?(P.thresh!=null?P.thresh:Math.round(cfg().maxloss)):(field==="cons"?(P.cons!=null?P.cons:20):(P.minDays!=null?P.minDays:5)));
+    var PX=payoutState(),P=PX.P,cur=field==="thresh"?PX.thresh:(field==="cons"?PX.cons:PX.minDays);
     el.innerHTML='<input type="number" min="0" value="'+cur+'">';var inp=el.querySelector("input");inp.focus();inp.select();
-    function commit(){var v=parseFloat(inp.value);P[field]=(isNaN(v)||v<0)?null:Math.round(v);save().then(renderPayout);}
+    function commit(){var v=parseFloat(inp.value);P[field]=(isNaN(v)||v<0)?null:Math.round(v);P.mine=1;save().then(renderPayout);}
     inp.addEventListener("blur",commit);inp.addEventListener("keydown",function(ev){if(ev.key==="Enter")inp.blur();});
   });
 
@@ -7528,7 +7554,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v103";
+var APP_BUILD="v104";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
