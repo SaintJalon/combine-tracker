@@ -2157,7 +2157,7 @@
   // Get (or create) the day index for this date: reuse a free unlogged slot,
   // or extend the plan by a day if every slot is already logged.
   function ensureDayForDate(iso){
-    var existing=dateToDayIndex(iso);if(existing&&(existing in curLog()))return existing;
+    var existing=dateToDayIndex(iso);if(existing!=null&&(existing in curLog()))return existing;
     var c=cfg(),log=curLog(),d;
     var jr=curJournal();
     // a free slot is unlogged AND empty — an upcoming day you wrote a note or trades for keeps them (and its number)
@@ -2174,6 +2174,7 @@
   }
   // Scroll to and open a day's card in the list below (expanding a collapsed section first).
   function focusDay(d){
+    if(d<1){mxAlert("That day was paid out by your payout, so it's off the plan's day cards now. Its P&L is still on the calendar (tap the date to change it), in your balance and in your history.",{title:"Paid day"});return;}
     var cd=cfg().days;if(d>cd){if(!state.days)state.days={};state.days[modeKey()]=d;save();} // a logged day past the plan's length gets its card
     openDay=d;
     showTab("core",{keepScroll:true});
@@ -2448,23 +2449,56 @@
   // old days keep their place among them), and unlogged slots (a note or trades for an upcoming day) come after.
   // A slot holding only a date you tapped on the calendar and never logged is dropped once its card isn't open
   // (keep = the open day) — that left-over used to sit as an empty "Day 1" in front of your real first day.
+  // Paid days: once a funded account takes a payout, the days that payout paid for (dated on or before it) move to
+  // slots 0, -1, -2… They keep their dates, so the calendar, balance, copy group and journal still have them, but every
+  // plan loop runs from Day 1, so the target, progress and day cards start over for the next payout. Removing the payout
+  // (or reverting to Eval) moves them back. last = the latest payout's date on this funded run, or null.
+  function settlePaid(log,j,last){
+    var all={},paid=[],back=[],dropped=false,map={},moved=false;
+    Object.keys(log).forEach(function(k){all[k]=1;});Object.keys(j).forEach(function(k){all[k]=1;});
+    var keys=Object.keys(all).map(Number).filter(function(d){return !isNaN(d);});
+    keys.forEach(function(d){
+      var e=j[d],dt=e&&e.date,lg=log.hasOwnProperty(d);
+      if(lg&&last&&dt&&dt<=last)paid.push(d);
+      else if(d<=0){if(lg||dayHasContent(e))back.push(d);else{delete j[d];dropped=true;}}
+    });
+    paid.sort(function(x,y){var a=j[x].date,b=j[y].date;return a<b?-1:(a>b?1:x-y);});
+    paid.forEach(function(d,i){map[d]=i-(paid.length-1);}); // newest paid day = slot 0
+    var top=0;keys.forEach(function(d){if(d>top&&!map.hasOwnProperty(d))top=d;});
+    back.sort(function(a,b){return a-b;}).forEach(function(d){map[d]=++top;}); // back into the plan; re-sorted by date next
+    for(var k in map)if(map.hasOwnProperty(k)&&+k!==map[k])moved=true;
+    if(!moved)return dropped?{}:null;
+    var nl={},nj={};
+    for(k in map){if(!map.hasOwnProperty(k))continue;if(log.hasOwnProperty(k)){nl[map[k]]=log[k];delete log[k];}if(j.hasOwnProperty(k)){nj[map[k]]=j[k];delete j[k];}}
+    Object.assign(log,nl);Object.assign(j,nj);
+    return map;
+  }
+  // a then b, as one old-slot → new-slot map
+  function chainMaps(a,b){
+    if(!a)return b;if(!b)return a;var out={},k;
+    for(k in a)if(a.hasOwnProperty(k))out[k]=b.hasOwnProperty(a[k])?b[a[k]]:a[k];
+    for(k in b)if(b.hasOwnProperty(k)&&!a.hasOwnProperty(k)&&!out.hasOwnProperty(k))out[k]=b[k];
+    return out;
+  }
+  function mapSlot(m,d){return m&&d!=null&&m.hasOwnProperty(d)?m[d]:d;}
+  function lastPaidOn(id){var P=fundedPayouts(id);return P.length?P[P.length-1].date:null;}
   function dayHasContent(e){return !!(e&&((e.note&&String(e.note).trim())||(Array.isArray(e.trades)&&e.trades.length)||e.followed));}
   function reorderByDate(log,j,keep){
     var asc=function(a,b){return a-b;};
-    var lk=Object.keys(log).map(Number).sort(asc);
+    var lk=Object.keys(log).map(Number).filter(function(d){return d>=1;}).sort(asc);
     var pos=[],items=[];
     lk.forEach(function(d,i){if(j[d]&&j[d].date){pos.push(i);items.push(d);}});
     items.sort(function(x,y){var a=j[x].date,b=j[y].date;return a<b?-1:(a>b?1:x-y);});
     var seq=lk.slice();pos.forEach(function(p,i){seq[p]=items[i];});
     var dropped=false;
-    Object.keys(j).map(Number).filter(function(d){return !isNaN(d)&&!log.hasOwnProperty(d);}).sort(asc).forEach(function(d){
+    Object.keys(j).map(Number).filter(function(d){return d>=1&&!log.hasOwnProperty(d);}).sort(asc).forEach(function(d){
       if(!dayHasContent(j[d])&&d!==+keep){delete j[d];dropped=true;return;}
       seq.push(d);
     });
     if(!dropped&&seq.every(function(d,i){return d===i+1;}))return null;
     var map={},nl={},nj={};
     seq.forEach(function(d,i){var nd=i+1;map[d]=nd;if(log.hasOwnProperty(d))nl[nd]=log[d];if(j.hasOwnProperty(d))nj[nd]=j[d];});
-    Object.keys(log).forEach(function(d){delete log[d];});Object.keys(j).forEach(function(d){delete j[d];});
+    Object.keys(log).forEach(function(d){if(+d>=1)delete log[d];});Object.keys(j).forEach(function(d){if(+d>=1)delete j[d];});
     Object.assign(log,nl);Object.assign(j,nj);
     return map;
   }
@@ -2478,7 +2512,10 @@
     state.accounts.forEach(function(a){
       if(a.follow)return; // followers are put in order after their copies are rebuilt
       var k="acct:"+a.id,lg=state.logs[k],jj=state.journal[k];
-      if(lg&&jj){var m=reorderByDate(lg,jj,k===modeKey()?openDay:null);if(m)dayMaps[k]=m;}
+      if(lg&&jj){
+        var m1=settlePaid(lg,jj,lastPaidOn(a.id)),od=k===modeKey()?mapSlot(m1,openDay):null;
+        var m=chainMaps(m1,reorderByDate(lg,jj,od));if(m)dayMaps[k]=m;
+      }
     });
     leaders().forEach(function(L){
       var lead=state.logs["acct:"+L.id]||{},lj=state.journal["acct:"+L.id]||{};
@@ -2512,13 +2549,14 @@
           if(x.date)fj[slot]={note:"",trades:[],date:x.date,copied:true,src:x.date};
         });
         // own days and copies together, in date order; the own-days record follows its days to their new numbers
-        var fm=reorderByDate(out,fj,k===modeKey()?openDay:null);
-        if(fm){var no={};for(var od in rec.own){if(rec.own.hasOwnProperty(od))no[fm[od]||od]=rec.own[od];}rec.own=no;dayMaps[k]=fm;}
+        var fm1=settlePaid(out,fj,lastPaidOn(a.id)),fod=k===modeKey()?mapSlot(fm1,openDay):null;
+        var fm=chainMaps(fm1,reorderByDate(out,fj,fod));
+        if(fm){var no={};for(var od in rec.own){if(rec.own.hasOwnProperty(od))no[mapSlot(fm,od)]=rec.own[od];}rec.own=no;dayMaps[k]=fm;}
         state.logs[k]=out;
       });
     });
     // the day open in the editor moves with its new number
-    var am=dayMaps[modeKey()];if(am&&openDay!=null&&am[openDay])openDay=am[openDay];
+    var am=dayMaps[modeKey()];if(am&&openDay!=null)openDay=mapSlot(am,openDay);
   }
 
   // ---- copy group: the leader plus every account following it, P&L combined ----
@@ -3135,7 +3173,8 @@
   function bufferInfo(){
     var c=cfg(),log=curLog(),j=curJournal(),k=modeKey();
     var days=[],total=0,d;
-    for(d=1;d<=c.days;d++){if(!(d in log)||beforeStart(d))continue;total+=log[d];days.push({d:d,date:(j[d]&&j[d].date)||null,net:log[d]});}
+    // every logged day, paid ones (slot 0 and below) included — the payouts come off below
+    Object.keys(log).map(Number).filter(function(x){return x<=c.days;}).forEach(function(d){if(beforeStart(d))return;total+=log[d];days.push({d:d,date:(j[d]&&j[d].date)||null,net:log[d]});});
     // a payout takes money out after that day's close: the balance drops, and since a trailing floor only
     // ever moves up from a new high, it stays where it was — new profit has to clear the old high first
     var paid=0;fundedPayouts().forEach(function(p){paid+=p.amount;days.push({d:1e9,date:p.date||isoDate(),net:-p.amount});});
@@ -3654,8 +3693,9 @@
     var c=cfg(),P=payoutCfg(),log=curLog(),j=curJournal(),pays=fundedPayouts();
     var last=pays.length?pays[pays.length-1].date:null,paid=pays.reduce(function(t,p){return t+p.amount;},0);
     var profit=0,cyc=0,days=0,best=-Infinity,d;
-    for(d=1;d<=c.days;d++){
-      if(!(d in log)||beforeStart(d))continue;
+    var all=Object.keys(log).map(Number).filter(function(x){return x<=c.days;}).sort(function(a,b){return a-b;});
+    for(var ai=0;ai<all.length;ai++){
+      d=all[ai];if(beforeStart(d))continue;
       profit+=log[d];
       var dt=j[d]&&j[d].date;
       if(last&&!(dt&&dt>last))continue; // traded on or before the last payout: that cycle is paid
@@ -3727,7 +3767,7 @@
       ids=ids.concat(others.map(function(x){return x.id;}));
     if(!state.payouts)state.payouts={};
     ids.forEach(function(x){if(!state.payouts[x])state.payouts[x]=[];state.payouts[x].push({amount:n,date:dt});});
-    await save();renderAll();
+    syncFollowers();await save();renderAll(); // the paid days move out of the plan before saving
   }
   // ---- attempt history + expiration ----
   function isoDate(dt){var d=dt||new Date(),p=function(n){return(n<10?"0":"")+n;};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
@@ -5716,7 +5756,7 @@
     if(el.classList.contains("podel")){
       var L=payoutsRaw(state.activeId),i=+el.dataset.pi,p=L[i];if(!p)return;
       if(!(await mxConfirm("Remove the "+fmtc(+p.amount||0)+" payout"+(p.date?" from "+weekdayLbl(p.date):"")+"?",{title:"Remove payout",tone:"warn",okText:"Remove"})))return;
-      L.splice(i,1);await save();renderAll();return;
+      L.splice(i,1);syncFollowers();await save();renderAll();return;
     }
     if(!el.classList.contains("edit")||el.querySelector("input"))return;
     var field=el.id==="poThresh"?"thresh":(el.id==="poCons"?"cons":(el.id==="poMin"?"minDays":null));if(!field)return;
@@ -7488,7 +7528,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v102";
+var APP_BUILD="v103";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
