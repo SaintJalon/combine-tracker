@@ -1779,7 +1779,7 @@
   // po: the plan's own sim-funded payout rules — minimum gross payout, consistency % (0 = none), minimum days, your
   // share of each payout (split), and a total that sends you live (goLive, counted over every account of this plan).
   function PO_MIAMI(min){return{thresh:min,cons:0,minDays:0,split:0.8,fund:0.1,goLive:12000,goLiveTxt:"go live with a $1,500 static balance"};}
-  var DD_TRADEIFY_MIAMI="<b>Static</b> drawdown (Tradeify Miami, limited edition — on sale until Dec 10): the floor sits at your start minus the drawdown and <b>never moves</b>, not even after sim payouts. <b>Micros only</b> — up to 10 / 20 / 30. Hit the target once to pass: no minimum days, no consistency rule. The daily loss limit is optional ($300 / $600 / $900, soft): hitting it flattens you and pauses trading until the next session — only the drawdown ends the account. Tap Daily loss limit above if you bought it. Sim funded: request payouts daily from $200 / $400 / $600 gross, no consistency, no minimum days; each payout splits <b>80% to you, 10% to your live fund, 10% to Tradeify</b>. When your Miami payouts plus current profit reach <b>$12,000</b>, it's paid out in full and you go live with a $1,500 static balance ($1,200 live fund + $300 from Tradeify; up to 20 micros, $250 minimum daily payouts, 90/10). One-time fee with the soft DLL: $99 / $185 / $311 (the no-DLL version costs more). Up to 10 evaluations and 3 sim funded accounts.";
+  var DD_TRADEIFY_MIAMI="<b>Static</b> drawdown (Tradeify Miami Plan 2.0, limited edition — on sale until Dec 10): the floor sits at your start minus the drawdown and <b>never moves</b>, not even after sim payouts. <b>Micros only</b> — up to 10 / 20 / 30. Hit the target once to pass: no minimum days, no consistency rule. The daily loss limit is optional ($300 / $600 / $900, soft): hitting it flattens you and pauses trading until the next session — only the drawdown ends the account. Tap Daily loss limit above if you bought it. Sim funded: request payouts daily from $200 / $400 / $600 gross, no consistency, no minimum days; each payout splits <b>80/20</b> — 80% to you, 10% to your live fund, 10% to Tradeify. When your Miami payouts plus current profit reach <b>$12,000</b>, it's paid out in full and you go live with a $1,500 static balance ($1,200 live fund + $300 from Tradeify; up to 20 micros, $250 minimum daily payouts, 90/10). One-time evaluation fee, 30% off with code NOV: <b>$79 / $153 / $263</b> with the soft DLL, <b>$133 / $257 / $439</b> with no DLL (list $141 / $264 / $444 and $213 / $399 / $667). Up to 10 evaluations and 3 sim funded accounts.";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor rises with your end-of-day balance and applies in real time, then locks for good at <b>$100 above your starting balance</b> once your closing balance clears the drawdown by $100. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit — plan on at least 3 trading days. Tradeify also sells a <b>50% consistency</b> add-on — if you bought it, tap Consistency above and set 50.";
   var DD_LIGHTNING="<b>No evaluation</b> — Lightning starts funded, so the target here is the <b>first payout's profit goal</b> (later payouts: $1,000 / $2,000 / $3,500 / $4,500; the goal resets after each payout). Consistency ladders <b>20% → 25% → 30%</b> by payout number — tap Consistency to raise it after each payout. <b>End-of-day</b> trailing that applies in real time, locking $100 above your starting balance. The 50K–150K daily loss limit is a soft pause. No minimum days.";
 
@@ -1915,10 +1915,10 @@
       }}
     }},
     tradeify:{name:"Tradeify",planOrder:["growth","select","lightning","miami"],plans:{
-      miami:{name:"Miami",order:["10k","25k","50k"],sizes:{
-        "10k":S("Tradeify","Miami",10000,{target:1000,maxloss:500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$300 soft · optional",contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(200)}),
-        "25k":S("Tradeify","Miami",25000,{target:2000,maxloss:1000,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$600 soft · optional",contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(400)}),
-        "50k":S("Tradeify","Miami",50000,{target:3500,maxloss:1500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$900 soft · optional",contracts:"0 minis / 30 micros",contractsShort:"30-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(600)})
+      miami:{name:"Miami 2.0",order:["10k","25k","50k"],sizes:{
+        "10k":S("Tradeify","Miami 2.0",10000,{target:1000,maxloss:500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$300 soft · optional",contracts:"0 minis / 10 micros",contractsShort:"10-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(200)}),
+        "25k":S("Tradeify","Miami 2.0",25000,{target:2000,maxloss:1000,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$600 soft · optional",contracts:"0 minis / 20 micros",contractsShort:"20-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(400)}),
+        "50k":S("Tradeify","Miami 2.0",50000,{target:3500,maxloss:1500,maxlossLabel:"Static Drawdown",dd:"Static (fixed floor)",ddDesc:DD_TRADEIFY_MIAMI,dll:"$900 soft · optional",contracts:"0 minis / 30 micros",contractsShort:"30-micro",mindays:"no minimum",minShort:"—",locks:false,oneTime:true,po:PO_MIAMI(600)})
       }},
       growth:{name:"Growth",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("Tradeify","Growth",25000,{target:1500,maxloss:1000,dd:"EOD trailing",ddDesc:DD_TRADEIFY,dll:"$600 soft",contracts:"1 mini / 10 micros",contractsShort:"1-mini",mindays:"min 1 to pass",minShort:"1",locks:false}),
@@ -7554,7 +7554,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v104";
+var APP_BUILD="v105";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
