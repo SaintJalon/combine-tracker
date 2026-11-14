@@ -1362,6 +1362,7 @@
           <button data-firm="mffu">MyFundedFutures</button>
           <button data-firm="lucid">Lucid</button>
           <button data-firm="tradeify">Tradeify</button>
+          <button data-firm="tradeifyfx">Tradeify FX</button>
           <button data-firm="apex">Apex</button>
           <button data-firm="tpt">Take Profit Trader</button>
         </div>
@@ -1779,6 +1780,16 @@
   // po: the plan's own sim-funded payout rules — minimum gross payout, consistency % (0 = none), minimum days, your
   // share of each payout (split), and a total that sends you live (goLive, counted over every account of this plan).
   function PO_MIAMI(min){return{thresh:min,cons:0,minDays:0,split:0.8,fund:0.1,goLive:12000,goLiveTxt:"go live with a $1,500 static balance"};}
+  // ---- Tradeify FX (forex, MT5): rules from help.tradeifyfx.co, read Nov 14 2026 ----
+  var FX_COMMON=" Forex on MT5 at <b>1:100 leverage</b> — size in lots (no fixed lot limit). No time limit, but trade at least once every 30 days. Funded: no opening, closing or changing trades from 5 min before to 5 min after red-folder news on that currency's pairs (evaluations are exempt). Holding overnight and over the weekend is allowed. Breaches are final — no resets. After 5 payouts you can join the Live program (90% split, daily payouts).";
+  var DD_FX_DAILY="<b>1-Step Daily</b>: hit <b>10%</b> once. Max loss is <b>4% static</b> — the floor sits at your start minus 4% and <b>never trails</b>, checked on live equity (accounts bought before Nov 10 2026 keep the old 5% trailing). <b>No daily loss limit.</b> <b>50% consistency</b> in the evaluation: no day over half your total profit — a bigger day doesn't fail you, it raises the target until it fits. Funded: no consistency; payouts <b>daily</b>, from profit above a <b>4% buffer</b> that stays in the account, up to <b>3%</b> of the account per request, $100 minimum; after the first, 1% new profit before the next. 80% to you (90% with the add-on). One-time fee: $89 / $149 / $249 / $429 (10K–100K; no 5K)."+FX_COMMON;
+  var DD_FX_CLASSIC="<b>2-Step Classic</b>: Phase 1 target <b>5%</b>, then Phase 2 <b>10%</b> — pass Phase 1 and the tracker moves this account to Phase 2. Max drawdown <b>10% static</b> (never moves). <b>Daily loss limit 3%</b>, hard: measured from your balance at the <b>22:00 UTC</b> daily snapshot, checked on live equity. No consistency rule, no minimum days. Funded: same limits; payouts <b>every 14 days</b> (from your first funded trade), $100 minimum, no maximum, 80% to you. One-time fee: $55 / $109 / $249 / $419 / $749 (5K–100K)."+FX_COMMON;
+  var DD_FX_DIRECT="<b>Direct — instant funding</b>, no evaluation, so this account starts funded. Max loss <b>6% trailing</b> on your closed balance (open profit doesn't move it); it never moves down and <b>stops at your starting balance</b> — and your first payout locks it there for good, so a payout comes out of your cushion above the start. <b>Daily loss limit 3%</b>, hard, from the 22:00 UTC snapshot balance. Payouts <b>on demand</b>, $100 minimum, no maximum, 80% to you — once your best day is no more than <b>20%</b> of total profit (in practice 5+ green days). The target here is a first-payout goal of one max loss (6%) so the locked floor leaves you room — tap Target to change it. One-time fee: $85 / $119 / $299 / $579 / $999 (5K–100K)."+FX_COMMON;
+  function FX(plan,size,o){
+    var pct=function(x){return Math.round(size*x/100);};
+    return S("Tradeify FX",plan,size,Object.assign({contracts:"Lots · 1:100 leverage",contractsShort:"lot-sized",minShort:"—",mindays:"no minimum",oneTime:true,
+      },o(pct)));
+  }
   var DD_TRADEIFY_MIAMI="<b>Static</b> drawdown (Tradeify Miami Plan 2.0, limited edition — on sale until Dec 10): the floor sits at your start minus the drawdown and <b>never moves</b>, not even after sim payouts. <b>Micros only</b> — up to 10 / 20 / 30. Hit the target once to pass: no minimum days, no consistency rule. The daily loss limit is optional ($300 / $600 / $900, soft): hitting it flattens you and pauses trading until the next session — only the drawdown ends the account. Tap Daily loss limit above if you bought it. Sim funded: request payouts daily from $200 / $400 / $600 gross, no consistency, no minimum days; each payout splits <b>80/20</b> — 80% to you, 10% to your live fund, 10% to Tradeify. When your Miami payouts plus current profit reach <b>$12,000</b>, it's paid out in full and you go live with a $1,500 static balance ($1,200 live fund + $300 from Tradeify; up to 20 micros, $250 minimum daily payouts, 90/10). One-time evaluation fee, 30% off with code NOV: <b>$79 / $153 / $263</b> with the soft DLL, <b>$133 / $257 / $439</b> with no DLL (list $141 / $264 / $444 and $213 / $399 / $667). Up to 10 evaluations and 3 sim funded accounts.";
   var DD_SELECT="<b>End-of-day</b> trailing: the floor rises with your end-of-day balance and applies in real time, then locks for good at <b>$100 above your starting balance</b> once your closing balance clears the drawdown by $100. No daily loss limit, but a <b>40% consistency rule</b> means no single day can be more than 40% of total profit — plan on at least 3 trading days. Tradeify also sells a <b>50% consistency</b> add-on — if you bought it, tap Consistency above and set 50.";
   var DD_LIGHTNING="<b>No evaluation</b> — Lightning starts funded, so the target here is the <b>first payout's profit goal</b> (later payouts: $1,000 / $2,000 / $3,500 / $4,500; the goal resets after each payout). Consistency ladders <b>20% → 25% → 30%</b> by payout number — tap Consistency to raise it after each payout. <b>End-of-day</b> trailing that applies in real time, locking $100 above your starting balance. The 50K–150K daily loss limit is a soft pause. No minimum days.";
@@ -1939,6 +1950,12 @@
         "150k":S("Tradeify","Lightning",150000,{target:9000,maxloss:5250,dd:"EOD trailing",ddDesc:DD_LIGHTNING,cons:"20%",consPct:20,dll:"$3,000 soft",contracts:"12 minis / 120 micros",contractsShort:"12-mini",mindays:"no minimum",minShort:"—",lockOff:100,oneTime:true})
       }}
     }},
+    tradeifyfx:{name:"Tradeify FX",planOrder:["daily","classic1","classic2","direct"],plans:{
+      daily:{name:"Daily (1-Step)",order:["10k","25k","50k","100k"],sizes:{}},
+      classic1:{name:"Classic · Phase 1",order:["5k","10k","25k","50k","100k"],sizes:{}},
+      classic2:{name:"Classic · Phase 2",order:["5k","10k","25k","50k","100k"],sizes:{}},
+      direct:{name:"Direct (Instant)",order:["5k","10k","25k","50k","100k"],sizes:{}}
+    }},
     apex:{name:"Apex",planOrder:["eod","intraday"],plans:{
       eod:{name:"EOD",order:["25k","50k","100k","150k"],sizes:{
         "25k":S("Apex","EOD",25000,{target:1500,maxloss:1000,maxlossLabel:"Trailing Threshold",dd:"EOD trailing",ddDesc:DD_APEX_EOD,dll:"$500 soft",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"no minimum",minShort:"—",locks:false}),
@@ -1981,6 +1998,16 @@
   function fmt(n){var neg=n<0;var s="$"+Math.abs(Math.round(n)).toLocaleString();return neg?"-"+s:s;}
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
   function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+  (function(){
+    var F=FIRMS.tradeifyfx.plans,SZ={"5k":5000,"10k":10000,"25k":25000,"50k":50000,"100k":100000};
+    function po(o){return Object.assign({cons:0,minDays:0,split:0.8},o);}
+    F.daily.order.forEach(function(k){var z=SZ[k];F.daily.sizes[k]=FX("Daily",z,function(p){return{target:p(10),maxloss:p(4),maxlossLabel:"Static Max Loss",dd:"Static (fixed floor)",ddDesc:DD_FX_DAILY,
+      cons:"50%",consPct:50,locks:false,po:po({thresh:p(4)+100,threshNext:Math.max(100,p(1)),buffer:p(4),cap:p(3),everyTxt:"daily"})};});});
+    ["classic1","classic2"].forEach(function(pk,i){F[pk].order.forEach(function(k){var z=SZ[k];F[pk].sizes[k]=FX(i?"Classic · Phase 2":"Classic · Phase 1",z,function(p){return{target:p(i?10:5),maxloss:p(10),maxlossLabel:"Static Max Drawdown",dd:"Static (fixed floor)",ddDesc:DD_FX_CLASSIC,
+      dll:fmt(p(3))+" · mandatory",locks:false,nextPlan:i?null:"classic2",po:po({thresh:100,every:14,everyTxt:"every 14 days"})};});});});
+    F.direct.order.forEach(function(k){var z=SZ[k];F.direct.sizes[k]=FX("Direct",z,function(p){return{target:p(6),maxloss:p(6),maxlossLabel:"Trailing Max Loss",dd:"Trailing · closed balance (intraday)",ddDesc:DD_FX_DIRECT,
+      cons:"20%",consPct:20,dll:fmt(p(3))+" · mandatory",locks:true,lockOff:0,startsFunded:true,po:po({thresh:100,cons:20,everyTxt:"on demand"})};});});
+  })();
   function firm(){return FIRMS[state.firm]||FIRMS.topstep;}
   function ensurePlan(){var f=firm();if(!f.plans[state.plan])state.plan=f.planOrder[0];}
   function ensureSize(){ensurePlan();var pl=firm().plans[state.plan];if(!pl.sizes[state.size])state.size=pl.order[0];}
@@ -2587,7 +2614,7 @@
   function lastSession(){var t=isoDate();if(isTradingDate(t))return t;var c=new Date(t+"T00:00:00");do{c.setDate(c.getDate()-1);}while(!isTradingDate(isoOf(c)));return isoOf(c);}
   function quickLogHTML(){
     var iso=qlDate||(qlDate=lastSession()),rows="";
-    function stageOfA(a){return (state.stage&&state.stage[a.id])||"eval";}
+    function stageOfA(a){return stageOfId(a.id);}
     function box(a,ph,val){return '<input type="number" inputmode="decimal" step="any" data-ql="'+a.id+'" placeholder="'+ph+'" value="'+(val==null?"":val)+'" aria-label="'+esc(a.name)+' P&amp;L">';}
     function shown(r){return r?'<span class="qs">now '+fmt(r.v)+(r.copied?" ⇄":"")+'</span>':'<span class="qs">—</span>';}
     leaders().forEach(function(L){
@@ -2617,7 +2644,7 @@
     syncFollowers();
     // who reached the target with this day (the open account converts on its own if auto-convert is on)
     if(done.length)state.accounts.forEach(function(a){
-      if((state.stage&&state.stage[a.id])==="funded"||!acctNetOn(a,iso))return;
+      if(stageOfId(a.id)==="funded"||!acctNetOn(a,iso))return;
       asAcct(a,function(){var c=cfg(),cs=countedStats(c);if(cs.days&&cs.total>=c.target)hit.push(a.name);});
     });
     qlOpen=false;autoFundArmed=true;
@@ -2668,7 +2695,7 @@
           if(dt===t)r.day+=v;if(dt.slice(0,7)===mk)r.month+=v;
         }
         tot.day+=r.day;tot.month+=r.month;tot.all+=r.all;
-        var stage=(state.stage&&state.stage[a.id])||"eval";
+        var stage=stageOfId(a.id);
         rows+='<div class="grow ga'+(a.id===state.activeId?" cur":"")+'"><span class="gn">'+(a.id===L.id?"★ ":"⇄ ")+'<button type="button" class="ggo" data-goto="'+a.id+'" title="Open this account">'+esc(a.name)+'</button><small>'+stage+'</small></span>'+cell(r.day)+cell(r.month)+cell(r.all)+grpActSel(a)+'</div>';
       });
       if(groups.length>1)html+='<div class="ggroup'+(gi?' next':'')+'">★ '+esc(L.name)+'\'s group</div>';
@@ -2679,7 +2706,7 @@
     var free=state.accounts.filter(isFreeAcct);
     if(free.length){
       html+='<div class="grow gh gout"><span class="gn">Not in a group</span></div>'+free.map(function(a){
-        return '<div class="grow gx ga'+(a.id===state.activeId?" cur":"")+'"><span class="gn"><button type="button" class="ggo" data-goto="'+a.id+'" title="Open this account">'+esc(a.name)+'</button><small>'+((state.stage&&state.stage[a.id])||"eval")+'</small></span>'+grpActSel(a)+'</div>';
+        return '<div class="grow gx ga'+(a.id===state.activeId?" cur":"")+'"><span class="gn"><button type="button" class="ggo" data-goto="'+a.id+'" title="Open this account">'+esc(a.name)+'</button><small>'+stageOfId(a.id)+'</small></span>'+grpActSel(a)+'</div>';
       }).join("");
     }
     host.innerHTML=tool+html+'<div class="note">Tap a name to open that account; ⋯ moves it between groups. Each leader\'s followers count their own days plus 1:1 copies. All time covers each account\'s current run'+(undated?' · '+undated+' logged day'+(undated===1?"":"s")+' without a date count in All time only':'')+'.</div>';
@@ -3090,7 +3117,7 @@
     if(stageOf()==="funded"){
       // funded: the bar above the progress turns into "payout ready" once this cycle clears the payout rules
       var PX=payoutState();
-      if(PX.ready){cv.className="convertbar show";cv.innerHTML="<span>$ <b>Payout ready</b> — "+fmt(PX.cycle)+(PX.last?" since your "+weekdayLbl(PX.last)+" payout":" funded profit")+" clears your payout rules.</span><button type=\"button\" id=\"btnLogPayout\">＋ Log payout</button>";}
+      if(PX.ready){cv.className="convertbar show";cv.innerHTML="<span>$ <b>Payout ready</b> — "+(PX.last?"since your "+weekdayLbl(PX.last)+" payout ":"")+"you can request up to <b>"+fmt(PX.avail)+"</b>.</span><button type=\"button\" id=\"btnLogPayout\">＋ Log payout</button>";}
       else{cv.className="convertbar";cv.innerHTML="";}
     }
     if(daysLogged===0||total<=0){el.style.display="none";if(stageOf()!=="funded"){cv.className="convertbar";cv.innerHTML="";}return;}
@@ -3103,7 +3130,13 @@
       else if(c.targetRaised){el.classList.add("warn");el.innerHTML=cn.raised+"Best day is "+Math.round(share*100)+"% of total (cap "+consPct+"%). "+cn.keep;}
       else{el.classList.add("ok");el.innerHTML="Consistency clean: best day "+Math.round(share*100)+"% of total (cap "+consPct+"%). "+cn.keep;}
     }
-    if(passed&&stageOf()!=="funded"){
+    if(passed&&stageOf()!=="funded"&&c.nextPlan){
+      // a multi-phase evaluation: passing this phase moves the account to the next one, not to funded
+      var np=firm().plans[c.nextPlan];
+      if(armed&&!(state.autoFund&&state.autoFund[state.activeId]===false)){cv.className="convertbar";cv.innerHTML="";advancePhase(true);return;}
+      cv.className="convertbar show";
+      cv.innerHTML="<span>★ <b>Phase passed</b> — you've cleared "+fmt(T)+". Next: <b>"+esc(np?np.name:"the next phase")+"</b>.</span><button type=\"button\" id=\"btnNextPhase\">Start "+esc(np?np.name:"next phase")+" →</button>";
+    }else if(passed&&stageOf()!=="funded"){
       if(armed&&!(state.autoFund&&state.autoFund[state.activeId]===false)){
         cv.className="convertbar";cv.innerHTML="";
         convertToFunded(true);
@@ -3644,7 +3677,14 @@
     else ce.innerHTML=fmt(cStart)+' → <b class="g">'+fmt(Math.round(fv))+'</b> in '+cMonths+' mo at '+cRate+'%/mo (<b>'+fmt(Math.round(gain))+'</b> gain).';
   }
   // ---- funded / payout stage ----
-  function stageOf(){if(!state.stage)state.stage={};return state.stage[state.activeId]||"eval";}
+  function stageOf(){return stageOfId(state.activeId);}
+  // an account's stage; a plan that starts funded (instant funding, e.g. Tradeify FX Direct) has no eval stage
+  function stageOfId(id){
+    var st=state.stage&&state.stage[id];if(st)return st;
+    var a=acctById(id);if(!a)return "eval";
+    var f=FIRMS[a.firm],pl=f&&f.plans[a.plan],sz=pl&&pl.sizes[a.size];
+    return sz&&sz.startsFunded?"funded":"eval";
+  }
   function payoutCfg(){if(!state.payout)state.payout={};var id=state.activeId;if(!state.payout[id])state.payout[id]={thresh:null,cons:null,minDays:null};return state.payout[id];}
   // Archives the eval run as a passed attempt, starts a fresh log for funded
   // trading, and seeds the funded target to the payout threshold. This is the
@@ -3672,7 +3712,7 @@
   // the payouts that came out of this account's current funded run, oldest first
   function fundedPayouts(id){
     id=id||state.activeId;
-    if(((state.stage&&state.stage[id])||"eval")!=="funded")return [];
+    if(stageOfId(id)!=="funded")return [];
     var m=state.attemptMeta&&state.attemptMeta[id],from=(m&&m.start)||"";
     return payoutsRaw(id).filter(function(p){return p&&+p.amount>0&&(!from||!p.date||p.date>=from);})
       .slice().sort(function(a,b){var x=a.date||"",y=b.date||"";return x<y?-1:(x>y?1:0);});
@@ -3693,7 +3733,7 @@
     var me=activeAcct(),po=poOf(state.activeId);if(!me||!po.goLive)return null;
     var sum=0,paid=0,n=0;
     state.accounts.forEach(function(a){
-      if(a.firm!==me.firm||a.plan!==me.plan||((state.stage&&state.stage[a.id])||"eval")!=="funded")return;
+      if(a.firm!==me.firm||a.plan!==me.plan||stageOfId(a.id)!=="funded")return;
       n++;asAcct(a,function(){var X=payoutState();paid+=X.paid;sum+=X.paid+Math.max(0,X.cycle);});
     });
     return{po:po,sum:sum,paid:paid,n:n,fund:paid*(po.fund||0)};
@@ -3710,12 +3750,12 @@
   function payoutState(){
     var c=cfg(),P=payoutCfg(),log=curLog(),j=curJournal(),pays=fundedPayouts();
     var last=pays.length?pays[pays.length-1].date:null,paid=pays.reduce(function(t,p){return t+p.amount;},0);
-    var profit=0,cyc=0,days=0,best=-Infinity,d;
+    var profit=0,cyc=0,days=0,best=-Infinity,d,firstTrade=null;
     var all=Object.keys(log).map(Number).filter(function(x){return x<=c.days;}).sort(function(a,b){return a-b;});
     for(var ai=0;ai<all.length;ai++){
       d=all[ai];if(beforeStart(d))continue;
       profit+=log[d];
-      var dt=j[d]&&j[d].date;
+      var dt=j[d]&&j[d].date;if(dt&&(!firstTrade||dt<firstTrade))firstTrade=dt;
       if(last&&!(dt&&dt>last))continue; // traded on or before the last payout: that cycle is paid
       cyc+=log[d];days++;if(log[d]>best)best=log[d];
     }
@@ -3723,23 +3763,50 @@
     var X={P:P,po:po,thresh:(P.thresh!=null&&!oldDefault)?P.thresh:(po.thresh!=null?po.thresh:Math.round(c.maxloss)),
       cons:P.cons!=null?P.cons:(po.cons!=null?po.cons:20),minDays:P.minDays!=null?P.minDays:(po.minDays!=null?po.minDays:5),
       profit:profit,cycle:cyc,days:days,best:best,pays:pays,paid:paid,last:last,gates:[]};
+    // after the first payout some plans ask for less new profit (Tradeify FX Daily: 1%), unless you set the threshold
+    if(pays.length&&po.threshNext!=null&&!P.mine)X.thresh=po.threshNext;
+    // what you can take: profit above a buffer that stays in the account (first payout), capped per request
+    X.buffer=(!pays.length&&po.buffer)?po.buffer:0;
+    X.avail=Math.max(0,cyc-X.buffer);if(po.cap)X.avail=Math.min(X.avail,po.cap);
     if(cyc<X.thresh)X.gates.push("need "+fmt(X.thresh-cyc)+" more profit");
+    // payout windows (Tradeify FX Classic: every 14 days, counted from your first funded trade)
+    if(po.every&&(last||firstTrade)){
+      var nx=new Date((last||firstTrade)+"T00:00:00");nx.setDate(nx.getDate()+po.every);X.nextWindow=isoOf(nx);
+      if(isoDate()<X.nextWindow)X.gates.push("next payout window "+weekdayLbl(X.nextWindow));
+    }
     if(days<X.minDays)X.gates.push((X.minDays-days)+" more day"+((X.minDays-days)===1?"":"s"));
     if(X.cons>0&&cyc>0&&!(best/cyc<=X.cons/100))X.gates.push("best day "+fmt(best)+" over "+X.cons+"% cap");
-    X.ready=!X.gates.length&&cyc>0;
+    X.ready=!X.gates.length&&cyc>0&&X.avail>0;
     return X;
+  }
+  // Passed one phase of a multi-phase evaluation (Tradeify FX Classic): archive the run as a passed attempt, start a
+  // fresh log, and switch this account to the next phase's plan — its own target, same size and rules.
+  async function advancePhase(auto){
+    var c=cfg(),next=c.nextPlan,np=next&&firm().plans[next];if(!np)return;
+    var log=curLog(),total=0,days=0,d;
+    for(d=1;d<=c.days;d++){if(d in log){total+=log[d];days++;}}
+    if(!auto&&!(await mxConfirm("Move this account to "+np.name+"?\n\nThis archives the phase you passed (net "+fmt(total)+" · "+days+" days) under Attempt and starts a fresh log for "+np.name+".",{title:"★ Next phase",okText:"Start "+np.name})))return;
+    var m=attemptMeta(),k=modeKey();
+    attemptsList().push({no:m.no,result:"passed",net:total,days:days,ended:isoDate(),phase:c.title});
+    state.logs[k]={};if(state.journal)state.journal[k]={};
+    m.no=m.no+1;m.start=isoDate();m.evalDays=null;
+    if(state.targets)delete state.targets[k];if(state.days)delete state.days[k];
+    state.plan=next;if(!np.sizes[state.size])state.size=np.order[0];syncAcct();
+    await save();renderAll();
+    if(auto)mxAlert(c.title+" passed (net "+fmt(total)+" · "+days+" days) — archived under Attempt. This account is now on "+np.name+" with a fresh log.",{title:"★ Phase passed"});
   }
   function renderPayout(){
     var c=cfg(),stage=stageOf(),host=document.getElementById("payoutPanel"),tog=document.getElementById("stageTog");
     renderPaidChip();
-    if(stage==="funded"){tog.textContent="↩ Revert to Eval";tog.disabled=false;}
+    if(stage==="funded"&&c.startsFunded&&!(state.stage&&state.stage[state.activeId])){tog.textContent="Instant funded";tog.disabled=true;}
+    else if(stage==="funded"){tog.textContent="↩ Revert to Eval";tog.disabled=false;}
     else{tog.textContent="Eval stage";tog.disabled=true;}
     if(stage!=="funded"){host.innerHTML='<div class="rout" style="padding:2px">This account is in the <b>evaluation</b> stage. Once your logged days clear the profit target (and consistency, if the plan has one), a <b>Convert to Funded</b> button appears above the progress bar — that\'s the way in, so your eval days don\'t get counted twice. Payouts are logged here once it\'s funded.</div>'+payoutHistory();return;}
-    var X=payoutState(),thresh=X.thresh,cons=X.cons,minDays=X.minDays,cyc=X.cycle,days=X.days,best=X.best,B=bufferInfo();
+    var X=payoutState(),thresh=X.thresh,cons=X.cons,minDays=X.minDays,cyc=X.cycle,days=X.days,best=X.best,B=bufferInfo(),av=X.avail;
     var gates=X.gates,ready=X.ready,since=X.last?"since your "+weekdayLbl(X.last)+" payout":"";
     var after="";
-    if(ready){var left=B.buffer-cyc;
-      after='<br><span style="font-size:12px">Taking all of it: balance '+fmt(B.bal)+' → <b>'+fmt(B.bal-cyc)+'</b>, room above the floor '+fmt(B.buffer)+' → <b class="'+(left<=0?"r":(left<500?"a":"g"))+'">'+fmt(left)+'</b>'+(left<=0?" — that's at or under the floor, take less":"")+'.</span>';}
+    if(ready){var left=B.buffer-av;
+      after='<br><span style="font-size:12px">'+(X.buffer?fmt(X.buffer)+' stays in the account as the payout buffer'+(X.po.cap&&av===X.po.cap?' and '+fmt(X.po.cap)+' is the most per request':'')+'. ':(X.po.cap&&av===X.po.cap?fmt(X.po.cap)+' is the most per request. ':''))+'Taking all of it: balance '+fmt(B.bal)+' → <b>'+fmt(B.bal-av)+'</b>, room above the floor '+fmt(B.buffer)+' → <b class="'+(left<=0?"r":(left<500?"a":"g"))+'">'+fmt(left)+'</b>'+(left<=0?" — that's at or under the floor, take less":"")+'.</span>';}
     var share=payoutShare(state.activeId),GL=goLiveInfo(),glTxt="";
     if(GL){var glp=Math.min(100,GL.sum/GL.po.goLive*100);
       glTxt='<div class="ponet" style="margin-top:10px">Toward live: <b class="g">'+fmt(GL.sum)+'</b> of '+fmt(GL.po.goLive)+' — payouts plus current profit over '+(GL.n===1?'this account':'your '+GL.n+' '+esc(((c.title.split(" — ")[1]||"").split(" ")[0])||"plan")+' accounts')+(GL.fund?' · live fund '+fmtc(Math.round(GL.fund*100)/100):'')+'. At '+fmt(GL.po.goLive)+' it pays out in full and you '+GL.po.goLiveTxt+'.</div>'+
@@ -3755,7 +3822,7 @@
       '<div class="item"><div class="k">Best day</div><div class="v">'+(best>-Infinity?fmt(best):"—")+'</div></div>'+
       '<div class="item"><div class="k">Total funded P&amp;L</div><div class="v" style="color:'+(X.profit>=0?"var(--green)":"var(--red)")+'">'+fmt(X.profit)+'</div></div>'+
       '</div>'+
-      '<div class="pomsg '+(ready?"ok":"warn")+'">'+(ready?"✓ Ready — you can request a payout of up to <b>"+fmt(cyc)+"</b>"+(since?" ("+since+")":"")+"."+after:"Not yet"+(since?" "+since:"")+" · "+gates.join(" · ")+".")+'</div>'+
+      '<div class="pomsg '+(ready?"ok":"warn")+'">'+(ready?"✓ Ready — you can request a payout of up to <b>"+fmt(av)+"</b>"+(X.po.everyTxt?" (payouts "+X.po.everyTxt+")":"")+(since?" ("+since+")":"")+"."+after:"Not yet"+(since?" "+since:"")+" · "+gates.join(" · ")+".")+'</div>'+
       glTxt+
       '<button type="button" class="addtrade" id="poAdd" style="margin-top:8px">＋ Log payout</button>'+
       payoutHistory();
@@ -3780,14 +3847,14 @@
   // trades — whether they got the same payout too.
   async function logPayoutFlow(){
     var id=state.activeId,funded=stageOf()==="funded",def="";
-    if(funded){var X=payoutState();def=X.cycle>0?Math.round(X.cycle):"";}
+    if(funded){var X=payoutState();def=X.avail>0?Math.round(X.avail):"";}
     var shr=payoutShare(id);
     var amt=await mxPrompt(shr<1?"Payout amount ($, gross — what comes off the balance; you get "+Math.round(shr*100)+"%):":"Payout amount ($):",def,{title:"＋ Log payout",okText:"Next",input:{type:"number",inputmode:"decimal",placeholder:"e.g. 2500"}});if(amt===null)return;
     var n=parseFloat(amt);if(isNaN(n)||n<=0)return;n=Math.round(n*100)/100;
     var dt=await mxPrompt("Payout date:",isoDate(),{title:"＋ Log payout",okText:"Log payout",input:{type:"date"}});if(dt===null)return;
     dt=dt||isoDate();
     var a=acctById(id),L=a?(a.lead?a:leaderOf(a)):null,others=[];
-    if(L)[L].concat(followersOf(L)).forEach(function(x){if(x.id!==id&&state.stage&&state.stage[x.id]==="funded")others.push(x);});
+    if(L)[L].concat(followersOf(L)).forEach(function(x){if(x.id!==id&&stageOfId(x.id)==="funded")others.push(x);});
     var ids=[id];
     if(others.length&&(await mxConfirm("Did "+(others.length===1?"your other funded account":"your other "+others.length+" funded accounts")+" in this copy group get the same "+fmtc(n)+" payout too?\n\n"+others.map(function(x){return "• "+x.name;}).join("\n"),{title:"＋ Log payout",okText:"Yes, log all "+(others.length+1),cancelText:"Just this one"})))
       ids=ids.concat(others.map(function(x){return x.id;}));
@@ -4980,7 +5047,7 @@
   // ---- the accounts sheet: every account, grouped by copy group, with its progress ----
   var acSheetOpen=false,acQ="",acFirm="";
   function acctProgress(a){
-    return asAcct(a,function(){var c=cfg(),cs=countedStats(c),st=(state.stage&&state.stage[a.id])||"eval";
+    return asAcct(a,function(){var c=cfg(),cs=countedStats(c),st=stageOfId(a.id);
       return{total:cs.total,target:c.target,days:cs.days,stage:st,pct:c.target>0?Math.max(0,Math.min(100,cs.total/c.target*100)):0};});
   }
   function acRow(a,indent){
@@ -5774,6 +5841,7 @@
   });
   document.getElementById("pConvert").addEventListener("click",function(e){
     if(e.target.id==="btnConvertFunded")convertToFunded();
+    if(e.target.id==="btnNextPhase")advancePhase();
     if(e.target.id==="btnLogPayout")logPayoutFlow();
   });
   document.getElementById("payoutPanel").addEventListener("click",async function(e){
@@ -7554,7 +7622,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v105";
+var APP_BUILD="v106";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
