@@ -1839,8 +1839,8 @@
         "150k":S("TopStep","Combine",150000,{target:9000,maxloss:4500,maxlossLabel:"Trailing Max Loss",dd:"EOD trailing",ddDesc:TS_DD,cons:"55%",consPct:55,consRaises:true,dll:"Optional $3,000",contracts:"15 minis / 150 micros",contractsShort:"15-mini",mindays:"min 2 to pass",minShort:"2"})
       }},
       static:{name:"Static",order:["25k","50k"],sizes:{
-        "25k":S("TopStep","Static",25000,{target:2000,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS25,cons:"55%",consPct:55,consRaises:true,dll:"$500 · mandatory",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false,oneTime:true}),
-        "50k":S("TopStep","Static",50000,{target:4000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS50,cons:"55%",consPct:55,consRaises:true,dll:"$1,000 · mandatory",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2",locks:false,oneTime:true})
+        "25k":S("TopStep","Static",25000,{target:2000,maxloss:1000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS25,cons:"55%",consPct:55,consRaises:true,dll:"$500 · mandatory",contracts:"2 minis / 20 micros",contractsShort:"2-mini",mindays:"min 2 to pass",minShort:"2",locks:false,oneTime:true,mllZeroAfterPayout:true}),
+        "50k":S("TopStep","Static",50000,{target:4000,maxloss:2000,maxlossLabel:"Max Loss Limit",dd:"Static (fixed floor)",ddDesc:TS_LABS50,cons:"55%",consPct:55,consRaises:true,dll:"$1,000 · mandatory",contracts:"4 minis / 40 micros",contractsShort:"4-mini",mindays:"min 2 to pass",minShort:"2",locks:false,oneTime:true,mllZeroAfterPayout:true})
       }},
       challenge:{name:"Labs Challenge",order:["1.5k","3k-008","3k-009"],sizes:{
         // Labs Challenges have no account size of their own: a nominal $50K balance carries the static floor
@@ -3222,14 +3222,18 @@
     // 4:00 PM CT session close. Until then today's result shows as where the floor moves if you finish here.
     // Intraday trailing has already moved with every high, so it counts today straight away.
     var floor,prospective=null;
-    if(isStatic)floor=c.size-c.maxloss;
+    // TopStep static: the Max Loss Limit goes to $0 after the first funded payout, so the floor locks at the
+    // starting balance and only the profit left in the account is buffer
+    var zeroes=isStatic&&!!c.mllZeroAfterPayout&&stageOf()==="funded",zeroed=zeroes&&paid>0;
+    if(isStatic)floor=zeroed?c.size:c.size-c.maxloss;
     else{
       var closed=isIntra||nowCSTMinutes()>=16*60;
       var F=CTRules.eodFloor({size:c.size,maxloss:c.maxloss,locks:c.locks,lockOff:c.lockOff,days:days,today:isoDate(),closed:closed,balance:bal});
       floor=F.floor;if(!closed&&Math.round(F.prospective)!==Math.round(floor))prospective=F.prospective;
     }
     var buffer=bal-floor;
-    return{c:c,bal:bal,autoBal:autoBal,floor:floor,prospective:prospective,isStatic:isStatic,buffer:buffer,paid:paid};
+    return{c:c,bal:bal,autoBal:autoBal,floor:floor,prospective:prospective,isStatic:isStatic,buffer:buffer,paid:paid,
+      zeroes:zeroes,zeroed:zeroed,floorAfterPayout:zeroes?c.size:floor,maxloss:zeroed?0:c.maxloss};
   }
   function renderBuffer(){
     var B=bufferInfo(),c=B.c,host=document.getElementById("bufCard"),k=modeKey(),bal=B.bal,autoBal=B.autoBal,floor=B.floor,prospective=B.prospective,isStatic=B.isStatic,buffer=B.buffer;
@@ -3240,7 +3244,9 @@
     if(buffer<=0){mcls="bad";msg="✕ Floor breached — this ends the account.";}
     else if(buffer<500){mcls="warn";msg="▲ Under $500 buffer — drop to micros or stop for the day.";}
     else{mcls="ok";msg="Healthy buffer. Keep any single loss well inside it.";}
-    var floorNote=prospective!=null?"moves to "+fmt(prospective)+" at close if you finish here":isStatic?"static — fixed":(c.locks?(floor>=c.size+(c.lockOff||0)?(c.lockOff?"locked at start + "+fmt(c.lockOff):"locked at start"):"trailing up"):"trailing");
+    if(B.zeroed&&buffer>0)msg+=" After your payout the Max Loss Limit is $0 — this "+fmt(buffer)+" left in the account is all the buffer you have.";
+    else if(B.zeroes&&buffer>0)msg+=" Your first payout drops the Max Loss Limit to $0 — only the profit you leave in stays as buffer.";
+    var floorNote=B.zeroed?"locked at start — Max Loss $0 after payout":prospective!=null?"moves to "+fmt(prospective)+" at close if you finish here":isStatic?"static — fixed":(c.locks?(floor>=c.size+(c.lockOff||0)?(c.lockOff?"locked at start + "+fmt(c.lockOff):"locked at start"):"trailing up"):"trailing");
     var balNote=(state.balance&&state.balance[k])?"tap to edit · your entry":(B.paid?"auto · P&L − "+fmt(B.paid)+" paid out":"tap to edit · auto from P&L");
     host.innerHTML=
       '<div class="bh"><span class="bttl">Buffer to floor</span><span class="bbig '+cls+'">'+fmt(buffer)+'</span></div>'+
@@ -3248,7 +3254,7 @@
       '<div class="brow">'+
         '<div class="bcell"><div class="k">Balance</div><div class="v edit" id="bufBal">'+fmt(bal)+'</div><div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">'+balNote+'</div></div>'+
         '<div class="bcell"><div class="k">Current floor</div><div class="v">'+fmt(floor)+'</div><div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">'+floorNote+'</div></div>'+
-        '<div class="bcell"><div class="k">Max loss</div><div class="v">'+fmt(c.maxloss)+'</div><div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">'+esc(c.dd)+'</div></div>'+
+        '<div class="bcell"><div class="k">Max loss</div><div class="v">'+fmt(B.maxloss)+'</div><div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">'+(B.zeroed?"$0 after first payout":esc(c.dd))+'</div></div>'+
       '</div>'+
       '<div class="bmsg '+mcls+'">'+msg+'</div>';
     (function(){
@@ -3805,8 +3811,9 @@
     var X=payoutState(),thresh=X.thresh,cons=X.cons,minDays=X.minDays,cyc=X.cycle,days=X.days,best=X.best,B=bufferInfo(),av=X.avail;
     var gates=X.gates,ready=X.ready,since=X.last?"since your "+weekdayLbl(X.last)+" payout":"";
     var after="";
-    if(ready){var left=B.buffer-av;
-      after='<br><span style="font-size:12px">'+(X.buffer?fmt(X.buffer)+' stays in the account as the payout buffer'+(X.po.cap&&av===X.po.cap?' and '+fmt(X.po.cap)+' is the most per request':'')+'. ':(X.po.cap&&av===X.po.cap?fmt(X.po.cap)+' is the most per request. ':''))+'Taking all of it: balance '+fmt(B.bal)+' → <b>'+fmt(B.bal-av)+'</b>, room above the floor '+fmt(B.buffer)+' → <b class="'+(left<=0?"r":(left<500?"a":"g"))+'">'+fmt(left)+'</b>'+(left<=0?" — that's at or under the floor, take less":"")+'.</span>';}
+    if(ready){var left=(B.bal-av)-B.floorAfterPayout;
+      after='<br><span style="font-size:12px">'+(X.buffer?fmt(X.buffer)+' stays in the account as the payout buffer'+(X.po.cap&&av===X.po.cap?' and '+fmt(X.po.cap)+' is the most per request':'')+'. ':(X.po.cap&&av===X.po.cap?fmt(X.po.cap)+' is the most per request. ':''))+'Taking all of it: balance '+fmt(B.bal)+' → <b>'+fmt(B.bal-av)+'</b>, room above the floor '+fmt(B.buffer)+' → <b class="'+(left<=0?"r":(left<500?"a":"g"))+'">'+fmt(left)+'</b>'+(B.zeroes&&!B.zeroed?" (the floor moves up to "+fmt(B.floorAfterPayout)+" — Max Loss goes to $0)":"")+(left<=0?" — that's at or under the floor, take less":"")+'.</span>';}
+    var staticNote=!B.zeroes?"":'<div class="ponet" style="margin-top:10px">Static account: '+(B.zeroed?'the Max Loss Limit is <b>$0</b> since your first payout, so the floor is your starting balance ('+fmt(c.size)+'). The '+fmt(Math.max(0,B.buffer))+' left in the account is your whole buffer — every dollar you withdraw comes out of it.':'right now your buffer is '+fmt(B.buffer)+' (profit + the '+fmt(c.maxloss)+' Max Loss Limit). Your <b>first payout</b> drops the Max Loss Limit to $0 and the floor to '+fmt(c.size)+' — after that, only the profit you leave in is buffer.')+'</div>';
     var share=payoutShare(state.activeId),GL=goLiveInfo(),glTxt="";
     if(GL){var glp=Math.min(100,GL.sum/GL.po.goLive*100);
       glTxt='<div class="ponet" style="margin-top:10px">Toward live: <b class="g">'+fmt(GL.sum)+'</b> of '+fmt(GL.po.goLive)+' — payouts plus current profit over '+(GL.n===1?'this account':'your '+GL.n+' '+esc(((c.title.split(" — ")[1]||"").split(" ")[0])||"plan")+' accounts')+(GL.fund?' · live fund '+fmtc(Math.round(GL.fund*100)/100):'')+'. At '+fmt(GL.po.goLive)+' it pays out in full and you '+GL.po.goLiveTxt+'.</div>'+
@@ -3823,7 +3830,7 @@
       '<div class="item"><div class="k">Total funded P&amp;L</div><div class="v" style="color:'+(X.profit>=0?"var(--green)":"var(--red)")+'">'+fmt(X.profit)+'</div></div>'+
       '</div>'+
       '<div class="pomsg '+(ready?"ok":"warn")+'">'+(ready?"✓ Ready — you can request a payout of up to <b>"+fmt(av)+"</b>"+(X.po.everyTxt?" (payouts "+X.po.everyTxt+")":"")+(since?" ("+since+")":"")+"."+after:"Not yet"+(since?" "+since:"")+" · "+gates.join(" · ")+".")+'</div>'+
-      glTxt+
+      glTxt+staticNote+
       '<button type="button" class="addtrade" id="poAdd" style="margin-top:8px">＋ Log payout</button>'+
       payoutHistory();
   }
@@ -5014,7 +5021,8 @@
     document.getElementById("pContracts").textContent=c.contracts;
     document.getElementById("pMin").textContent=c.minShort;
     var floor=c.size-ML;
-    document.getElementById("pFloor").textContent=(c.dd.toLowerCase().indexOf("static")>=0)?(fmt(floor)+" (fixed)"):(c.locks?(fmt(floor)+" → locks "+fmt(c.size+(c.lockOff||0))):(fmt(floor)+" → trails"));
+    var Bf=bufferInfo();
+    document.getElementById("pFloor").textContent=Bf.zeroed?(fmt(c.size)+" (Max Loss $0 after payout)"):(c.dd.toLowerCase().indexOf("static")>=0)?(fmt(floor)+" (fixed)"+(Bf.zeroes?" → "+fmt(c.size)+" after 1st payout":"")):(c.locks?(fmt(floor)+" → locks "+fmt(c.size+(c.lockOff||0))):(fmt(floor)+" → trails"));
     document.getElementById("coDD").innerHTML="<b>Drawdown ("+c.dd+"):</b> "+c.ddDesc;
     if(c.consPct>0){var cn=consNote(c,countedStats(c).total,c.bestDay);document.getElementById("coCons").innerHTML="<b>"+c.consPct+"% consistency:</b> your best day can be at most "+c.consPct+"% of total profit. Go over and the account doesn't fail — the Profit Target rises to best day ÷ "+(c.consPct/100)+". "+cn.raised+cn.keep+" The fix for a big day is always more green days, never trimming.";}
     else{document.getElementById("coCons").innerHTML="<b>No consistency rule:</b> one big day is fine on this plan. The only thing that ends the eval is touching the Max Loss Limit — protect the floor and keep losers contained.";}
@@ -7622,7 +7630,7 @@
 </script>
 <script>
 // Keep in step with CACHE in service-worker.js, so the version on screen says which build is running.
-var APP_BUILD="v106";
+var APP_BUILD="v107";
 document.querySelectorAll(".appbuild").forEach(function(el){el.textContent=APP_BUILD;});
 document.getElementById("btnUpdate").addEventListener("click",function(){
   var b=this;b.disabled=true;b.textContent="Checking…";
